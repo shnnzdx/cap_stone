@@ -1,0 +1,21 @@
+.app {
+  max-width: 400px;
+  margin: 40px auto;
+  font-family: sans-serif;
+}
+
+.app h1 {
+  text-align: center;
+}
+
+.todo-list {
+  list-style: none;
+  padding: 0;
+}
+
+.todo-item {
+  padding: 10px;
+  margin: 6px 0;
+  background: #f4f4f4;
+  border-radius: 4px;
+}
