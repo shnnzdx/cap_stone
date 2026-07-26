@@ -1,0 +1,29 @@
+paths:
+  /product:
+    post:
+      summary: Create a new product.
+      consumes:
+        - application/json
+      parameters:
+        -in: body
+        name: name
+        description: The product to create.
+        schema:
+          type: object
+          required: 
+            - name
+            - description
+            - price
+            - qty
+          properties:
+            name:
+              type: string
+            description:
+              type: string
+            price:
+              type: number
+            qty:
+              type: number
+      responses:
+        201:
+          description: Created
