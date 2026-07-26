@@ -1,0 +1,330 @@
+{
+  "info": {
+    "name": "Capstone Alert Triage Engine API",
+    "description": "Postman collection for Assignment 2 backend API testing.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "GET Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Services",
+      "item": [
+        {
+          "name": "GET List Services",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/services"
+          }
+        },
+        {
+          "name": "POST Create Service",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/services",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"inventory-sync\",\n  \"owner_team\": \"operations\",\n  \"criticality\": \"medium\",\n  \"description\": \"Nightly inventory synchronization workflow\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET Service Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/services/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Jobs",
+      "item": [
+        {
+          "name": "GET List Jobs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/jobs"
+          }
+        },
+        {
+          "name": "POST Create Job",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/jobs",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_id\": 1,\n  \"job_name\": \"payment-settlement\",\n  \"worker_id\": \"worker-07\",\n  \"status\": \"timeout\",\n  \"duration_ms\": 12400,\n  \"api_latency_ms\": 830,\n  \"retry_count\": 4,\n  \"error_count\": 2,\n  \"queue_delay_ms\": 1800\n}"
+            }
+          }
+        },
+        {
+          "name": "POST Evaluate Job",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/jobs/1/evaluate",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"strategy\": \"feedback\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET Jobs Filtered",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/jobs?service_id=1&status=timeout",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"],
+              "query": [
+                {"key": "service_id", "value": "1"},
+                {"key": "status", "value": "timeout"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Alerts",
+      "item": [
+        {
+          "name": "GET List Alerts",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/alerts"
+          }
+        },
+        {
+          "name": "GET Alert Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/alerts/1"
+          }
+        },
+        {
+          "name": "POST Create Alert Manual",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/alerts",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job_id\": 1,\n  \"severity\": 4,\n  \"score\": 0.87,\n  \"utility\": 0.82,\n  \"decision\": \"promote\",\n  \"decision_reason\": \"Manual test alert\",\n  \"confidence\": 0.91,\n  \"is_duplicate\": false,\n  \"is_actionable\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "PATCH Acknowledge Alert",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/alerts/1",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"acknowledged\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET Alerts Filtered",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/alerts?status=open&decision=promote",
+              "host": ["{{baseUrl}}"],
+              "path": ["alerts"],
+              "query": [
+                {"key": "status", "value": "open"},
+                {"key": "decision", "value": "promote"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Feedback",
+      "item": [
+        {
+          "name": "POST Submit Feedback",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/alerts/1/feedback",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 2,\n  \"outcome\": \"false_positive\",\n  \"operator_action\": \"close\",\n  \"note\": \"Known retry burst after scheduled maintenance\",\n  \"applied_to_ranking\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "GET List Feedback",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/feedback"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Dashboard",
+      "item": [
+        {
+          "name": "GET Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/summary"
+          }
+        },
+        {
+          "name": "GET Noise Breakdown",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/noise-breakdown"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Suppression Rules",
+      "item": [
+        {
+          "name": "GET List Rules",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/suppression-rules"
+          }
+        },
+        {
+          "name": "POST Create Rule",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/suppression-rules",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_id\": 1,\n  \"rule_name\": \"Suppress retry bursts under maintenance window\",\n  \"rule_type\": \"expected_maintenance\",\n  \"condition_json\": {\"retry_count_gte\": 3, \"maintenance_window\": true},\n  \"active\": true,\n  \"created_by\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "PATCH Deactivate Rule",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/suppression-rules/1",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Threshold Configs",
+      "item": [
+        {
+          "name": "GET List Thresholds",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/threshold-configs"
+          }
+        },
+        {
+          "name": "POST Create Threshold",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/threshold-configs",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_id\": 1,\n  \"metric_name\": \"score\",\n  \"threshold_value\": 0.55,\n  \"strategy\": \"threshold\",\n  \"version\": \"v1.1\",\n  \"status\": \"active\",\n  \"active\": true,\n  \"recommended_by\": 1,\n  \"approved_by\": 1\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Evaluation",
+      "item": [
+        {
+          "name": "GET List Evaluation Runs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/evaluation/runs"
+          }
+        },
+        {
+          "name": "POST Save Evaluation Run",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/evaluation/runs",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"strategy\": \"feedback\",\n  \"alerts_sent\": 35,\n  \"false_positives\": 7,\n  \"duplicate_rate\": 0.10,\n  \"alert_reduction\": 0.36,\n  \"precision\": 0.79,\n  \"recall\": 0.91,\n  \"mean_time_to_acknowledge\": 142\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Recommendations",
+      "item": [
+        {
+          "name": "GET List Recommendations",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/recommendations"
+          }
+        },
+        {
+          "name": "PATCH Approve Recommendation",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/recommendations/1",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\",\n  \"reviewed_by\": 1\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Audit Logs",
+      "item": [
+        {
+          "name": "GET List Audit Logs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/audit-logs"
+          }
+        }
+      ]
+    }
+  ]
+}
