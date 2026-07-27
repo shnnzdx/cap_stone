@@ -113,7 +113,8 @@ def evaluate_job_route(job_id: int):
         applied_rules_json=result["applied_rules"],
         confidence=result["confidence"],
         status="open",
-        is_duplicate=len(suppression.get("matched", [])) > 0,
+        is_duplicate=suppression.get("is_duplicate", False),
+        duplicate_of_alert_id=suppression.get("duplicate_of_alert_id"),
         duplicate_group_key=suppression.get("duplicate_group_key"),
         is_actionable=result["is_actionable"],
     )
@@ -132,6 +133,7 @@ def evaluate_job_route(job_id: int):
             "confidence": round(result["confidence"], 4),
             "decision_reason": result["decision_reason"],
             "applied_rules": result["applied_rules"],
+            "duplicate_of_alert_id": alert.duplicate_of_alert_id,
             "duplicate_group_key": alert.duplicate_group_key,
         },
     }), 201

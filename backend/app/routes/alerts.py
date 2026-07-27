@@ -1,7 +1,7 @@
 """Alert event + feedback routes."""
 from flask import Blueprint, request, jsonify
 from ..extensions import db
-from ..models import AlertEvent, AlertFeedback, BackendJob, AuditLog
+from ..models import AlertEvent, AlertFeedback, BackendJob, User
 from ..schemas import AlertEventSchema, AlertEventDetailSchema, AlertFeedbackSchema
 from ..services.audit_service import write_audit_log
 
@@ -101,15 +101,23 @@ def patch_alert(alert_id: int):
         return _error("ALERT_NOT_FOUND", f"Alert with id {alert_id} was not found", 404)
 
     data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
     previous_status = alert.status
+    previous_archived = alert.archived
     updated = False
+
+    if not user_id:
+        return _error("VALIDATION_ERROR", "user_id is required for audit logging", 422)
+    if not User.query.get(user_id):
+        return _error("USER_NOT_FOUND", f"User with id {user_id} was not found", 404)
 
     if "status" in data:
         if data["status"] not in ("open", "acknowledged", "escalated", "closed"):
             return _error("VALIDATION_ERROR", "Invalid status value", 422)
         alert.status = data["status"]
-        from datetime import datetime, timezone
-        alert.acknowledged_at = datetime.now(timezone.utc)
+        if previous_status != "acknowledged" and alert.status == "acknowledged":
+            from datetime import datetime, timezone
+            alert.acknowledged_at = datetime.now(timezone.utc)
         updated = True
 
     if "archived" in data:
@@ -118,6 +126,15 @@ def patch_alert(alert_id: int):
 
     if not updated:
         return _error("VALIDATION_ERROR", "No valid fields to update (status, archived)", 422)
+
+    write_audit_log(
+        user_id=user_id,
+        action="alert_updated",
+        entity_type="alert_event",
+        entity_id=alert.id,
+        before={"status": previous_status, "archived": previous_archived},
+        after={"status": alert.status, "archived": alert.archived},
+    )
 
     db.session.commit()
 
@@ -154,6 +171,8 @@ def submit_feedback(alert_id: int):
 
     if not user_id:
         return _error("VALIDATION_ERROR", "user_id is required", 422)
+    if not User.query.get(user_id):
+        return _error("USER_NOT_FOUND", f"User with id {user_id} was not found", 404)
     if not outcome:
         return _error("VALIDATION_ERROR", "outcome is required", 422)
 

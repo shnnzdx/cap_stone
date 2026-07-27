@@ -3,8 +3,7 @@
 Reads real data from the database and computes KPI metrics matching
 the formulas in the assignment spec.
 """
-from ..models import AlertEvent, AlertFeedback, BackendJob, db
-from sqlalchemy import func
+from ..models import AlertEvent, AlertFeedback
 
 
 def compute_summary() -> dict:
@@ -14,19 +13,13 @@ def compute_summary() -> dict:
     suppressed = AlertEvent.query.filter_by(decision="suppress").count()
     open_alerts = AlertEvent.query.filter_by(status="open").count()
 
-    # Reviewed alerts = those with at least one feedback row
-    reviewed_subq = (
-        db.session.query(AlertFeedback.alert_id)
-        .distinct()
-        .subquery()
-    )
-    reviewed = db.session.query(func.count(reviewed_subq.c.alert_id)).scalar() or 0
+    latest_feedback = _latest_feedback_by_alert()
+    reviewed = len(latest_feedback)
 
-    # False positive count
-    false_positives = (
-        AlertFeedback.query
-        .filter(AlertFeedback.outcome.in_(["false_positive", "noisy"]))
-        .count()
+    # False positive count based on each alert's latest review label.
+    false_positives = sum(
+        1 for feedback in latest_feedback.values()
+        if feedback.outcome in ("false_positive", "noisy")
     )
 
     # Duplicate count (alerts marked as duplicate)
@@ -34,10 +27,9 @@ def compute_summary() -> dict:
 
     # Precision = TP / (TP + FP)
     # TP = feedbacks with useful/real_incident
-    true_positives = (
-        AlertFeedback.query
-        .filter(AlertFeedback.outcome.in_(["real_incident", "useful"]))
-        .count()
+    true_positives = sum(
+        1 for feedback in latest_feedback.values()
+        if feedback.outcome in ("real_incident", "useful")
     )
     precision = true_positives / max(1, true_positives + false_positives)
 
@@ -66,6 +58,15 @@ def compute_summary() -> dict:
         "open_alerts": open_alerts,
         "reviewed_alerts": reviewed,
     }
+
+
+def _latest_feedback_by_alert() -> dict:
+    """Return the latest feedback row for each reviewed alert."""
+    rows = AlertFeedback.query.order_by(AlertFeedback.alert_id, AlertFeedback.created_at).all()
+    latest = {}
+    for row in rows:
+        latest[row.alert_id] = row
+    return latest
 
 
 def compute_noise_breakdown() -> dict:

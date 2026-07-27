@@ -1,10 +1,12 @@
 """Alert Triage Engine — Flask application factory."""
 import os
 from flask import Flask
+from dotenv import load_dotenv
 from .extensions import db, ma, cors
 
 
 def create_app(test_config=None):
+    load_dotenv()
     app = Flask(__name__)
 
     # Configuration

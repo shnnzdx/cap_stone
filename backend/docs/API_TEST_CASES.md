@@ -83,7 +83,7 @@ Test environment: Flask dev server → PostgreSQL → localhost:5000
 | **Purpose** | Evaluate a job and let backend generate alert decision |
 | **Request Body** | `{"strategy":"feedback"}` |
 | **Expected Status** | 201 |
-| **Expected Response** | `{"job_id":16,"alert_created":true,"alert":{"id":...,"decision":"promote","decision_reason":[...],"score":...,"utility":...}}` |
+| **Expected Response** | `{"job_id":16,"alert_created":true,"alert":{"id":...,"decision":"promote or suppress","decision_reason":[...],"score":...,"utility":...}}` |
 | **Database Evidence** | New row in `alert_events` with backend-generated score, utility, decision, and reason |
 
 ---
@@ -123,10 +123,10 @@ Test environment: Flask dev server → PostgreSQL → localhost:5000
 | **Test ID** | TC-009 |
 | **Endpoint** | `PATCH /api/v1/alerts/5` |
 | **Purpose** | Update alert status to acknowledged |
-| **Request Body** | `{"status":"acknowledged"}` |
+| **Request Body** | `{"user_id":2,"status":"acknowledged"}` |
 | **Expected Status** | 200 |
 | **Expected Response** | `{"id":5,"previous_status":"open","status":"acknowledged","message":"Alert updated"}` |
-| **Database Evidence** | `alert_events.status` changed to `acknowledged` for id=5 |
+| **Database Evidence** | `alert_events.status` changed to `acknowledged` for id=5; new `audit_logs` row with action `alert_updated` |
 
 ---
 

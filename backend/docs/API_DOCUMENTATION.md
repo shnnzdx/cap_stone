@@ -301,6 +301,7 @@ Partially update alert status or archive flag.
 
 ```json
 {
+  "user_id": 2,
   "status": "acknowledged"
 }
 ```
@@ -309,6 +310,7 @@ or
 
 ```json
 {
+  "user_id": 2,
   "archived": true
 }
 ```
@@ -323,6 +325,12 @@ or
   "message": "Alert updated"
 }
 ```
+
+**Database effects:**
+
+- Updates `alert_events.status` or `alert_events.archived`.
+- Inserts one row into `audit_logs`.
+- `user_id` is required so the audit log has an actor.
 
 ---
 

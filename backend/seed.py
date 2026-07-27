@@ -128,7 +128,7 @@ def seed(app):
                           operator_action="escalate", note="Catalog sync timeout blocking downstream jobs",
                           applied_to_ranking=True),
             AlertFeedback(alert_id=alerts[6].id, user_id=3, outcome="noisy",
-                          operator_action="close", note="Address validation timeout — transient network issue",
+                          operator_action="close", note="Address validation timeout - transient network issue",
                           applied_to_ranking=True),
             AlertFeedback(alert_id=alerts[9].id, user_id=2, outcome="real_incident",
                           operator_action="escalate", note="Billing timeout affecting finance reports",
@@ -146,7 +146,7 @@ def seed(app):
                           applied_to_ranking=True),
             AlertFeedback(alert_id=alerts[12].id, user_id=3, outcome="needs_more_information",
                           operator_action="confirm",
-                          note="DLQ drain completed with failures — need to check downstream",
+                          note="DLQ drain completed with failures - need to check downstream",
                           applied_to_ranking=False),
             AlertFeedback(alert_id=alerts[13].id, user_id=2, outcome="real_incident",
                           operator_action="escalate", note="DLQ replay timeout critical for queue health",
@@ -248,14 +248,14 @@ def seed(app):
                 service_id=2, recommendation_type="strategy",
                 current_value_json={"strategy": "threshold"},
                 recommended_value_json={"strategy": "feedback"},
-                reason="Retailer-sync shows high correlation with feedback labels — feedback strategy recommended",
+                reason="Retailer-sync shows high correlation with feedback labels - feedback strategy recommended",
                 confidence=0.76, status="pending",
             ),
             Recommendation(
                 service_id=3, recommendation_type="suppression",
                 current_value_json={"active_rules": 1},
                 recommended_value_json={"active_rules": 2},
-                reason="Address normalizer has a new transient retry pattern — additional suppression rule suggested",
+                reason="Address normalizer has a new transient retry pattern - additional suppression rule suggested",
                 confidence=0.68, status="approved", reviewed_by=1,
             ),
         ]
@@ -283,7 +283,7 @@ def seed(app):
         # ------------------------------------------------------------------
         db.session.commit()
 
-        print("✅ Seed data inserted!")
+        print("Seed data inserted.")
         print(f"   users:              {User.query.count()}")
         print(f"   services:           {Service.query.count()}")
         print(f"   backend_jobs:       {BackendJob.query.count()}")
@@ -301,12 +301,12 @@ if __name__ == "__main__":
     if "--reset" in sys.argv:
         with app.app_context():
             db.drop_all()
-            print("🗑️  All tables dropped.")
+            print("All tables dropped.")
             db.create_all()
-            print("🏗️  All tables re-created.")
+            print("All tables re-created.")
     else:
         with app.app_context():
             db.create_all()
-            print("🏗️  Tables created (if not exist).")
+            print("Tables created (if not exist).")
 
     seed(app)

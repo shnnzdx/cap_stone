@@ -26,19 +26,22 @@ def check_suppression_rules(job: BackendJob, alert_candidate: dict = None) -> di
 
     matched = []
     duplicate_group_key = None
+    duplicate_of_alert_id = None
 
     for rule in rules:
         condition = rule.condition_json or {}
 
         if rule.rule_type == "duplicate_grouping":
             # Check if a similar alert was generated recently (last 5 min)
-            if _is_duplicate(job):
+            duplicate_alert = _find_duplicate_alert(job)
+            if duplicate_alert:
                 matched.append({
                     "rule_id": rule.id,
                     "rule_name": rule.rule_name,
                     "reason": "Duplicate pattern detected — same job + same status",
                 })
                 duplicate_group_key = f"svc-{job.service_id}|status-{job.status}|err-{job.error_count}"
+                duplicate_of_alert_id = duplicate_alert.id
 
         elif rule.rule_type == "expected_maintenance":
             if _match_expected_maintenance(job, condition):
@@ -68,22 +71,24 @@ def check_suppression_rules(job: BackendJob, alert_candidate: dict = None) -> di
         "suppress": len(matched) > 0,
         "matched": matched,
         "duplicate_group_key": duplicate_group_key,
+        "duplicate_of_alert_id": duplicate_of_alert_id,
+        "is_duplicate": duplicate_of_alert_id is not None,
     }
 
 
-def _is_duplicate(job: BackendJob) -> bool:
-    """Check if a recent alert with the same job_id + status already exists (within 5 min)."""
+def _find_duplicate_alert(job: BackendJob):
+    """Return a recent alert for the same job if one exists within 5 minutes."""
     from datetime import datetime, timezone, timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
-    existing = (
+    return (
         AlertEvent.query
         .filter(
             AlertEvent.job_id == job.id,
             AlertEvent.created_at >= cutoff,
         )
+        .order_by(AlertEvent.created_at.desc())
         .first()
     )
-    return existing is not None
 
 
 def _match_expected_maintenance(job: BackendJob, condition: dict) -> bool:

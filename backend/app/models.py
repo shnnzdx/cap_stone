@@ -17,7 +17,7 @@ class User(db.Model):
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     role = db.Column(db.String(20), nullable=False, default="operator")  # operator | sre | admin
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # relationships
     feedbacks = db.relationship("AlertFeedback", backref="reviewer", lazy="dynamic")
@@ -45,7 +45,7 @@ class Service(db.Model):
     owner_team = db.Column(db.String(120), nullable=False, default="platform")
     criticality = db.Column(db.String(20), nullable=False, default="medium")  # low | medium | high | critical
     description = db.Column(db.Text, default="")
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # relationships
     jobs = db.relationship("BackendJob", backref="service", lazy="dynamic")
@@ -74,9 +74,9 @@ class BackendJob(db.Model):
     failed_count = db.Column(db.Integer, nullable=False, default=0)
     timeout_count = db.Column(db.Integer, nullable=False, default=0)
     throughput_per_minute = db.Column(db.Integer, nullable=False, default=0)
-    started_at = db.Column(db.TIMESTAMPTZ, nullable=True)
-    completed_at = db.Column(db.TIMESTAMPTZ, nullable=True)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    started_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    completed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     # relationships
     alert_events = db.relationship("AlertEvent", backref="job", lazy="dynamic")
@@ -103,7 +103,7 @@ class AlertEvent(db.Model):
     utility = db.Column(db.Numeric(5, 4), nullable=False, default=0)
     decision = db.Column(db.String(10), nullable=False)  # promote | suppress
     decision_reason = db.Column(db.Text, default="")
-    applied_rules_json = db.Column(db.JSON, default=[])
+    applied_rules_json = db.Column(db.JSON, default=list)
     confidence = db.Column(db.Numeric(5, 4), nullable=False, default=0)
     status = db.Column(db.String(20), nullable=False, default="open")  # open | acknowledged | escalated | closed
     is_duplicate = db.Column(db.Boolean, nullable=False, default=False)
@@ -111,8 +111,8 @@ class AlertEvent(db.Model):
     duplicate_group_key = db.Column(db.String(120), nullable=True)
     is_actionable = db.Column(db.Boolean, nullable=False, default=True)
     archived = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow, index=True)
-    acknowledged_at = db.Column(db.TIMESTAMPTZ, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow, index=True)
+    acknowledged_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # relationships
     feedbacks = db.relationship("AlertFeedback", backref="alert", lazy="dynamic")
@@ -146,7 +146,7 @@ class AlertFeedback(db.Model):
     operator_action = db.Column(db.String(20), nullable=False)  # confirm | escalate | close
     note = db.Column(db.Text, default="")
     applied_to_ranking = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
     __table_args__ = (
         db.Index("ix_feedback_outcome", "outcome"),
@@ -164,10 +164,10 @@ class SuppressionRule(db.Model):
     rule_name = db.Column(db.String(200), nullable=False)
     rule_type = db.Column(db.String(40), nullable=False)
     # duplicate_grouping | expected_maintenance | transient_retry | low_severity_noise
-    condition_json = db.Column(db.JSON, nullable=False, default={})
+    condition_json = db.Column(db.JSON, nullable=False, default=dict)
     active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +186,10 @@ class ThresholdConfig(db.Model):
     active = db.Column(db.Boolean, nullable=False, default=True)
     recommended_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     approved_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    effective_from = db.Column(db.TIMESTAMPTZ, nullable=True)
-    effective_to = db.Column(db.TIMESTAMPTZ, nullable=True)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
-    updated_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    effective_from = db.Column(db.DateTime(timezone=True), nullable=True)
+    effective_to = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -201,14 +201,14 @@ class Recommendation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     service_id = db.Column(db.Integer, db.ForeignKey("services.id"), nullable=False, index=True)
     recommendation_type = db.Column(db.String(40), nullable=False)  # threshold | suppression | strategy
-    current_value_json = db.Column(db.JSON, nullable=False, default={})
-    recommended_value_json = db.Column(db.JSON, nullable=False, default={})
+    current_value_json = db.Column(db.JSON, nullable=False, default=dict)
+    recommended_value_json = db.Column(db.JSON, nullable=False, default=dict)
     reason = db.Column(db.Text, default="")
     confidence = db.Column(db.Numeric(5, 4), nullable=False, default=0)
     status = db.Column(db.String(20), nullable=False, default="pending")  # pending | approved | rejected
     reviewed_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
-    reviewed_at = db.Column(db.TIMESTAMPTZ, nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +226,7 @@ class EvaluationRun(db.Model):
     precision = db.Column(db.Numeric(5, 4), nullable=False, default=0)
     recall = db.Column(db.Numeric(5, 4), nullable=False, default=0)
     mean_time_to_acknowledge = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -242,4 +242,4 @@ class AuditLog(db.Model):
     entity_id = db.Column(db.Integer, nullable=False)
     before_json = db.Column(db.JSON, nullable=True)
     after_json = db.Column(db.JSON, nullable=True)
-    created_at = db.Column(db.TIMESTAMPTZ, nullable=False, default=_utcnow, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=_utcnow, index=True)
