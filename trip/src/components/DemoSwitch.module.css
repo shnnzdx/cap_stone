@@ -1,0 +1,23 @@
+/* 原型脚手架样式，上线前与组件一起删除 */
+.bar {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin: var(--sp-3) 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--r-md);
+}
+.btn {
+  padding: 2px 8px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  background: var(--c-surface);
+  border: 1px solid #a5b4fc;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.btnOn { color: #fff; background: #4338ca; border-color: #4338ca; }

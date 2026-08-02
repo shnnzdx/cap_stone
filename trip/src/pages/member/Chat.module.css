@@ -1,0 +1,17 @@
+/* 对话组件。同一套气泡复用于偏好收集与私密约束死局的 AI 私聊。 */
+.bubble {
+  max-width: 78%;
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-base);
+  border-radius: var(--r-lg);
+}
+.ai {
+  color: var(--c-ai);
+  background: var(--c-ai-bg);
+  border: 1px dashed var(--c-ai-border);
+}
+.me {
+  margin-left: auto;
+  background: var(--c-accent-weak);
+}

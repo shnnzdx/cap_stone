@@ -1,0 +1,44 @@
+.subnav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border-subtle);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6) var(--sp-2);
+}
+.back {
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-base);
+  color: var(--c-text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.back:hover { color: var(--c-accent); }
+.name { font-size: var(--fs-lg); font-weight: 700; }
+
+.tabs { display: flex; gap: var(--sp-1); padding: 0 var(--sp-6); overflow-x: auto; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-base);
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.tab:hover { color: var(--c-text); background: var(--c-surface-alt); }
+.tabDone { color: var(--c-ok); }
+.tabCurrent { color: var(--c-accent); border-bottom-color: var(--c-accent); font-weight: 700; }
+.tabLocked { color: var(--c-border); cursor: not-allowed; }
+.tabLocked:hover { color: var(--c-border); background: transparent; }

@@ -1,0 +1,23 @@
+.page {
+  max-width: var(--content-narrow);
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-5);
+}
+.pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0;
+}
+@media (max-width: 700px) { .pick { grid-template-columns: 1fr; } }
+
+.card {
+  display: block;
+  padding: var(--sp-5);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+}
+.card:hover { border-color: var(--c-accent); box-shadow: var(--shadow-sm); }
+.card b { display: block; margin-bottom: var(--sp-1); font-size: var(--fs-lg); color: var(--c-accent); }

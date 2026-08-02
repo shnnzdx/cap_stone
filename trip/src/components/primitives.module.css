@@ -1,0 +1,108 @@
+/* 展示型原子组件样式。只描述外观，不含业务判断。 */
+
+/* ── Card ── */
+.card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.cardEmphasis { border: 2px solid var(--c-accent); }
+.cardDashed   { border: 2px dashed var(--c-text-faint); }
+
+/* ── Badge：部分状态徽章 / 通用状态 ── */
+.badge {
+  display: inline-block;
+  font-size: var(--fs-sm);
+  padding: 1px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid;
+  white-space: nowrap;
+}
+.toneOk      { color: var(--c-ok);     border-color: var(--c-ok-border);     background: var(--c-ok-bg); }
+.toneWarn    { color: var(--c-warn);   border-color: var(--c-warn-border);   background: var(--c-warn-bg); }
+.toneDanger  { color: var(--c-danger); border-color: var(--c-danger-border); background: var(--c-danger-bg); }
+.toneInfo    { color: var(--c-accent); border-color: var(--c-accent-border); background: var(--c-accent-weak); }
+.toneFrozen  { color: var(--c-frozen); border-color: var(--c-frozen-border); background: var(--c-frozen-bg); }
+.toneNeutral { color: var(--c-text-muted); border-color: var(--c-border); background: var(--c-surface-alt); }
+
+/* ── CredibilityTag：可信度标签，四种必须可区分 ── */
+.cred {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  padding: 0 7px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+  background: var(--c-surface-alt);
+  white-space: nowrap;
+}
+.credMock       { border-style: dashed; }
+.credEstimate   { color: var(--c-warn);   border-color: var(--c-warn-border);   background: var(--c-warn-bg); }
+.credVerified   { color: var(--c-ok);     border-color: var(--c-ok-border);     background: var(--c-ok-bg); }
+.credUnverified { color: var(--c-danger); border-color: var(--c-danger-border); background: var(--c-danger-bg); }
+
+/* ── Chip ── */
+.chip {
+  display: inline-block;
+  margin: 2px;
+  padding: 2px 10px;
+  font-size: var(--fs-sm);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-alt);
+}
+/* 硬约束 chip：永远配锁图标，永远不点名 */
+.chipLocked { border-color: var(--c-text); background: var(--c-border-subtle); }
+
+/* ── Banner ── */
+.banner {
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-base);
+  border: 1px solid;
+  border-radius: var(--r-lg);
+}
+
+/* ── Button ── */
+.btn {
+  padding: 6px 14px;
+  font: inherit;
+  font-size: var(--fs-base);
+  color: var(--c-text);
+  background: var(--c-surface);
+  border: 1px solid var(--c-text-faint);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--c-surface-alt); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btnPrimary {
+  color: #fff;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+.btnPrimary:hover:not(:disabled) { background: var(--c-accent-hover); }
+.btnDanger { color: var(--c-danger); border-color: var(--c-danger); }
+
+/* ── Avatar ── */
+.avatar {
+  flex: 0 0 auto;
+  width: 28px; height: 28px;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  font-size: var(--fs-sm);
+  background: var(--c-border);
+  border-radius: 50%;
+}
+
+/* ── MemberRow ── */
+.memberRow {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--c-border-subtle);
+}
+.memberRow:last-child { border-bottom: 0; }
