@@ -15,8 +15,8 @@ export default function TripWorkspacePreview() {
       </header>
       <iframe
         className="trip-preview-frame"
-        src="/trip-app/"
-        title="TripSync post-login workspace preview"
+        src="/trip-app/#/organizer"
+        title="TripSync organizer workspace"
       />
     </main>
   );
