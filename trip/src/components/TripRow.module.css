@@ -1,0 +1,14 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+}
+.row:hover { border-color: var(--c-accent); box-shadow: var(--shadow-sm); }
+.main { flex: 1; min-width: 0; }
+.hint { color: var(--c-danger); }

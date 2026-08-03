@@ -1,0 +1,21 @@
+.versionBar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.pill {
+  padding: 2px 12px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  background: var(--c-surface);
+  border: 1px solid var(--c-text-faint);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.pillCurrent {
+  color: #fff;
+  font-weight: 600;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}

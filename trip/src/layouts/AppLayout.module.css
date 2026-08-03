@@ -1,0 +1,26 @@
+.main { margin-left: var(--sidebar-w); min-height: 100vh; }
+.wrap { max-width: var(--content-max); padding: var(--sp-5) var(--sp-6) 70px; }
+.wrapNarrow { max-width: var(--content-narrow); }
+
+/* 列表页顶部条：与 trip 内的二级栏保持同一视觉层级 */
+.listHead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6);
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border-subtle);
+}
+.listTitle { font-size: var(--fs-lg); font-weight: 700; }
+
+/* 两栏内容布局：主内容 + 右侧栏 */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+@media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }

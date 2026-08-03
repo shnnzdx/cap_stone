@@ -1,0 +1,46 @@
+.sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-5) var(--sp-3);
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border-subtle);
+  z-index: 50;
+  overflow-y: auto;
+}
+
+.logo { margin: 0 var(--sp-2) var(--sp-4); font-size: var(--fs-lg); font-weight: 700; }
+.logo small { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--c-text-muted); }
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-base);
+  color: var(--c-text);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.nav:hover { background: var(--c-bg); }
+.navOn { color: var(--c-accent); background: var(--c-accent-weak); font-weight: 600; }
+.count { margin-left: auto; font-size: var(--fs-sm); color: var(--c-text-muted); }
+
+.group {
+  margin: var(--sp-4) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--c-text-faint);
+}
+.currentTrip { padding: 0 var(--sp-3); font-size: var(--fs-sm); }
+
+.foot {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-border-subtle);
+}
+.user { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); }

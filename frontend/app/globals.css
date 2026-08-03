@@ -231,3 +231,18 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .footer{background:transparent}
 
 @media(max-width:900px){.product-overview,.process,.final-cta{margin-inline:10px;border-radius:28px}.innovation-grid article:nth-child(2),.innovation-grid article:nth-child(3){transform:none}}
+
+.login-shell{min-height:calc(100vh - 260px);display:grid;grid-template-columns:1fr 420px;align-items:center;gap:70px;padding:110px 0}
+.login-copy h1{font-size:clamp(3rem,6vw,6.2rem);line-height:.96;letter-spacing:-.05em;margin:24px 0}
+.login-panel{display:flex;flex-direction:column;gap:18px;padding:34px;border:1px solid var(--color-border);border-radius:28px;background:rgba(255,255,255,.7);box-shadow:0 24px 70px rgba(52,82,114,.08);backdrop-filter:blur(18px)}
+.login-panel label{display:flex;flex-direction:column;gap:8px;color:var(--color-text-secondary);font-size:.92rem}
+.login-panel input{width:100%;border:1px solid var(--color-border);border-radius:16px;background:white;color:var(--color-ink);padding:14px 15px;font:inherit}
+.login-panel .button{margin-top:8px}
+.login-panel p{margin:0;color:var(--color-text-secondary);font-size:.86rem;line-height:1.5}
+.trip-preview-page{height:100vh;display:flex;flex-direction:column;background:#eef4fb;overflow:hidden}
+.trip-preview-bar{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid var(--color-border);background:rgba(255,255,255,.88);backdrop-filter:blur(16px);flex:0 0 auto}
+.trip-preview-bar nav{display:flex;align-items:center;gap:22px;color:var(--color-text-secondary);font-size:.92rem}
+.trip-preview-bar nav a:hover{color:var(--color-blue-action)}
+.trip-preview-frame{width:100%;height:calc(100vh - 64px);border:0;background:white;flex:1 1 auto}
+
+@media(max-width:900px){.login-shell{grid-template-columns:1fr;padding:72px 0}.trip-preview-bar{height:auto;min-height:64px;align-items:flex-start;gap:14px;flex-direction:column;padding:14px 18px}.trip-preview-frame{height:calc(100vh - 98px)}}

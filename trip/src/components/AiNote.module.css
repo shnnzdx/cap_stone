@@ -1,0 +1,11 @@
+.note {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-base);
+  color: var(--c-ai);
+  background: var(--c-ai-bg);
+  border: 1px dashed var(--c-ai-border);
+  border-radius: var(--r-md);
+}
+.summary { cursor: pointer; font-weight: 600; }
+.detail { margin-top: var(--sp-2); }
