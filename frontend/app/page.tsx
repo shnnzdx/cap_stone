@@ -3,11 +3,13 @@ import { BrandConstellation, DemoPanel } from "./ui";
 import FeatureStory from "./FeatureStory";
 import PeopleProblem from "./PeopleProblem";
 import ProductPrinciples from "./ProductPrinciples";
+import ProductScrollFlow from "./ProductScrollFlow";
 
 export default function Home() {
   return (
     <main>
       <Header />
+      <ProductScrollFlow />
       <section className="hero shell">
         <div className="hero-copy">
           <p className="eyebrow">Group travel, planned together</p>
