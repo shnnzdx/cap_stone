@@ -16,6 +16,10 @@ npm run dev
 npm run build
 ```
 
+These commands are cross-platform in this repo. The `frontend/package.json`
+scripts route through `scripts/run-vinext.mjs`, so Windows does not need a
+separate `WRANGLER_LOG_PATH=...` command format.
+
 This starter does not use `wrangler.jsonc`.
 
 ## Included Shape
@@ -91,6 +95,7 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - `npm run dev`: start local development
 - `npm run build`: verify the vinext build output
+- `node scripts/run-vinext.mjs dev --port 3001`: start dev server on a custom port
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
