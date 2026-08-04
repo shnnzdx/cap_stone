@@ -4,64 +4,37 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 export default function LoginPage() {
-  const sceneRef = useRef<HTMLDivElement>(null);
-  const planeRef = useRef<HTMLDivElement>(null);
-  const pupilsRef = useRef<HTMLDivElement[]>([]);
+  const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    const scene = sceneRef.current;
-    const plane = planeRef.current;
-    if (!scene || !plane) return;
     let frame = 0;
-    let targetX = scene.clientWidth * 0.72;
-    let targetY = scene.clientHeight * 0.25;
-    let planeX = targetX;
-    let planeY = targetY;
-    let gazeX = 0;
-    let gazeY = 0;
-    let lastX = planeX;
-    let lastY = planeY;
-
-    const pointTo = (clientX: number, clientY: number) => {
-      const bounds = scene.getBoundingClientRect();
-      targetX = Math.max(28, Math.min(bounds.width - 28, clientX - bounds.left));
-      targetY = Math.max(28, Math.min(bounds.height - 28, clientY - bounds.top));
+    let pointerX = window.innerWidth * 0.72;
+    let pointerY = window.innerHeight * 0.35;
+    const onPointerMove = (event: PointerEvent) => {
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        pupilsRef.current.forEach((pupil) => {
+          const eye = pupil.parentElement?.getBoundingClientRect();
+          if (!eye) return;
+          const dx = pointerX - (eye.left + eye.width / 2);
+          const dy = pointerY - (eye.top + eye.height / 2);
+          const distance = Math.max(1, Math.hypot(dx, dy));
+          const travel = Math.min(6, distance / 45);
+          pupil.style.transform = `translate(${(dx / distance) * travel}px, ${(dy / distance) * travel}px)`;
+        });
+      });
     };
-    const onPointerMove = (event: PointerEvent) => pointTo(event.clientX, event.clientY);
-    const onPointerLeave = () => {
-      targetX = scene.clientWidth * 0.72;
-      targetY = scene.clientHeight * 0.25;
-    };
-    const animate = (time: number) => {
-      planeX += (targetX - planeX) * 0.075;
-      planeY += (targetY - planeY) * 0.075;
-      const driftX = Math.sin(time * 0.0031) * 5;
-      const driftY = Math.cos(time * 0.0038) * 4;
-      const angle = Math.atan2(planeY - lastY, planeX - lastX) * (180 / Math.PI);
-      plane.style.transform = `translate3d(${planeX + driftX}px, ${planeY + driftY}px, 0) rotate(${angle + 8}deg)`;
-
-      const bounds = scene.getBoundingClientRect();
-      const desiredX = Math.max(-1, Math.min(1, (planeX - bounds.width * 0.46) / (bounds.width * 0.42)));
-      const desiredY = Math.max(-1, Math.min(1, (planeY - bounds.height * 0.57) / (bounds.height * 0.38)));
-      gazeX += (desiredX - gazeX) * 0.045;
-      gazeY += (desiredY - gazeY) * 0.045;
-      pupilsRef.current.forEach((pupil) => pupil?.style.setProperty("transform", `translate(${gazeX * 7}px, ${gazeY * 5}px)`));
-      scene.style.setProperty("--head-turn", `${gazeX * 5}deg`);
-      scene.style.setProperty("--head-tilt", `${gazeY * 3}deg`);
-      lastX = planeX;
-      lastY = planeY;
-      frame = requestAnimationFrame(animate);
-    };
-    scene.addEventListener("pointermove", onPointerMove);
-    scene.addEventListener("pointerleave", onPointerLeave);
-    frame = requestAnimationFrame(animate);
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
     return () => {
-      scene.removeEventListener("pointermove", onPointerMove);
-      scene.removeEventListener("pointerleave", onPointerLeave);
+      window.removeEventListener("pointermove", onPointerMove);
       cancelAnimationFrame(frame);
     };
   }, []);
+
+  const setPupil = (index: number) => (node: HTMLElement | null) => { if (node) pupilsRef.current[index] = node; };
 
   return (
     <main className="login-page">
@@ -69,31 +42,28 @@ export default function LoginPage() {
         <span className="brand-mark">T</span><span>TripSync</span>
       </Link>
       <section className="login-experience">
-        <div className="travel-scene" ref={sceneRef} aria-label="Interactive TripSync travel companion">
+        <div className="travel-scene" aria-label="Three TripSync travelers whose eyes follow the cursor">
           <div className="route route-one" /><div className="route route-two" />
           <span className="map-label label-one">NRT</span><span className="map-label label-two">CDG</span><span className="map-label label-three">ORD</span>
           <div className="scene-copy">
             <p className="scene-kicker">Your group is waiting</p>
             <h1>Every great trip<br />starts together.</h1>
-            <p>Move your cursor and let your travel companion follow the next idea.</p>
+            <p>Three travelers. Three perspectives. One shared direction.</p>
           </div>
-          <div className="paper-plane" ref={planeRef} aria-hidden="true"><i /></div>
-          <div className="companion-wrap" aria-hidden="true">
-            <div className="companion-shadow" />
-            <div className="companion-body">
-              <div className="companion-pack"><span /></div>
-              <div className="companion-head">
-                <div className="companion-ear left" /><div className="companion-ear right" />
-                <div className="companion-face">
-                  <div className="companion-eye left"><i ref={(node) => { if (node) pupilsRef.current[0] = node; }} /></div>
-                  <div className="companion-eye right"><i ref={(node) => { if (node) pupilsRef.current[1] = node; }} /></div>
-                  <div className="companion-nose" /><div className="companion-smile" />
+          <div className="traveler-trio" aria-hidden="true">
+            {["woman-one", "man", "woman-two"].map((kind, personIndex) => (
+              <div className={`q-person ${kind}`} key={kind}>
+                <div className="q-hair" />
+                <div className="q-head">
+                  <div className="q-eye left"><i ref={setPupil(personIndex * 2)} /></div>
+                  <div className="q-eye right"><i ref={setPupil(personIndex * 2 + 1)} /></div>
+                  <div className="q-nose" /><div className="q-smile" />
                 </div>
+                <div className="q-body"><span /></div>
               </div>
-              <div className="companion-scarf" /><div className="companion-foot left" /><div className="companion-foot right" />
-            </div>
+            ))}
           </div>
-          <span className="scene-hint">Move to explore</span>
+          <span className="scene-hint">They&apos;re listening</span>
         </div>
         <div className="login-side">
           <div className="login-card">

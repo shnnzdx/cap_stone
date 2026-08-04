@@ -11,7 +11,7 @@ const flow = [
 
 export default function HowItWorks() {
   return <main><Header />
-    <section className="subhero shell"><p className="eyebrow">HOW TRIPSYNC WORKS</p><h1>Different needs.<br/>One shared plan.</h1><p>Five clear stages move a group from an idea to one accepted version—without confusing satisfaction with final approval.</p><Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link></section>
+    <section className="subhero shell"><p className="eyebrow">HOW TRIPSYNC WORKS</p><h1>Voices become a plan.</h1><p>Five clear stages move a group from private input to explicit agreement.</p><Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link></section>
     <section className="flow shell">
       {flow.map(([n,title,text,image], i) => <article className="flow-step" id={title.toLowerCase()} key={n}><div className="flow-copy"><span>{n}</span><h2>{title}</h2><p>{text}</p>{i===3 && <div className="logic-note"><strong>Rating ≠ Acceptance</strong><p>A high rating can still include a required change.</p></div>}</div><div className={`image-placeholder flow-image tone-${(i%4)+1}`}><span>UI PLACEHOLDER</span><strong>{image}</strong><small>Replace with the corresponding product screen</small></div></article>)}
     </section>

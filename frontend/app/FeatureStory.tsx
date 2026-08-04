@@ -1,0 +1,141 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+
+const features = [
+  {
+    number: "01",
+    title: "Create",
+    text: "Add a destination and date range, then invite everyone with one link.",
+    note: "Create opens a shared planning space. It does not make decisions for the group.",
+    action: "Start a trip",
+    icon: "+",
+  },
+  {
+    number: "02",
+    title: "Share",
+    text: "Each traveler adds priorities, hard limits, and private concerns in their own space.",
+    note: "People can be honest without turning every preference into a group debate.",
+    action: "See private input",
+    icon: "✦",
+  },
+  {
+    number: "03",
+    title: "Generate",
+    text: "TripSync maps confirmed limits first, then proposes a plan the whole group can inspect.",
+    note: "The AI explains what it balanced and where a conflict still needs a human choice.",
+    action: "View plan logic",
+    icon: "↗",
+  },
+  {
+    number: "04",
+    title: "Review",
+    text: "Members rate the same version and leave focused feedback for the next revision.",
+    note: "A rating guides the next change; it does not count as final acceptance.",
+    action: "Explore review",
+    icon: "◌",
+  },
+  {
+    number: "05",
+    title: "Agree",
+    text: "The trip locks only when every active traveler accepts the exact same version.",
+    note: "One shared version, explicitly accepted—no assumptions hidden in the group chat.",
+    action: "See consensus",
+    icon: "✓",
+  },
+];
+
+export default function FeatureStory() {
+  const sectionRef = useRef<HTMLElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+    let frame = 0;
+    let displayed = 0;
+
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const bounds = section.getBoundingClientRect();
+        const travel = Math.max(1, bounds.height - window.innerHeight);
+        const progress = Math.max(0, Math.min(1, -bounds.top / travel));
+        const next = Math.min(features.length - 1, Math.floor(progress * features.length));
+        if (next !== displayed) {
+          displayed = next;
+          setActiveIndex(next);
+        }
+      });
+    };
+
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const goToStep = (index: number) => {
+    const section = sectionRef.current;
+    if (!section) return;
+    const top = window.scrollY + section.getBoundingClientRect().top;
+    const travel = section.offsetHeight - window.innerHeight;
+    window.scrollTo({ top: top + travel * ((index + 0.12) / features.length), behavior: "smooth" });
+  };
+
+  return (
+    <section className="feature-story" id="process" ref={sectionRef} aria-label="How TripSync works">
+      <div className="story-frame">
+        <div className="story-topbar">
+          <span className="story-mini-brand"><i>T</i> TripSync</span>
+          <span>03 · PROCESS</span>
+        </div>
+        <div className="story-window">
+          <aside className="story-intro">
+            <p className="story-label">HOW IT WORKS</p>
+            <h2>Five steps.<br />One decision.</h2>
+            <p>Each stage keeps private input, revision, and final agreement clear.</p>
+            <nav className="story-nav" aria-label="Choose a process step">
+              {features.map((feature, index) => (
+                <button
+                  type="button"
+                  key={feature.number}
+                  className={index === activeIndex ? "is-active" : ""}
+                  aria-current={index === activeIndex ? "step" : undefined}
+                  aria-label={`Go to step ${feature.number}: ${feature.title}`}
+                  onClick={() => goToStep(index)}
+                >{feature.number}</button>
+              ))}
+            </nav>
+          </aside>
+
+          <div className="stacked-features">
+            {features.map((feature, index) => (
+              <article className={`stacked-feature ${index <= activeIndex ? "is-revealed" : ""} ${index === activeIndex ? "is-active" : ""}`} key={feature.number}>
+                <button type="button" className="stacked-heading" onClick={() => goToStep(index)} aria-expanded={index === activeIndex}>
+                  <span className="stacked-icon">{feature.icon}</span>
+                  <span className="stacked-title"><small>{feature.number}</small>{feature.title}</span>
+                  <i>↗</i>
+                </button>
+                <div className="stacked-detail">
+                  <div className="stacked-detail-inner">
+                    <div className="stacked-copy">
+                      <p>{feature.text}</p>
+                      <small>{feature.note}</small>
+                    </div>
+                    <Link href={index === 0 ? "/signup?next=/trips/new" : "/how-it-works"}>{feature.action}<span>→</span></Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
