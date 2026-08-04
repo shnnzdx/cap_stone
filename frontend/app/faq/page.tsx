@@ -13,7 +13,7 @@ const questions = [
 
 export default function FAQ() {
   return <main><Header />
-    <section className="subhero shell compact-subhero"><p className="eyebrow">FAQ</p><h1>Before your group starts planning.</h1><p>Clear answers about privacy, group decisions, individual flexibility, and estimated travel information.</p></section>
+    <section className="subhero shell"><p className="eyebrow">FAQ</p><h1>Before your group starts planning.</h1><p>Clear answers about privacy, constraints, group decisions, and travel information.</p></section>
     <section className="faq-page shell"><div className="faq-list">{questions.map(([question,answer])=><details key={question}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}</div><aside><p className="eyebrow">STILL CURIOUS?</p><h2>See the complete planning flow.</h2><Link className="button ghost" href="/how-it-works">How It Works</Link></aside></section>
     <Footer />
   </main>;
