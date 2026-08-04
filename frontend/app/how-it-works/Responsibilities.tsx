@@ -19,8 +19,8 @@ export default function Responsibilities() {
   }, []);
   return <section className={`responsibility-section shell ${visible ? "is-visible" : ""}`} ref={ref}>
     <p className="eyebrow">CLEAR RESPONSIBILITIES</p><h2>Three roles. One reliable plan.</h2>
-    <div className="responsibility-list">{roles.map(([number, role, action, copy], index) => <article key={number} style={{ "--role-delay": `${index * 120}ms` } as React.CSSProperties}>
-      <span>{number}</span><h3>{role}</h3><strong>{action}</strong><p>{copy}</p><i aria-hidden="true" />
+    <div className="responsibility-grid compact">{roles.map(([number, role, action, copy], index) => <article key={number} style={{ "--role-delay": `${index * 120}ms` } as React.CSSProperties}>
+      <i className="voice-received" aria-hidden="true" /><span>{number}</span><h3>{role}</h3><strong>{action}</strong><p>{copy}</p>
     </article>)}</div>
   </section>;
 }

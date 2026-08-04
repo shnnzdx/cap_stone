@@ -50,8 +50,8 @@ export default function PeopleProblem() {
       </div>
       <div className={`audience-strip ${audienceVisible ? "is-visible" : ""}`} ref={audienceRef}>
         {audiences.map(([title, text], index) => (
-          <article key={title} style={{ "--enter-delay": `${index * 120}ms` } as CSSProperties}>
-            <span>0{index + 1}</span><div className="audience-title-mask"><h3>{title}</h3></div><p>{text}</p>
+          <article className="audience-card" key={title} style={{ "--quote-delay": `${index * 120}ms`, "--quote-x": index === 0 ? "-14px" : index === 2 ? "14px" : "0px" } as CSSProperties}>
+            <i className="voice-received" aria-hidden="true" /><span>0{index + 1}</span><div className="audience-content-mask"><div><h3>{title}</h3><p>{text}</p></div></div>
           </article>
         ))}
       </div>

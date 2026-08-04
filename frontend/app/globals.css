@@ -616,3 +616,52 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 @media(max-width:1150px){.subhero h1{white-space:normal}.responsibility-list article{grid-template-columns:48px 100px minmax(170px,.8fr) 1.3fr}.traveler-trio{left:24%;right:1%}}
 @media(max-width:760px){.hero,.subhero{min-height:auto;padding-block:86px}.principle-scroll{height:auto}.principle-stage{position:relative;top:auto;height:auto;min-height:500px}.principle-word strong{font-size:clamp(3.2rem,16vw,5rem)}.responsibility-list article{grid-template-columns:42px 1fr;gap:8px 14px;padding:22px 0}.responsibility-list strong,.responsibility-list p{grid-column:2}.privacy-page-main .subhero{min-height:auto}.traveler-trio{left:18%;right:-5%}}
 @media(prefers-reduced-motion:reduce){.responsibility-list article{opacity:1;transform:none;transition:none}.responsibility-list article i{transform:scaleX(1);transition:none}}
+
+/* Follow-up rhythm corrections. */
+.hero,.subhero{--opening-top:112px;padding-top:var(--opening-top)}
+.hero-copy,.subhero{transform:none;margin-top:0}
+.hero-copy{transform:translateY(-9px)}
+.hero{align-items:start;align-content:start}
+.subhero h1{white-space:normal}
+
+/* Keep the core words at headline scale and legible throughout the scroll sequence. */
+.principle-word strong{font-size:clamp(3.4rem,4.7vw,5rem)}
+.principle-word{color:currentColor}
+
+/* How and Privacy now hand off to section 01 with the same vertical rhythm. */
+.how-page-main .subhero,.privacy-page-main .subhero{min-height:570px;padding-bottom:66px}
+.how-page-main .flow,.privacy-page-main .visibility{padding-top:42px}
+
+/* Restore the responsibility cards, but keep them compact and animated like received voices. */
+.responsibility-section{padding-block:clamp(72px,8vh,96px)}
+.responsibility-section>h2{margin-bottom:34px}
+.responsibility-grid.compact{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:0}
+.responsibility-grid.compact article{position:relative;overflow:hidden;min-height:220px;padding:24px;border:1px solid var(--color-border);border-radius:18px;background:rgba(255,255,255,.58);opacity:1;transform:translateY(46px) scale(.98);transition:transform .7s cubic-bezier(.22,1,.36,1) var(--role-delay),border-color .22s ease,box-shadow .22s ease}
+.responsibility-grid.compact article:nth-child(2){background:rgba(216,232,247,.66)}.responsibility-grid.compact article:nth-child(3){background:rgba(220,235,231,.62)}
+.responsibility-section.is-visible .responsibility-grid.compact article{transform:translateY(0) scale(1)}
+.responsibility-grid.compact article>span{display:block;font-family:var(--font-label);font-size:11px;letter-spacing:.1em;color:#5f91c7;transform:translateY(18px);transition:transform .52s cubic-bezier(.22,1,.36,1) calc(var(--role-delay) + 90ms)}
+.responsibility-section.is-visible .responsibility-grid.compact article>span{transform:translateY(0)}
+.responsibility-grid.compact h3{margin:34px 0 7px;font-size:25px;font-weight:400;letter-spacing:-.04em}
+.responsibility-grid.compact strong{display:block;margin-bottom:10px;font-size:14px;font-weight:400}
+.responsibility-grid.compact p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.responsibility-grid.compact .voice-received{transition-delay:calc(var(--role-delay) + 620ms)}
+.responsibility-section.is-visible .responsibility-grid.compact .voice-received{transform:scaleX(1)}
+
+/* Audience cards now use exactly the same received-voice choreography as Traveler cards. */
+.people-problem .audience-strip .audience-card,.people-problem .audience-strip .audience-card:nth-child(2),.people-problem .audience-strip .audience-card:nth-child(3){position:relative;overflow:hidden;clip-path:none;opacity:1;transform:translate(var(--quote-x),46px) scale(.98);transition:transform .7s cubic-bezier(.22,1,.36,1) var(--quote-delay),border-color .22s ease,box-shadow .22s ease}
+.people-problem .audience-strip.is-visible .audience-card{transform:translate(0,0) scale(1)}
+.people-problem .audience-strip .audience-card>span{display:block;transform:translateY(20px);transition:transform .52s cubic-bezier(.22,1,.36,1) calc(var(--quote-delay) + 90ms),color .22s ease}
+.people-problem .audience-strip.is-visible .audience-card>span{transform:translateY(0)}
+.audience-content-mask{overflow:hidden;margin-top:28px}.audience-content-mask>div{transform:translateY(18px);transition:transform .56s cubic-bezier(.22,1,.36,1) calc(var(--quote-delay) + 180ms)}
+.people-problem .audience-strip.is-visible .audience-content-mask>div{transform:translateY(0)}
+.people-problem .audience-strip .audience-card h3{margin:0 0 7px;transform:none;transition:none}
+.people-problem .audience-strip .audience-card:after{display:none}
+.people-problem .audience-strip .audience-card .voice-received{display:block;transition-delay:calc(var(--quote-delay) + 720ms)}
+.people-problem .audience-strip.is-visible .audience-card .voice-received{transform:scaleX(1)}
+
+/* Each process state now needs roughly half as much wheel travel. */
+.feature-story{height:250vh}
+
+@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:235vh}}
+@media(max-width:760px){.how-page-main .subhero,.privacy-page-main .subhero{min-height:auto}.feature-story{height:auto}.responsibility-grid.compact article{min-height:190px}}
+@media(prefers-reduced-motion:reduce){.responsibility-grid.compact article,.responsibility-grid.compact article>span,.audience-content-mask>div,.people-problem .audience-strip .audience-card,.people-problem .audience-strip .audience-card>span{transform:none;transition:none}}

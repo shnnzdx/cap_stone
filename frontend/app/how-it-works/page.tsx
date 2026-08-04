@@ -11,8 +11,8 @@ const flow = [
 ];
 
 export default function HowItWorks() {
-  return <main><Header />
-    <section className="subhero shell"><p className="eyebrow">HOW TRIPSYNC WORKS</p><h1>Different needs. One shared plan.</h1><p>Five stages move a group from private input to a validated, explainable version.</p><Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link></section>
+  return <main className="how-page-main"><Header />
+    <section className="subhero shell"><p className="eyebrow">HOW TRIPSYNC WORKS</p><h1>Different needs.<br />One shared plan.</h1><p>Five stages move a group from private input to a validated, explainable version.</p><Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link></section>
     <section className="flow shell">
       {flow.map(([n,title,text,image]) => <article className="flow-step" id={title.toLowerCase()} key={n}><div className="flow-copy"><span>{n}</span><h2>{title}</h2><p>{text}</p></div><div className={`image-placeholder flow-image tone-${((Number(n)-1)%4)+1}`}><span>UI PLACEHOLDER</span><strong>{image}</strong><small>Replace with the corresponding product screen</small></div></article>)}
     </section>
