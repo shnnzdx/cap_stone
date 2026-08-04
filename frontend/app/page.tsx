@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BrandConstellation, DemoPanel } from "./ui";
 import FeatureStory from "./FeatureStory";
 import PeopleProblem from "./PeopleProblem";
+import ProductPrinciples from "./ProductPrinciples";
 
 export default function Home() {
   return (
@@ -10,8 +11,8 @@ export default function Home() {
       <section className="hero shell">
         <div className="hero-copy">
           <p className="eyebrow">Group travel, planned together</p>
-          <h1>Plan together.</h1>
-          <p className="lede">Everyone shares what matters and chooses what stays private. TripSync brings group travel priorities into one clear direction.</p>
+          <h1>Plan a trip everyone can agree on.</h1>
+          <p className="lede">TripSync turns scattered needs into an explainable group plan—without asking anyone to give up control of their own conditions.</p>
           <div className="actions">
             <Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link>
             <Link className="button ghost" href="/how-it-works">See how it works</Link>
@@ -23,17 +24,8 @@ export default function Home() {
 
       <section className="section product-overview" id="product-overview">
         <div className="shell">
-          <SectionIntro marker="01 · CORE" title="Alignment." text="Private priorities become one plan everyone can accept." />
-          <div className="innovation-grid">
-            {[
-              ["Private input, shared outcome", "Members can express budgets and concerns honestly without making every detail public."],
-              ["Constraint-first coordination", "Confirmed hard limits are treated as planning boundaries—not optional suggestions."],
-              ["Version-specific consensus", "A rating guides revision. Only explicit acceptance confirms the exact version."],
-              ["Explainable revision", "The system preserves accepted parts and explains what changed, why, and whose needs remain unresolved."],
-            ].map(([title, text], index) => (
-              <article key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{text}</p></article>
-            ))}
-          </div>
+          <SectionIntro marker="01 · PRODUCT CORE" title="Built for real group decisions." text="AI helps the group understand and shape a plan. Deterministic checks and explicit member choices keep it trustworthy." />
+          <ProductPrinciples />
           <div className="section-link"><Link href="#process">See how the product works →</Link></div>
         </div>
       </section>
