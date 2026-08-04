@@ -1,0 +1,314 @@
+:root {
+  color-scheme: light;
+  --background: #f6f3ef;
+  --ink: #202322;
+  --line: #dddcd8;
+  --outline: #262b29;
+  --source-fill: rgba(255, 255, 255, 0.5);
+  --destination-fill: #edf5ee;
+  --green: #14b86f;
+  --green-soft: rgba(76, 222, 130, 0.28);
+  --yellow: #f4c63d;
+  --orange: #ef744d;
+  --red: #ff5e5e;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--ink);
+  font-family: var(--mono);
+}
+
+button,
+svg text {
+  font-family: inherit;
+}
+
+.page-shell {
+  width: 100%;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.pipeline-card {
+  position: relative;
+  width: 100%;
+  min-width: 860px;
+  background:
+    radial-gradient(circle at 52% 53%, rgba(123, 242, 156, 0.08), transparent 26%),
+    var(--background);
+  isolation: isolate;
+}
+
+.pipeline-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 360px;
+  overflow: visible;
+}
+
+.ambient-glow {
+  position: absolute;
+  z-index: -1;
+  left: 52.2%;
+  top: 52%;
+  width: min(38vw, 580px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 41%, rgba(93, 238, 133, 0.42), rgba(93, 238, 133, 0.12) 35%, transparent 69%),
+    radial-gradient(circle at 48% 62%, rgba(238, 217, 83, 0.32), transparent 62%);
+  filter: blur(22px);
+  animation: breathe 4.8s ease-in-out infinite;
+}
+
+.wire {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.source rect,
+.destination rect {
+  stroke: var(--outline);
+  stroke-width: 1.1;
+}
+
+.source rect {
+  fill: var(--source-fill);
+}
+
+.destination rect {
+  fill: var(--destination-fill);
+}
+
+.source use {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.source text,
+.destination text {
+  fill: var(--ink);
+  font-size: 14px;
+  letter-spacing: 0.75px;
+}
+
+.port {
+  fill: var(--orange);
+}
+
+.hub-aura {
+  opacity: 0.6;
+  filter: url(#hubGlow);
+  animation: auraPulse 4.4s ease-in-out infinite;
+}
+
+.hub-aura--green {
+  fill: #70e98e;
+}
+
+.hub-aura--yellow {
+  fill: #e7dc65;
+  animation-delay: -2.2s;
+}
+
+.process rect {
+  stroke: rgba(255, 255, 255, 0.86);
+  stroke-width: 1;
+}
+
+.process text {
+  fill: #34413b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.process--top rect,
+.process--left rect,
+.process--right rect {
+  fill: rgba(173, 233, 181, 0.53);
+}
+
+.process--bottom rect {
+  fill: rgba(222, 223, 151, 0.58);
+}
+
+.process {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: processPulse 4s ease-in-out infinite;
+}
+
+.process--left {
+  animation-delay: -1s;
+}
+
+.process--right {
+  animation-delay: -2s;
+}
+
+.process--bottom {
+  animation-delay: -3s;
+}
+
+.core rect {
+  fill: #fbfaf7;
+  stroke: #c8d957;
+  stroke-width: 1.35;
+}
+
+.spinner {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: spin 1.65s linear infinite;
+}
+
+.spinner circle {
+  fill: #242726;
+}
+
+.packet {
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.packet__body {
+  fill: rgba(250, 249, 247, 0.94);
+  stroke: #e1e0dc;
+  stroke-width: 1;
+}
+
+.packet__icon-shell {
+  fill: #fff;
+  stroke-width: 1.1;
+}
+
+.packet__icon {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.packet__label {
+  fill: #6d716e;
+  font-size: 8px;
+  letter-spacing: 0.15px;
+}
+
+.packet--event .packet__icon-shell,
+.packet--event .packet__icon {
+  stroke: #f2b91f;
+}
+
+.packet--alert .packet__icon-shell,
+.packet--alert .packet__icon {
+  stroke: var(--red);
+}
+
+.packet--safe .packet__icon-shell,
+.packet--safe .packet__icon {
+  stroke: var(--green);
+}
+
+.packet--safe .packet__icon-shell {
+  fill: var(--green);
+}
+
+.packet--safe .packet__icon {
+  stroke: white;
+}
+
+.motion-toggle {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 4;
+  border: 1px solid rgba(38, 43, 41, 0.55);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(250, 249, 247, 0.78);
+  color: var(--ink);
+  font-size: 11px;
+  letter-spacing: 0.35px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.motion-toggle:hover {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.motion-toggle:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+.is-paused *,
+.is-paused *::before,
+.is-paused *::after {
+  animation-play-state: paused !important;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.78; scale: 0.96; }
+  50% { opacity: 1; scale: 1.06; }
+}
+
+@keyframes auraPulse {
+  0%, 100% { opacity: 0.42; transform: scale(0.92); }
+  50% { opacity: 0.72; transform: scale(1.08); }
+}
+
+@keyframes processPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .page-shell {
+    place-items: start;
+    overflow-x: auto;
+  }
+
+  .pipeline-card {
+    width: 1200px;
+    min-width: 1200px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-glow,
+  .hub-aura,
+  .process,
+  .spinner {
+    animation: none !important;
+  }
+}
