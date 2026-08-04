@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Footer, Header } from "../page";
+import Responsibilities from "./Responsibilities";
 
 const flow = [
   ["01", "Create", "The organizer adds the trip basics and shares one invitation link.", "Create-trip form and invitation link"],
@@ -15,7 +16,7 @@ export default function HowItWorks() {
     <section className="flow shell">
       {flow.map(([n,title,text,image]) => <article className="flow-step" id={title.toLowerCase()} key={n}><div className="flow-copy"><span>{n}</span><h2>{title}</h2><p>{text}</p></div><div className={`image-placeholder flow-image tone-${((Number(n)-1)%4)+1}`}><span>UI PLACEHOLDER</span><strong>{image}</strong><small>Replace with the corresponding product screen</small></div></article>)}
     </section>
-    <section className="compare shell"><p className="eyebrow">CLEAR RESPONSIBILITIES</p><h2>AI proposes. Rules verify. People decide.</h2><div className="responsibility-grid"><article><span>01</span><h3>AI</h3><strong>Understand &amp; generate</strong><p>Organizes vague input, asks up to three essential questions, and creates targeted revisions.</p></article><article><span>02</span><h3>Backend</h3><strong>Validate the plan</strong><p>Enforces confirmed must-haves, maximum budgets, and available dates before a version can advance.</p></article><article><span>03</span><h3>People</h3><strong>Review &amp; decide</strong><p>Members control their conditions. The organizer verifies facts and moves the process forward.</p></article></div></section>
+    <Responsibilities />
     <section className="final-cta"><div className="shell"><p className="eyebrow">START TOGETHER</p><h2>Bring every voice into the plan.</h2><Link className="button light" href="/signup?next=/trips/new">Create a trip</Link></div></section><Footer />
   </main>;
 }

@@ -555,3 +555,64 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 @media(max-width:900px){.responsibility-grid{grid-template-columns:1fr}.principle-line:nth-child(n){padding-left:clamp(0px,8vw,70px)}.principle-line:nth-child(even){padding-left:clamp(40px,16vw,130px)}.principle-word strong{font-size:clamp(4rem,14vw,7rem)}}
 @media(max-width:620px){.hero,.subhero{min-height:auto;padding-block:86px}.hero h1,.subhero h1{font-size:clamp(3.25rem,14vw,4.8rem)}.principle-stage{min-height:480px;padding-inline:0}.principle-line:nth-child(n){padding-left:0}.principle-line:nth-child(even){padding-left:24px}.principle-word{gap:12px}.principle-word>span{width:38px;border-radius:12px}.principle-word strong{font-size:clamp(3.7rem,18vw,5.8rem)}.principle-word small{display:none}}
 @media(prefers-reduced-motion:reduce){.principle-word,.principle-word>span{opacity:1;transform:none;transition:none}}
+
+/* 2026-08-04 refinement: one opening grid, quieter movement, denser information. */
+.hero,.subhero{min-height:610px;padding-top:112px;padding-bottom:88px;align-items:flex-start}
+.hero{align-content:start}.subhero{justify-content:flex-start}
+.hero h1,.subhero h1{font-size:clamp(3.65rem,4.7vw,5rem);line-height:.94;margin:26px 0 28px}
+.subhero h1{white-space:nowrap}
+
+/* Product principles are tied to scroll position: one centered line per scroll beat. */
+.principle-scroll{height:360vh;position:relative}
+.principle-stage{position:sticky;top:72px;height:calc(100vh - 72px);min-height:620px;padding:4vh 0 6vh;display:flex;justify-content:center;align-items:stretch;overflow:hidden}
+.principle-line,.principle-line:nth-child(n){width:100%;padding-left:0;display:flex;justify-content:center;flex:0 1 auto}
+.principle-mask{width:min(920px,92%);display:flex;justify-content:center}
+.principle-word{width:100%;justify-content:center;transition:none;will-change:transform,opacity}
+.principle-word>span{width:clamp(38px,4vw,58px);border-width:1.5px;border-radius:15px;transition:none}
+.principle-word strong{font-size:clamp(3.5rem,6.3vw,6.5rem);line-height:.84}
+.principle-word small{margin-top:3px}
+
+/* Dedicated How It Works page: preserve the five-step structure but reduce its visual weight. */
+.flow-copy h2{font-size:clamp(2.4rem,4.1vw,4.25rem);line-height:.96}
+.flow-step{min-height:clamp(500px,65vh,650px);padding-block:70px}
+.responsibility-section{padding-block:clamp(76px,9vh,108px)}
+.responsibility-section>h2{max-width:740px;margin:24px 0 40px;font-size:clamp(2.7rem,4.7vw,4.8rem);font-weight:400;line-height:.96;letter-spacing:-.055em}
+.responsibility-list{border-top:1px solid var(--color-border)}
+.responsibility-list article{position:relative;display:grid;grid-template-columns:64px minmax(110px,.5fr) minmax(190px,.8fr) minmax(280px,1.4fr);align-items:center;gap:22px;min-height:116px;border-bottom:1px solid var(--color-border);opacity:.42;transform:translateY(26px);transition:opacity .62s ease var(--role-delay),transform .7s cubic-bezier(.22,1,.36,1) var(--role-delay)}
+.responsibility-section.is-visible article{opacity:1;transform:translateY(0)}
+.responsibility-list article>span{font-family:var(--font-label);font-size:12px;letter-spacing:.1em;color:#5f91c7}
+.responsibility-list h3{font-size:clamp(1.9rem,2.7vw,2.8rem);font-weight:400;margin:0;letter-spacing:-.045em}
+.responsibility-list strong{font-size:15px;font-weight:400}.responsibility-list p{max-width:460px;margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+.responsibility-list i{position:absolute;left:0;bottom:-1px;width:38px;height:2px;background:#78aef5;transform:scaleX(0);transform-origin:left;transition:transform .42s ease calc(var(--role-delay) + 520ms)}
+.responsibility-section.is-visible article i{transform:scaleX(1)}
+
+/* Privacy sections: shorter editorial headings, reduced dead space, lighter transformation band. */
+.privacy-page-main .subhero{min-height:570px;padding-bottom:66px}
+.privacy-page-main .visibility{padding-top:42px;padding-bottom:88px}
+.privacy-page-main .section-intro{margin-bottom:38px}
+.privacy-page-main .section-intro h2,.privacy-page-main .privacy-example h2{white-space:normal;max-width:820px;font-size:clamp(2.7rem,4.5vw,4.5rem);line-height:.98}
+.privacy-page-main .privacy-example{padding-block:96px;background:linear-gradient(135deg,#d9e8f6 0%,#e3e7f3 52%,#deece8 100%);color:#17314d}
+.privacy-page-main .privacy-example .eyebrow{color:#5f7f9f}
+.privacy-page-main .privacy-pair>div{border-color:rgba(23,49,77,.16);background:rgba(255,255,255,.38)}
+.privacy-page-main .privacy-pair p{color:#17314d}.privacy-page-main .privacy-pair span{color:#587898}.privacy-page-main .privacy-pair i{color:#5f91c7}
+.privacy-page-main .section{padding-block:88px}
+
+/* Audience types now settle in quietly; the voice cards remain the more expressive motion. */
+.people-problem .audience-strip article,.people-problem .audience-strip article:nth-child(2),.people-problem .audience-strip article:nth-child(3){clip-path:none;opacity:.7;transform:translateY(16px) scale(.995);transition:opacity .58s ease var(--enter-delay),transform .62s cubic-bezier(.22,1,.36,1) var(--enter-delay),box-shadow .22s ease,border-color .22s ease}
+.people-problem .audience-strip.is-visible article{opacity:1;transform:translateY(0) scale(1)}
+.people-problem .audience-strip h3{transform:translateY(10px);transition-duration:.58s;transition-delay:calc(var(--enter-delay) + 50ms)}
+.people-problem .audience-strip article:after{height:2px;opacity:.48;transition-delay:calc(var(--enter-delay) + 260ms)}
+
+/* Front-facing, compact traveler group anchored to the right side of the scene. */
+.traveler-trio{left:30%;right:3%;bottom:4%;justify-content:flex-end;gap:0}
+.q-person{width:clamp(142px,14vw,196px);height:clamp(235px,25vw,322px);margin-left:-12px}
+.q-person:nth-child(2){transform:translateY(-16px)}
+.q-head{z-index:2}.q-hair{z-index:1;left:3%;top:3%;width:94%;height:56%}
+.q-hair-front{position:absolute;left:-1%;right:-1%;top:-1%;height:24%;z-index:3;border-radius:46% 46% 36% 36%;background:#343b52}
+.q-person.man .q-hair-front{height:20%;background:#43392f;border-radius:55% 45% 35% 30%}
+.q-person.woman-two .q-hair-front{height:25%;background:#9b6548}
+.q-eye,.q-nose,.q-smile{z-index:4}
+
+@media(max-width:1150px){.subhero h1{white-space:normal}.responsibility-list article{grid-template-columns:48px 100px minmax(170px,.8fr) 1.3fr}.traveler-trio{left:24%;right:1%}}
+@media(max-width:760px){.hero,.subhero{min-height:auto;padding-block:86px}.principle-scroll{height:auto}.principle-stage{position:relative;top:auto;height:auto;min-height:500px}.principle-word strong{font-size:clamp(3.2rem,16vw,5rem)}.responsibility-list article{grid-template-columns:42px 1fr;gap:8px 14px;padding:22px 0}.responsibility-list strong,.responsibility-list p{grid-column:2}.privacy-page-main .subhero{min-height:auto}.traveler-trio{left:18%;right:-5%}}
+@media(prefers-reduced-motion:reduce){.responsibility-list article{opacity:1;transform:none;transition:none}.responsibility-list article i{transform:scaleX(1);transition:none}}

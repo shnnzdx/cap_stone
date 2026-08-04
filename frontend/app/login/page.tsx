@@ -55,6 +55,7 @@ export default function LoginPage() {
               <div className={`q-person ${kind}`} key={kind}>
                 <div className="q-hair" />
                 <div className="q-head">
+                  <div className="q-hair-front" />
                   <div className="q-eye left"><i ref={setPupil(personIndex * 2)} /></div>
                   <div className="q-eye right"><i ref={setPupil(personIndex * 2 + 1)} /></div>
                   <div className="q-nose" /><div className="q-smile" />
