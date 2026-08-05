@@ -98,8 +98,7 @@ export default function FeatureStory() {
         <div className="story-window">
           <aside className="story-intro">
             <p className="story-label">HOW IT WORKS</p>
-            <h2>Five steps.<br />One decision.</h2>
-            <p>Each stage keeps private input, revision, and final agreement clear.</p>
+            <h2>Five steps. One decision.</h2>
             <nav className="story-nav" aria-label="Choose a process step">
               {features.map((feature, index) => (
                 <button
@@ -128,7 +127,7 @@ export default function FeatureStory() {
                       <p>{feature.text}</p>
                       <small>{feature.note}</small>
                     </div>
-                    <Link href={index === 0 ? "/signup?next=/trips/new" : "/how-it-works"}>{feature.action}<span>→</span></Link>
+                    <Link href={index === 0 ? "/signup?next=/trip" : "/how-it-works"}>{feature.action}<span>→</span></Link>
                   </div>
                 </div>
               </article>

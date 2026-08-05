@@ -44,10 +44,6 @@ export default function ProductPrinciples() {
   return (
     <div className="principle-scroll" ref={sectionRef} aria-label="TripSync core product principles">
       <div className="principle-stage">
-        <header className="principle-heading">
-          <p className="eyebrow">WHY TRIPSYNC IS DIFFERENT</p>
-          <p>Built for decisions, not just suggestions.</p>
-        </header>
         {principles.map((principle) => {
           const [start, end] = principle.range;
           const reveal = clamp((progress - start) / (end - start));
@@ -55,15 +51,6 @@ export default function ProductPrinciples() {
             <div className="principle-word" style={{ opacity: .32 + reveal * .68, transform: `translateY(${(1 - reveal) * 62}px) scale(${.985 + reveal * .015})` }}><span>{principle.symbol}</span><strong>{principle.word}</strong><small>{principle.number}</small></div>
           </div></div>;
         })}
-        <footer className="principle-transition" style={{
-          "--transition-opacity": .12 + clamp((progress - 0.82) / 0.18) * .88,
-          "--transition-y": `${(1 - clamp((progress - 0.82) / 0.18)) * 24}px`,
-          "--route-height": `${18 + clamp((progress - 0.82) / 0.18) * 48}px`,
-        } as React.CSSProperties}>
-          <p>AI generates. Rules validate. People decide.</p>
-          <i aria-hidden="true" />
-          <a href="#process"><span>HOW TRIPSYNC WORKS</span><strong>Five steps. One decision.</strong></a>
-        </footer>
       </div>
     </div>
   );

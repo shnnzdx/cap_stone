@@ -6,6 +6,12 @@ import { useEffect, useRef, useState } from "react";
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [nextPath, setNextPath] = useState("/trip");
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("next");
+    if (requested && requested.startsWith("/")) setNextPath(requested);
+  }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -80,11 +86,11 @@ export default function LoginPage() {
                 <input id="password" name="password" autoComplete="current-password" defaultValue="demo-password" type={showPassword ? "text" : "password"} />
                 <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
               </div>
-              <Link className="login-submit" href="/trip">Log in <span>→</span></Link>
+              <Link className="login-submit" href={nextPath}>Log in <span>→</span></Link>
             </form>
             <div className="login-divider"><span>or</span></div>
             <button className="google-button" type="button"><span>G</span> Continue with Google</button>
-            <p className="signup-copy">New to TripSync? <Link href="#">Create an account</Link></p>
+            <p className="signup-copy">New to TripSync? <Link href="/signup">Create an account</Link></p>
           </div>
           <p className="login-legal">By continuing, you agree to our <Link href="/privacy">Privacy Policy</Link>.</p>
         </div>

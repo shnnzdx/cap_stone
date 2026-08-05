@@ -13,7 +13,6 @@ const quotes = [
   "“I need to stay under $1,500.”",
   "“I want to see as much as possible.”",
   "“I can’t walk for long periods.”",
-  "“I’d rather keep my budget private.”",
 ];
 
 export default function PeopleProblem() {
@@ -70,12 +69,12 @@ export default function PeopleProblem() {
         <div className={`shared-problem ${sharedProgress > .01 ? "is-visible" : ""}`}>
           <div className="problem-subsection">
             <p className="eyebrow">THE PROBLEM</p>
-            <h3>Less chat.<br />Clear decisions.</h3>
+            <h3><span>Less chat.</span><span>Clear decisions.</span></h3>
             <p>Group chats collect opinions. TripSync turns them into constraints, decisions, and one accepted plan.</p>
           </div>
           <div className="quote-grid">
             {quotes.map((quote, index) => {
-              const reveal = Math.max(0, Math.min(1, (sharedProgress * 4 - index) * 1.25));
+              const reveal = Math.max(0, Math.min(1, (sharedProgress * 3 - index) * 1.25));
               return <article className={`quote-card tone-${index + 1}`} style={{ opacity: .24 + reveal * .76, transform: `translateY(${(1 - reveal) * 68}px) scale(${.985 + reveal * .015})`, zIndex: 8 - index } as CSSProperties} key={quote}>
                 <i className="voice-received" aria-hidden="true" /><span>Traveler 0{index + 1}</span><div className="quote-mask"><p>{quote}</p></div>
               </article>;
