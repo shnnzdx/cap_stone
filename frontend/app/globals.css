@@ -562,15 +562,19 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .hero h1,.subhero h1{font-size:clamp(3.65rem,4.7vw,5rem);line-height:.94;margin:26px 0 28px}
 .subhero h1{white-space:nowrap}
 
-/* Product principles are tied to scroll position: one centered line per scroll beat. */
-.principle-scroll{height:360vh;position:relative}
-.principle-stage{position:sticky;top:72px;height:calc(100vh - 72px);min-height:620px;padding:4vh 0 6vh;display:flex;justify-content:center;align-items:stretch;overflow:hidden}
+/* Product principles share one short, overlapping scroll timeline. */
+.principle-scroll{height:185vh;position:relative;margin-top:clamp(-54px,-5vh,-28px)}
+.principle-stage{position:sticky;top:72px;height:calc(100vh - 72px);min-height:620px;padding:clamp(54px,7vh,76px) 0 clamp(86px,11vh,112px);display:flex;justify-content:center;align-items:stretch;overflow:hidden}
+.principle-heading{position:absolute;z-index:2;top:clamp(22px,3.2vh,36px);left:clamp(12px,3vw,44px)}
+.principle-heading p{margin:0}.principle-heading>p:last-child{margin-top:8px;color:#70869c;font-size:12px}
 .principle-line,.principle-line:nth-child(n){width:100%;padding-left:0;display:flex;justify-content:center;flex:0 1 auto}
-.principle-mask{width:min(920px,92%);display:flex;justify-content:center}
+.principle-mask{width:min(860px,90%);display:flex;justify-content:center;overflow:visible}
 .principle-word{width:100%;justify-content:center;transition:none;will-change:transform,opacity}
 .principle-word>span{width:clamp(38px,4vw,58px);border-width:1.5px;border-radius:15px;transition:none}
 .principle-word strong{font-size:clamp(3.5rem,6.3vw,6.5rem);line-height:.84}
-.principle-word small{margin-top:3px}
+.principle-word small{margin:3px 0 0 2px;min-width:24px}
+.principle-transition{--transition-opacity:.12;--transition-y:24px;--route-height:18px;position:absolute;left:50%;bottom:clamp(14px,2.2vh,26px);width:min(760px,86%);display:grid;grid-template-columns:1fr auto 1fr;align-items:end;gap:22px;opacity:var(--transition-opacity);transform:translate(-50%,var(--transition-y));will-change:transform,opacity}
+.principle-transition>p{align-self:center;margin:0;color:#526d88;font-size:13px;text-align:right}.principle-transition>i{display:block;width:1px;height:var(--route-height);background:#6ca5df;transform-origin:top}.principle-transition>a{display:flex;flex-direction:column;gap:5px}.principle-transition a span{font-family:var(--font-label);font-size:10px;letter-spacing:.1em;color:#6384a5}.principle-transition a strong{font-size:16px;font-weight:400;color:#17314d}.principle-transition a:hover strong{color:#3979ba}
 
 /* Dedicated How It Works page: preserve the five-step structure but reduce its visual weight. */
 .flow-copy h2{font-size:clamp(2.4rem,4.1vw,4.25rem);line-height:.96}
@@ -659,20 +663,20 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .people-problem .audience-strip .audience-card .voice-received{display:block;transition-delay:calc(var(--quote-delay) + 720ms)}
 .people-problem .audience-strip.is-visible .audience-card .voice-received{transform:scaleX(1)}
 
-/* Each process state now needs roughly half as much wheel travel. */
-.feature-story{height:176vh}
+/* Give each process state about three deliberate wheel beats. */
+.feature-story{height:216vh}
 
-@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:160vh}}
+@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:200vh}}
 @media(max-width:760px){.how-page-main .subhero,.privacy-page-main .subhero{min-height:auto}.feature-story{height:auto}.responsibility-grid.compact article{min-height:190px}}
 @media(prefers-reduced-motion:reduce){.responsibility-grid.compact article,.responsibility-grid.compact article>span,.audience-content-mask>div,.people-problem .audience-strip .audience-card,.people-problem .audience-strip .audience-card>span{transform:none;transition:none}}
 
 /* Jeton-inspired logic, translated into TripSync's restrained editorial system. */
 .product-overview{overflow:visible;padding-top:92px}
-.product-overview .principle-stage{gap:clamp(8px,1.4vh,18px)}
+.product-overview .principle-stage{gap:clamp(2px,.8vh,10px)}
 .product-overview .principle-word{min-height:clamp(74px,9.5vh,94px)}
 .product-overview .principle-word>span{border:0;background:color-mix(in srgb,currentColor 18%,rgba(255,255,255,.86));box-shadow:inset 0 0 0 1px color-mix(in srgb,currentColor 32%,transparent)}
-.product-overview .principle-line:nth-child(2),.product-overview .principle-line:nth-child(4){transform:translateX(clamp(10px,2.4vw,28px))}
-.product-overview .principle-line:nth-child(1),.product-overview .principle-line:nth-child(3){transform:translateX(clamp(-28px,-2.4vw,-10px))}
+.product-overview .principle-line:nth-child(2),.product-overview .principle-line:nth-child(4){transform:translateX(clamp(22px,4vw,58px))}
+.product-overview .principle-line:nth-child(1),.product-overview .principle-line:nth-child(3){transform:translateX(clamp(-58px,-4vw,-22px))}
 
 /* The problem becomes a scroll-held conversation: each constraint joins one shared stack. */
 .shared-problem-scroll{height:198vh;position:relative;margin-top:18px}
@@ -680,7 +684,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .people-problem .problem-subsection{align-self:center;padding:0;transform:none}
 .people-problem .problem-subsection>.eyebrow,.people-problem .problem-subsection h3,.people-problem .problem-subsection>p:last-child{clip-path:none;transform:translateY(22px);opacity:.35;transition:transform .7s cubic-bezier(.22,1,.36,1),opacity .55s ease}
 .people-problem .shared-problem.is-visible .problem-subsection>.eyebrow,.people-problem .shared-problem.is-visible .problem-subsection h3,.people-problem .shared-problem.is-visible .problem-subsection>p:last-child{transform:translateY(0);opacity:1}
-.people-problem .problem-subsection h3{font-size:clamp(2.8rem,4.4vw,4.7rem);line-height:.92;margin-top:18px;max-width:430px}
+.people-problem .problem-subsection h3{font-size:clamp(2.55rem,3.95vw,4.2rem);line-height:.94;margin-top:18px;width:11ch;max-width:11ch;white-space:normal}
 .people-problem .problem-subsection>p:last-child{max-width:420px;margin-top:22px}
 .people-problem .shared-problem .quote-grid{display:flex;flex-direction:column;justify-content:center;gap:0;min-width:0}
 .people-problem .shared-problem .quote-card{width:100%;min-height:132px;margin:0;position:relative;overflow:hidden;padding:20px 23px;border:1px solid rgba(86,119,153,.24);border-radius:20px;background:rgba(255,255,255,.9)!important;backdrop-filter:blur(16px);box-shadow:0 20px 42px rgba(52,82,114,.12);transition:border-color .22s ease,box-shadow .22s ease;will-change:transform,opacity}
@@ -695,8 +699,8 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-reveal.product-in-view{opacity:1;translate:0 0}
 .story-frame.product-reveal{translate:0 18px}.story-frame.product-reveal.product-in-view{translate:0 0}
 
-@media(max-width:900px){.people-problem .shared-problem{grid-template-columns:1fr;gap:26px;padding:28px}.people-problem .problem-subsection h3{font-size:3.25rem}.people-problem .shared-problem .quote-card{min-height:112px}.shared-problem-scroll{height:190vh}.product-overview .section-intro{margin-bottom:18px}}
-@media(max-width:760px){.shared-problem-scroll{height:auto}.people-problem .shared-problem{position:relative;top:auto;height:auto;min-height:0;display:block;padding:26px 16px}.people-problem .shared-problem .quote-grid{margin-top:26px}.people-problem .shared-problem .quote-card{opacity:1!important;transform:none!important;margin-left:0!important}.people-problem .shared-problem .quote-card+ .quote-card{margin-top:10px}.product-overview .principle-line:nth-child(n){transform:none}}
+@media(max-width:900px){.people-problem .shared-problem{grid-template-columns:1fr;gap:26px;padding:28px}.people-problem .problem-subsection h3{font-size:3rem;width:11ch;max-width:11ch}.people-problem .shared-problem .quote-card{min-height:112px}.shared-problem-scroll{height:190vh}.product-overview .section-intro{margin-bottom:18px}.principle-transition{grid-template-columns:1fr auto 1fr}}
+@media(max-width:760px){.shared-problem-scroll{height:auto}.people-problem .shared-problem{position:relative;top:auto;height:auto;min-height:0;display:block;padding:26px 16px}.people-problem .shared-problem .quote-grid{margin-top:26px}.people-problem .shared-problem .quote-card{opacity:1!important;transform:none!important;margin-left:0!important}.people-problem .shared-problem .quote-card+ .quote-card{margin-top:10px}.product-overview .principle-line:nth-child(n){transform:none}.product-overview .principle-word{opacity:1!important;transform:none!important}.principle-transition{position:relative;left:auto;bottom:auto;width:100%;margin-top:26px;opacity:1!important;transform:none!important}}
 @media(prefers-reduced-motion:reduce){.product-reveal{opacity:1;translate:0 0;transition:none}.people-problem .problem-subsection>*{opacity:1!important;transform:none!important}}
 
 /* 2026-08-04 responsive navigation, persistent core intro, and login card refinement. */
