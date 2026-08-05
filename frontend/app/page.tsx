@@ -28,7 +28,6 @@ export default function Home() {
         <div className="shell">
           <SectionIntro marker="01 · PRODUCT CORE" title="Built for real group decisions." text="AI helps the group understand and shape a plan. Deterministic checks and explicit member choices keep it trustworthy." />
           <ProductPrinciples />
-          <div className="section-link"><Link href="#process">See how the product works →</Link></div>
         </div>
       </section>
 
