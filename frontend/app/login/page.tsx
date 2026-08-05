@@ -6,6 +6,9 @@ import { useEffect, useRef, useState } from "react";
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
+
+  useEffect(() => { setAccountCreated(new URLSearchParams(window.location.search).get("created") === "1"); }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -68,8 +71,9 @@ export default function LoginPage() {
         </div>
         <div className="login-side">
           <div className="login-card">
+            {accountCreated && <div className="account-created" role="status"><span>✓</span><p><strong>Account created.</strong> Log in to continue to TripSync.</p></div>}
             <div className="login-heading">
-              <p className="login-kicker">Welcome back</p><h2>Continue your journey.</h2>
+              <p className="login-kicker">Welcome back</p><h2>Welcome back.</h2>
               <p>Sign in to bring your group&apos;s ideas back into sync.</p>
             </div>
             <form className="login-form" onSubmit={(event) => event.preventDefault()}>
@@ -84,7 +88,7 @@ export default function LoginPage() {
             </form>
             <div className="login-divider"><span>or</span></div>
             <button className="google-button" type="button"><span>G</span> Continue with Google</button>
-            <p className="signup-copy">New to TripSync? <Link href="#">Create an account</Link></p>
+            <p className="signup-copy">New to TripSync? <Link href="/signup">Create an account</Link></p>
           </div>
           <p className="login-legal">By continuing, you agree to our <Link href="/privacy">Privacy Policy</Link>.</p>
         </div>
