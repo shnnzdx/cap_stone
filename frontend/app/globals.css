@@ -360,7 +360,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 /* More breathing room around content, smaller surfaces and type across the homepage. */
 .shell{width:min(1120px,calc(100% - 64px))}
 .site-header{padding:14px 0}.brand{font-size:17px}.nav-links,.nav-actions{font-size:13px}.button{padding:12px 20px}.button.compact{padding:9px 16px}
-.hero{min-height:min(680px,calc(100svh - 64px));gap:52px}.hero h1{font-size:clamp(3.15rem,6.6vw,6.35rem)}.lede{font-size:16px}.constellation{height:min(520px,64vh);border-radius:28px}
+.hero{min-height:min(680px,calc(100svh - 64px));gap:52px}.hero h1{font-size:clamp(2.85rem,5.9vw,5.65rem)}.lede{font-size:16px}.constellation{height:min(520px,64vh);border-radius:28px}
 .section{padding:clamp(72px,9vh,98px) 0}.section-intro{gap:32px;margin-bottom:42px}.section-intro h2{font-size:clamp(2.15rem,3.8vw,3.55rem);margin-bottom:18px}.section-intro>div>p{font-size:15px;max-width:620px}
 .product-overview{margin-inline:28px;border-radius:30px;padding-block:92px}.innovation-grid article{min-height:205px;padding:26px;border-radius:20px}.innovation-grid article h3{font-size:24px;margin:54px 0 12px}.innovation-grid article p{font-size:13px}
 .audience-heading{margin-bottom:44px}.audience-heading h2{font-size:clamp(2.1rem,3.8vw,3.6rem)}.audience-heading p{font-size:15px}.audience-strip{margin-bottom:56px}.audience-strip article{min-height:165px;padding:23px;border-radius:20px}.audience-strip h3{font-size:23px;margin:36px 0 9px}.audience-strip p{font-size:13px}.problem-subsection{padding-top:62px}.problem-subsection h3{font-size:clamp(2rem,3.5vw,3.7rem)}.problem-subsection>p:last-child{font-size:15px}.quote-card{min-height:175px;padding:22px}.quote-card p{font-size:21px;margin-top:40px}
@@ -435,7 +435,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .problem-divider{height:54px;display:flex;align-items:center}.problem-divider i{display:block;width:0;height:1px;background:rgba(86,119,153,.22);transition:width .82s ease-out .08s}.shared-problem.is-visible .problem-divider i{width:100%}
 .people-problem .problem-subsection{display:block;padding:24px 0 24px;margin:0;border:0}
 .people-problem .problem-subsection>.eyebrow{margin-bottom:18px}
-.people-problem .problem-subsection h3{font-size:clamp(2.3rem,3.75vw,3.35rem);line-height:1;white-space:nowrap;margin:0}
+.people-problem .problem-subsection h3{font-size:clamp(2.3rem,3.75vw,3.35rem);line-height:.95;white-space:normal;max-width:8.8ch;margin:0}
 .people-problem .problem-subsection>p:last-child{max-width:760px;margin:14px 0 0;color:#6b7f93;font-size:13px;line-height:1.58}
 .people-problem .quote-grid{gap:12px}
 .people-problem .quote-card{min-height:142px;padding:19px 20px;border-radius:17px;transform:translateY(14px);opacity:1;transition:transform .58s ease-out var(--quote-delay);box-shadow:0 12px 28px rgba(52,82,114,.045)}
@@ -559,18 +559,20 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 /* 2026-08-04 refinement: one opening grid, quieter movement, denser information. */
 .hero,.subhero{min-height:610px;padding-top:112px;padding-bottom:88px;align-items:flex-start}
 .hero{align-content:start}.subhero{justify-content:flex-start}
-.hero h1,.subhero h1{font-size:clamp(3.65rem,4.7vw,5rem);line-height:.94;margin:26px 0 28px}
+.hero h1,.subhero h1{font-size:clamp(3.25rem,4.2vw,4.55rem);line-height:.94;margin:26px 0 28px}
 .subhero h1{white-space:nowrap}
 
-/* Product principles are tied to scroll position: one centered line per scroll beat. */
-.principle-scroll{height:360vh;position:relative}
-.principle-stage{position:sticky;top:72px;height:calc(100vh - 72px);min-height:620px;padding:4vh 0 6vh;display:flex;justify-content:center;align-items:stretch;overflow:hidden}
+/* Product principles share one short, overlapping scroll timeline. */
+.principle-scroll{height:185vh;position:relative;margin-top:clamp(-54px,-5vh,-28px)}
+.principle-stage{position:sticky;top:72px;height:calc(100vh - 72px);min-height:620px;padding:clamp(54px,7vh,76px) 0 clamp(86px,11vh,112px);display:flex;justify-content:center;align-items:stretch;overflow:hidden}
+.principle-heading{position:absolute;z-index:2;top:clamp(22px,3.2vh,36px);left:clamp(12px,3vw,44px)}
+.principle-heading p{margin:0}.principle-heading>p:last-child{margin-top:8px;color:#70869c;font-size:12px}
 .principle-line,.principle-line:nth-child(n){width:100%;padding-left:0;display:flex;justify-content:center;flex:0 1 auto}
-.principle-mask{width:min(920px,92%);display:flex;justify-content:center}
+.principle-mask{width:min(860px,90%);display:flex;justify-content:center;overflow:visible}
 .principle-word{width:100%;justify-content:center;transition:none;will-change:transform,opacity}
 .principle-word>span{width:clamp(38px,4vw,58px);border-width:1.5px;border-radius:15px;transition:none}
 .principle-word strong{font-size:clamp(3.5rem,6.3vw,6.5rem);line-height:.84}
-.principle-word small{margin-top:3px}
+.principle-word small{margin:3px 0 0 2px;min-width:24px}
 
 /* Dedicated How It Works page: preserve the five-step structure but reduce its visual weight. */
 .flow-copy h2{font-size:clamp(2.4rem,4.1vw,4.25rem);line-height:.96}
@@ -659,20 +661,20 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .people-problem .audience-strip .audience-card .voice-received{display:block;transition-delay:calc(var(--quote-delay) + 720ms)}
 .people-problem .audience-strip.is-visible .audience-card .voice-received{transform:scaleX(1)}
 
-/* Each process state now needs roughly half as much wheel travel. */
-.feature-story{height:176vh}
+/* Give each process state about three deliberate wheel beats. */
+.feature-story{height:216vh}
 
-@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:160vh}}
+@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:200vh}}
 @media(max-width:760px){.how-page-main .subhero,.privacy-page-main .subhero{min-height:auto}.feature-story{height:auto}.responsibility-grid.compact article{min-height:190px}}
 @media(prefers-reduced-motion:reduce){.responsibility-grid.compact article,.responsibility-grid.compact article>span,.audience-content-mask>div,.people-problem .audience-strip .audience-card,.people-problem .audience-strip .audience-card>span{transform:none;transition:none}}
 
 /* Jeton-inspired logic, translated into TripSync's restrained editorial system. */
 .product-overview{overflow:visible;padding-top:92px}
-.product-overview .principle-stage{gap:clamp(8px,1.4vh,18px)}
+.product-overview .principle-stage{gap:clamp(2px,.8vh,10px)}
 .product-overview .principle-word{min-height:clamp(74px,9.5vh,94px)}
 .product-overview .principle-word>span{border:0;background:color-mix(in srgb,currentColor 18%,rgba(255,255,255,.86));box-shadow:inset 0 0 0 1px color-mix(in srgb,currentColor 32%,transparent)}
-.product-overview .principle-line:nth-child(2),.product-overview .principle-line:nth-child(4){transform:translateX(clamp(10px,2.4vw,28px))}
-.product-overview .principle-line:nth-child(1),.product-overview .principle-line:nth-child(3){transform:translateX(clamp(-28px,-2.4vw,-10px))}
+.product-overview .principle-line:nth-child(2),.product-overview .principle-line:nth-child(4){transform:translateX(clamp(22px,4vw,58px))}
+.product-overview .principle-line:nth-child(1),.product-overview .principle-line:nth-child(3){transform:translateX(clamp(-58px,-4vw,-22px))}
 
 /* The problem becomes a scroll-held conversation: each constraint joins one shared stack. */
 .shared-problem-scroll{height:198vh;position:relative;margin-top:18px}
@@ -680,7 +682,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .people-problem .problem-subsection{align-self:center;padding:0;transform:none}
 .people-problem .problem-subsection>.eyebrow,.people-problem .problem-subsection h3,.people-problem .problem-subsection>p:last-child{clip-path:none;transform:translateY(22px);opacity:.35;transition:transform .7s cubic-bezier(.22,1,.36,1),opacity .55s ease}
 .people-problem .shared-problem.is-visible .problem-subsection>.eyebrow,.people-problem .shared-problem.is-visible .problem-subsection h3,.people-problem .shared-problem.is-visible .problem-subsection>p:last-child{transform:translateY(0);opacity:1}
-.people-problem .problem-subsection h3{font-size:clamp(2.8rem,4.4vw,4.7rem);line-height:.92;margin-top:18px;max-width:430px}
+.people-problem .problem-subsection h3{font-size:clamp(2.55rem,3.95vw,4.2rem);line-height:.94;margin-top:18px;width:11ch;max-width:11ch;white-space:normal}
 .people-problem .problem-subsection>p:last-child{max-width:420px;margin-top:22px}
 .people-problem .shared-problem .quote-grid{display:flex;flex-direction:column;justify-content:center;gap:0;min-width:0}
 .people-problem .shared-problem .quote-card{width:100%;min-height:132px;margin:0;position:relative;overflow:hidden;padding:20px 23px;border:1px solid rgba(86,119,153,.24);border-radius:20px;background:rgba(255,255,255,.9)!important;backdrop-filter:blur(16px);box-shadow:0 20px 42px rgba(52,82,114,.12);transition:border-color .22s ease,box-shadow .22s ease;will-change:transform,opacity}
@@ -695,6 +697,126 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-reveal.product-in-view{opacity:1;translate:0 0}
 .story-frame.product-reveal{translate:0 18px}.story-frame.product-reveal.product-in-view{translate:0 0}
 
-@media(max-width:900px){.people-problem .shared-problem{grid-template-columns:1fr;gap:26px;padding:28px}.people-problem .problem-subsection h3{font-size:3.25rem}.people-problem .shared-problem .quote-card{min-height:112px}.shared-problem-scroll{height:190vh}.product-overview .section-intro{margin-bottom:18px}}
-@media(max-width:760px){.shared-problem-scroll{height:auto}.people-problem .shared-problem{position:relative;top:auto;height:auto;min-height:0;display:block;padding:26px 16px}.people-problem .shared-problem .quote-grid{margin-top:26px}.people-problem .shared-problem .quote-card{opacity:1!important;transform:none!important;margin-left:0!important}.people-problem .shared-problem .quote-card+ .quote-card{margin-top:10px}.product-overview .principle-line:nth-child(n){transform:none}}
+@media(max-width:900px){.people-problem .shared-problem{grid-template-columns:1fr;gap:26px;padding:28px}.people-problem .problem-subsection h3{font-size:3rem;width:11ch;max-width:11ch}.people-problem .shared-problem .quote-card{min-height:112px}.shared-problem-scroll{height:190vh}.product-overview .section-intro{margin-bottom:18px}}
+
+/* Mobile navigation: full-page subnav overlay instead of simply hiding links. */
+.nav-toggle{display:none;align-items:center;gap:10px;padding:10px 16px;border:1px solid var(--color-border);border-radius:999px;background:rgba(255,255,255,.72);color:var(--color-ink);cursor:pointer;box-shadow:0 10px 30px rgba(52,82,114,.07)}
+.nav-toggle-lines{display:inline-flex;flex-direction:column;gap:4px}
+.nav-toggle-lines i{display:block;width:18px;height:2px;border-radius:999px;background:var(--color-ink)}
+.nav-toggle-label{font-family:var(--font-label);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+.mobile-nav-overlay{display:none;position:fixed;inset:0;z-index:80;padding:88px 18px 18px;background:linear-gradient(180deg,rgba(237,244,251,.98) 0%,rgba(255,255,255,.99) 18%,rgba(255,255,255,.99) 100%)}
+.mobile-nav-overlay.is-open{display:block}
+.mobile-nav-card{height:100%;display:flex;flex-direction:column;gap:22px;padding:18px 16px 20px;border:1px solid rgba(86,119,153,.16);border-radius:28px;background:#fff;box-shadow:0 24px 70px rgba(52,82,114,.12);overflow:auto}
+.mobile-nav-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.mobile-nav-close{width:48px;height:48px;border:0;border-radius:16px;background:rgba(239,246,255,.9);color:var(--color-ink);font-size:36px;line-height:1;cursor:pointer}
+.mobile-nav-links{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.mobile-nav-links a{display:flex;align-items:center;gap:14px;padding:16px 12px;border-bottom:1px solid rgba(86,119,153,.12);color:var(--color-ink)}
+.mobile-nav-links a:last-child{border-bottom:0}
+.mobile-nav-index,.mobile-nav-arrow{font-family:var(--font-label);font-size:12px;letter-spacing:.1em;color:#5f91c7}
+.mobile-nav-links span:nth-child(2){font-size:clamp(1.65rem,5vw,2.25rem);line-height:1;letter-spacing:-.04em}
+.mobile-nav-arrow{margin-left:auto;font-size:18px}
+.mobile-nav-actions{display:flex;flex-direction:column;gap:12px;margin-top:auto;padding-top:12px}
+.mobile-nav-actions .button{width:100%;padding-block:16px}
+body.nav-open{overflow:hidden}
+
+@media(max-width:900px){
+  .desktop-actions,.nav-links{display:none}
+  .nav-toggle{display:inline-flex}
+  .site-header{padding:12px 0}
+}
+
+@media(min-width:901px){
+  .mobile-nav-overlay{display:none!important}
+}
+@media(max-width:760px){.shared-problem-scroll{height:auto}.people-problem .shared-problem{position:relative;top:auto;height:auto;min-height:0;display:block;padding:26px 16px}.people-problem .shared-problem .quote-grid{margin-top:26px}.people-problem .shared-problem .quote-card{opacity:1!important;transform:none!important;margin-left:0!important}.people-problem .shared-problem .quote-card+ .quote-card{margin-top:10px}.product-overview .principle-line:nth-child(n){transform:none}.product-overview .principle-word{opacity:1!important;transform:none!important}}
 @media(prefers-reduced-motion:reduce){.product-reveal{opacity:1;translate:0 0;transition:none}.people-problem .problem-subsection>*{opacity:1!important;transform:none!important}}
+
+/* Final editorial pass: keep the product handoff clean and readable at every zoom. */
+.product-overview:after{display:none!important}
+.principle-stage{background:transparent!important}
+.principle-transition{display:none!important}
+.principle-heading>p:last-child{display:none}
+.principle-stage{padding-top:clamp(42px,5.5vh,60px)}
+.principle-line:nth-child(2),.principle-line:nth-child(3),.principle-line:nth-child(4){margin-top:clamp(-10px,-1vh,-6px)}
+.principle-scroll{height:148vh}
+.product-overview{padding-bottom:48px}
+.story-frame{background:#17314d!important}
+.story-intro h2{white-space:nowrap;max-width:none;font-size:clamp(2.15rem,3.1vw,3.35rem);line-height:1.08}
+.story-intro>p:not(.story-label){display:none}
+.how-page-main .subhero h1,.privacy-page-main .subhero h1,.faq-page .subhero h1{font-size:clamp(3.65rem,5.2vw,5.6rem);line-height:1.08;letter-spacing:-.06em;margin-top:30px;margin-bottom:30px}
+.how-page-main .subhero,.privacy-page-main .subhero{padding-bottom:58px}
+.how-page-main .subhero>p,.privacy-page-main .subhero>p,.faq-page-main .subhero>p{max-width:680px;font-size:17px;line-height:1.75}
+
+/* Signup uses the same soft-blue surface and compact floating form as login. */
+.signup-page{min-height:100svh;padding:28px clamp(22px,5vw,72px) 56px;background:radial-gradient(circle at 16% 12%,rgba(120,174,245,.2),transparent 32%),linear-gradient(145deg,#e9f3fc 0%,#e4e8f5 52%,#edf5f4 100%);color:#17314d}
+.signup-page{display:flex;flex-direction:column}
+.signup-page-shell{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(380px,.95fr);gap:42px;align-items:start;flex:1 0 auto;margin-top:38px}
+.signup-copy-block{padding-top:22px}
+.signup-copy-block h1{font-size:clamp(3rem,5vw,5.8rem);font-weight:400;line-height:.96;letter-spacing:-.06em;margin:18px 0 20px}
+.signup-lede{max-width:620px;color:#60758b;font-size:18px;line-height:1.7;margin-bottom:34px}
+.signup-copy-block h1{max-width:11ch}
+.signup-benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.signup-benefits article{padding:22px;border:1px solid rgba(86,119,153,.18);border-radius:22px;background:rgba(255,255,255,.56);backdrop-filter:blur(14px);min-height:210px}
+.signup-benefits span{display:block;font-family:var(--font-label);font-size:11px;letter-spacing:.1em;color:#5f91c7}
+.signup-benefits strong{display:block;margin:48px 0 10px;font-size:21px;font-weight:500;letter-spacing:-.03em}
+.signup-benefits p{margin:0;color:#60758b;line-height:1.6;font-size:14px}
+.signup-page .login-brand{display:inline-flex;align-items:center;gap:10px;font-size:18px;color:#17314d}
+.signup-card{width:100%;margin:0;padding:clamp(30px,5vw,58px);border:1px solid rgba(86,119,153,.2);border-radius:28px;background:rgba(248,252,255,.82);box-shadow:0 24px 70px rgba(52,82,114,.12);backdrop-filter:blur(14px)}
+.signup-card .login-heading h1{font-size:clamp(2.8rem,5vw,4.6rem);font-weight:400;line-height:.98;letter-spacing:-.06em;margin:20px 0 24px}
+.signup-card .login-heading h2{font-size:clamp(2.8rem,5vw,4.6rem);font-weight:400;line-height:.98;letter-spacing:-.06em;margin:20px 0 24px}
+.signup-card .login-heading>p:last-child{margin-bottom:34px}
+.signup-card .login-form>label{margin:14px 0 8px}
+.signup-card .login-form input{height:54px}
+.signup-consent{display:flex!important;align-items:flex-start;gap:10px;margin:22px 0!important;color:#60758b!important;font-size:13px;line-height:1.45}
+.signup-consent input{width:18px!important;height:18px!important;flex:0 0 auto;margin-top:1px;accent-color:#4f8edc}
+.signup-consent a{text-decoration:underline}
+.signup-card .login-submit{width:100%;margin-top:12px;border:0;cursor:pointer}
+.signup-success{text-align:center}.signup-success h1{font-size:clamp(2.8rem,5vw,4.6rem);font-weight:400;letter-spacing:-.06em;margin:20px 0}.signup-success>p:not(.login-kicker){color:#60758b;line-height:1.6;margin-bottom:30px}
+.signup-footer{margin-top:72px;background:transparent}
+
+.signup-success .login-submit{max-width:320px;margin-inline:auto}
+
+@media(max-width:980px){.signup-page-shell{grid-template-columns:1fr;gap:26px}.signup-benefits{grid-template-columns:1fr 1fr}.signup-copy-block{padding-top:0}}
+@media(max-width:760px){.story-intro h2{white-space:normal}.signup-page{padding-inline:18px}.signup-page-shell{margin-top:24px}.signup-card{border-radius:22px}.signup-benefits{grid-template-columns:1fr}.how-page-main .subhero h1,.privacy-page-main .subhero h1,.faq-page .subhero h1{font-size:clamp(3.15rem,14vw,5rem)}}
+
+/* Rebalance the how-it-works story so the right side feels denser and the header stays dark. */
+.how-page-main .story-topbar{background:#17314d;color:#dbe7f1}
+.how-page-main .story-mini-brand{color:#fff}
+.how-page-main .story-window{grid-template-columns:minmax(280px,.8fr) minmax(480px,1.2fr)}
+.how-page-main .flow-step{align-items:start}
+.how-page-main .flow-copy{padding-top:12px}
+.how-page-main .flow-copy h2{font-size:clamp(2.15rem,3.6vw,3.65rem);line-height:1.08;margin-bottom:16px}
+.how-page-main .flow-copy p{max-width:360px}
+.how-page-main .flow-step .image-placeholder{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;padding:26px 24px 24px}
+.how-page-main .flow-step .image-placeholder strong{font-size:18px;line-height:1.45;max-width:24ch}
+.how-page-main .flow-step .image-placeholder small{max-width:24ch;line-height:1.45}
+.how-page-main .final-cta .button{margin-top:8px}
+
+/* FAQ gets a more complete closing action. */
+.faq-page-main .faq-page aside{display:flex;flex-direction:column;align-items:flex-start;gap:14px}
+.faq-page-main .faq-page aside .button{margin-top:6px}
+.faq-page-main .faq-page aside p{margin-bottom:0}
+
+/* Requested August refinement: cleaner endpoints, denser process cards, and exact two-line copy. */
+.hero .hero-title-compact{font-size:clamp(3rem,3.9vw,4.2rem);max-width:13ch;line-height:.98}
+.product-overview{overflow:clip!important;isolation:isolate}
+.product-overview .principle-scroll{margin-bottom:0}
+.product-overview .principle-stage{overflow:hidden!important}
+.people-problem .problem-subsection h3{width:auto;max-width:none;white-space:nowrap}
+.people-problem .problem-subsection h3 span{display:block;white-space:nowrap}
+
+.how-page-main .flow-step{grid-template-columns:minmax(260px,.72fr) minmax(420px,1.28fr);gap:clamp(44px,7vw,92px);min-height:clamp(520px,68vh,680px);padding-block:78px;align-items:center}
+.how-page-main .flow-copy h2{font-size:clamp(2.45rem,4vw,4.05rem);line-height:1.16;margin:25px 0 24px}
+.how-page-main .flow-copy p{font-size:18px;line-height:1.78;max-width:390px}
+.how-page-main .flow-image{min-height:350px;margin:0;padding:34px;border:1px solid rgba(86,119,153,.2);border-radius:26px;color:#17314d;box-shadow:0 18px 44px rgba(52,82,114,.08);display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;text-align:left}
+.flow-visual-top{display:flex;align-items:center;justify-content:space-between;font-family:var(--font-label);font-size:11px;letter-spacing:.1em;color:#5f91c7}
+.flow-visual-top i{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#17314d;color:#fff;font-style:normal;font-size:16px}
+.how-page-main .flow-image>strong{font-family:var(--font-primary);font-size:clamp(2rem,3.2vw,3.35rem);font-weight:400;line-height:1.04;letter-spacing:-.05em;max-width:13ch;margin:54px 0 16px}
+.how-page-main .flow-image>p{margin:0 0 34px;color:#60758b;font-size:15px;line-height:1.6}
+.flow-status{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid rgba(86,119,153,.18);padding-top:18px;gap:12px}
+.flow-status span{font-size:11px;color:#60758b}.flow-status span:nth-child(2){color:#3978bd}.flow-status span:last-child{text-align:right;color:#17314d}
+.feature-story .story-topbar{background:#17314d!important;color:#dbe7f1!important}
+.feature-story .story-mini-brand{color:#fff!important}
+.signup-copy-block h1{font-size:clamp(2.9rem,4.35vw,4.9rem);max-width:12ch;line-height:1.02}
+
+@media(max-width:900px){.how-page-main .flow-step{grid-template-columns:1fr;gap:30px}.people-problem .problem-subsection h3{white-space:normal}.people-problem .problem-subsection h3 span{white-space:normal}.hero .hero-title-compact{font-size:clamp(3rem,8vw,4.4rem)}}

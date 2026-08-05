@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Footer, Header } from "../page";
+import { Footer, Header } from "../site-shell";
 
 const questions = [
   ["Can other travelers see my budget?", "Only if you choose to share it. A private budget can inform planning without showing its amount or owner to the group."],
@@ -12,9 +12,9 @@ const questions = [
 ];
 
 export default function FAQ() {
-  return <main><Header />
-    <section className="subhero shell"><p className="eyebrow">FAQ</p><h1>Before your group starts planning.</h1><p>Clear answers about privacy, constraints, group decisions, and travel information.</p></section>
-    <section className="faq-page shell"><div className="faq-list">{questions.map(([question,answer])=><details key={question}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}</div><aside><p className="eyebrow">STILL CURIOUS?</p><h2>See the complete planning flow.</h2><Link className="button ghost" href="/how-it-works">How It Works</Link></aside></section>
+  return <main className="faq-page-main"><Header />
+    <section className="subhero shell"><p className="eyebrow">FAQ</p><h1>Before you plan.<br />Together.</h1><p>Clear answers about privacy, constraints, group decisions, and travel information.</p></section>
+    <section className="faq-page shell"><div className="faq-list">{questions.map(([question,answer])=><details key={question}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}</div><aside><p className="eyebrow">STILL CURIOUS?</p><h2>See the complete planning flow.</h2><p>Open the workflow if you want to understand how TripSync keeps private details private while still producing one shared plan.</p><Link className="button ghost" href="/how-it-works">How It Works</Link><Link className="button dark" href="/signup?next=/trip">Create an account</Link></aside></section>
     <Footer />
   </main>;
 }
