@@ -6,12 +6,9 @@ import { useEffect, useRef, useState } from "react";
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
-  const [nextPath, setNextPath] = useState("/trip");
+  const [accountCreated, setAccountCreated] = useState(false);
 
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("next");
-    if (requested && requested.startsWith("/")) setNextPath(requested);
-  }, []);
+  useEffect(() => { setAccountCreated(new URLSearchParams(window.location.search).get("created") === "1"); }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -74,8 +71,9 @@ export default function LoginPage() {
         </div>
         <div className="login-side">
           <div className="login-card">
+            {accountCreated && <div className="account-created" role="status"><span>✓</span><p><strong>Account created.</strong> Log in to continue to TripSync.</p></div>}
             <div className="login-heading">
-              <p className="login-kicker">Welcome back</p><h2>Continue your journey.</h2>
+              <p className="login-kicker">Welcome back</p><h2>Welcome back.</h2>
               <p>Sign in to bring your group&apos;s ideas back into sync.</p>
             </div>
             <form className="login-form" onSubmit={(event) => event.preventDefault()}>
@@ -86,7 +84,7 @@ export default function LoginPage() {
                 <input id="password" name="password" autoComplete="current-password" defaultValue="demo-password" type={showPassword ? "text" : "password"} />
                 <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
               </div>
-              <Link className="login-submit" href={nextPath}>Log in <span>→</span></Link>
+              <Link className="login-submit" href="/trip">Log in <span>→</span></Link>
             </form>
             <div className="login-divider"><span>or</span></div>
             <button className="google-button" type="button"><span>G</span> Continue with Google</button>
