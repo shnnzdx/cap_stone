@@ -1124,3 +1124,191 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 }
 
 @keyframes compact-core-rise{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+
+/* Product Principles v2: scroll-driven rise from viewport bottom. */
+.product-page .product-overview.product-reveal,
+.product-page .product-overview.product-reveal.product-in-view{
+  opacity:1;
+  translate:0 0;
+  transition:none;
+}
+
+.product-page .principle-scroll{
+  height:280vh;
+}
+
+.product-page .principle-stage{
+  overflow:visible;
+  gap:clamp(18px,2.4vh,34px);
+}
+
+.product-page .principle-heading{
+  pointer-events:none;
+}
+
+.product-page .principle-heading-position,
+.product-page .principle-item-position,
+.product-page .principle-transition-position{
+  width:100%;
+}
+
+.product-page .principle-heading-motion,
+.product-page .principle-item-motion,
+.product-page .principle-transition-motion{
+  will-change:transform,opacity;
+  transform-origin:center center;
+}
+
+.product-page .principle-heading-motion{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+}
+
+.product-page .principle-heading h2{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:.12em;
+  margin-bottom:0;
+}
+
+.product-page .principle-heading h2 strong{
+  color:#17314d;
+  font-weight:400;
+}
+
+.product-page .principle-heading .eyebrow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.product-page .principle-mask{
+  overflow:visible;
+}
+
+.product-page .principle-item-position{
+  width:min(760px,94%);
+  min-height:clamp(72px,9vh,92px);
+}
+
+.product-page .principle-transition{
+  position:absolute;
+  left:50%;
+  bottom:18px;
+  width:min(760px,94%);
+  transform:translateX(-50%);
+  z-index:6;
+}
+
+.product-page .principle-transition-motion{
+  display:grid;
+  grid-template-columns:1fr 1px 1fr;
+  align-items:center;
+  gap:20px;
+  max-width:520px;
+  margin:0 auto;
+  padding:12px 16px;
+  border-radius:18px;
+  background:rgba(244,248,252,.82);
+  box-shadow:0 18px 38px rgba(52,82,114,.1);
+}
+
+.product-page .principle-transition-motion > p{
+  margin:0;
+  text-align:right;
+  color:#58718b;
+  font-size:12px;
+}
+
+.product-page .principle-transition-motion > i{
+  display:block;
+  width:1px;
+  background:#6ca5df;
+  transform-origin:top;
+}
+
+.product-page .principle-transition-motion > a{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.product-page .principle-transition-motion span{
+  font-family:var(--font-label);
+  font-size:10px;
+  color:#6486a8;
+}
+
+.product-page .principle-transition-motion strong{
+  font-size:15px;
+  font-weight:400;
+}
+
+@media(max-width:820px){
+  .product-page .principle-scroll{
+    height:220vh;
+  }
+
+  .product-page .principle-stage{
+    position:sticky;
+    top:72px;
+    height:calc(100svh - 72px);
+    padding:clamp(258px,44vw,318px) 0 54px;
+    overflow:visible;
+  }
+
+  .product-page .principle-transition{
+    width:min(620px,88%);
+  }
+
+  .product-page .product-overview.product-in-view .principle-word{
+    animation:none;
+  }
+
+  .product-page .product-overview.product-in-view .principle-line:nth-of-type(2) .principle-word,
+  .product-page .product-overview.product-in-view .principle-line:nth-of-type(3) .principle-word,
+  .product-page .product-overview.product-in-view .principle-line:nth-of-type(4) .principle-word{
+    animation-delay:0s;
+  }
+}
+
+@media(max-width:760px){
+  .product-page .principle-scroll{
+    height:210vh;
+    margin-top:28px;
+  }
+
+  .product-page .principle-stage{
+    height:calc(100svh - 56px);
+    min-height:0;
+    padding:124px 0 30px;
+    gap:14px;
+    overflow:visible;
+  }
+
+  .product-page .principle-transition{
+    left:50%;
+    bottom:12px;
+    width:min(100%,540px);
+    transform:translateX(-50%);
+  }
+
+  .product-page .principle-transition-motion{
+    gap:14px;
+    padding:10px 12px;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .product-page .principle-heading-motion,
+  .product-page .principle-item-motion,
+  .product-page .principle-transition-motion{
+    opacity:1 !important;
+    transform:none !important;
+    transition:none !important;
+    animation:none !important;
+  }
+}
