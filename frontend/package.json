@@ -8,8 +8,10 @@
   "scripts": {
     "dev": "node scripts/run-vinext.mjs dev",
     "build": "node scripts/run-vinext.mjs build",
+    "build:trip-preview": "node scripts/sync-trip-preview.mjs --build",
+    "sync:trip-preview": "node scripts/sync-trip-preview.mjs",
     "start": "node scripts/run-vinext.mjs start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "node scripts/run-vinext.mjs build && node --test tests/rendered-html.test.mjs tests/trip-preview-integration.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

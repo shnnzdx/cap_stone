@@ -1,6 +1,20 @@
 import { createContext, useContext, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { feedback, insights, members, planSections, trip } from './finalData'
+import { buildTripPreviewAbsoluteUrl } from '../../../shared/tripsync-preview-contract.js'
+import {
+  buildGuestInvitePath,
+  buildOrganizerAccountPath,
+  buildOrganizerArchivedPath,
+  buildOrganizerCreatePath,
+  buildOrganizerHomePath,
+  buildOrganizerSettingsPath,
+  buildOrganizerTripPreferencesPath,
+  buildOrganizerTripStagePath,
+  buildParticipantTripPath,
+  guestStageOrder,
+  organizerStageOrder,
+} from '../../../shared/tripsync-domain.js'
 
 const DemoContext = createContext(null)
 const useDemo = () => useContext(DemoContext)
@@ -56,41 +70,29 @@ function Home() {
   return <main className="homePage">
     <header className="topNav">
       <Logo />
-      <nav><Link className="active" to="/">My Trips</Link><Link to="/organizer/create">New Trip</Link></nav>
+      <nav><Link className="active" to="/">My Trips</Link><Link to={buildOrganizerCreatePath()}>New Trip</Link></nav>
       <AccountMenu />
     </header>
     <section className="homeContent">
       <div className="promoCard">
-        <div><Badge tone="purple">Group trip planning</Badge><h1>Your group trips, all in one place.</h1><p>Open upcoming plans, review requests, and trips you created from the same dashboard.</p><Link className="btn" to="/organizer/create">+ New trip</Link></div>
+        <div><Badge tone="purple">Group trip planning</Badge><h1>Your group trips, all in one place.</h1><p>Open upcoming plans, review requests, and trips you created from the same dashboard.</p><Link className="btn" to={buildOrganizerCreatePath()}>+ New trip</Link></div>
         <div className="promoVisual"><div className="miniMap"/><div className="miniPlan"><span/><span/><span/></div></div>
       </div>
-      <div className="dashboardHead"><div><span className="eyebrow">My Trips</span><h1>Recently viewed and upcoming trips</h1></div><Link className="btn" to="/organizer/create">+ New trip</Link></div>
+      <div className="dashboardHead"><div><span className="eyebrow">My Trips</span><h1>Recently viewed and upcoming trips</h1></div><Link className="btn" to={buildOrganizerCreatePath()}>+ New trip</Link></div>
       <section className="dashboardGrid">
-        <DashboardTripCard to={`/organizer/trip/${trip.id}/collect`} imageClass="photoChicago" when="7 days" title={trip.name} meta="Organizer · Chicago · Aug 14–17" badge="Organizer" badgeTone="purple" action="Collect preferences" progress="38%" />
-        <DashboardTripCard to={`/participant/trip/${trip.id}`} imageClass="photoLake" when="Needs review" title="Lake house weekend" meta="Participant · Lake Geneva · Sep 4–7" badge="Participant" badgeTone="blue" action="Review plan" progress="72%" />
-        <DashboardTripCard to={`/organizer/trip/${trip.id}/final`} imageClass="photoMountain" when="Final" title="Annual ski weekend" meta="Organizer · Park City · Dec 3–7" badge="Final" badgeTone="green" action="Open final plan" progress="100%" />
+        <DashboardTripCard to={buildOrganizerTripStagePath(trip.id, 'collect')} imageClass="photoChicago" when="7 days" title={trip.name} meta="Organizer · Chicago · Aug 14–17" badge="Organizer" badgeTone="purple" action="Collect preferences" progress="38%" />
+        <DashboardTripCard to={buildParticipantTripPath(trip.id)} imageClass="photoLake" when="Needs review" title="Lake house weekend" meta="Participant · Lake Geneva · Sep 4–7" badge="Participant" badgeTone="blue" action="Review plan" progress="72%" />
+        <DashboardTripCard to={buildOrganizerTripStagePath(trip.id, 'final')} imageClass="photoMountain" when="Final" title="Annual ski weekend" meta="Organizer · Park City · Dec 3–7" badge="Final" badgeTone="green" action="Open final plan" progress="100%" />
       </section>
     </section>
   </main>
 }
 
-const organizerNav = [
-  ['collect', 'Collect'], ['insights', 'Insights'], ['plan', 'Plan'], ['review', 'Review'], ['final', 'Final']
-]
+const organizerNav = organizerStageOrder.map(([id, navLabel]) => [id, navLabel])
 
-const tripFlowSteps = [
-  ['collect', 'Preferences'],
-  ['insights', 'Preference check'],
-  ['plan', 'Draft itinerary'],
-  ['review', 'Suggested adjustment'],
-  ['final', 'Final plan'],
-]
+const tripFlowSteps = organizerStageOrder.map(([id, _navLabel, flowLabel]) => [id, flowLabel])
 
-const guestFlowSteps = [
-  ['preferences', 'Preferences'],
-  ['review', 'Review'],
-  ['final', 'Final'],
-]
+const guestFlowSteps = guestStageOrder
 
 const calendarMonths = [
   { label: 'August 2026', month: 7 },
@@ -228,12 +230,12 @@ function OrganizerShell({ children }) {
   const demo = useDemo()
   const isTripView = location.pathname.includes('/trip/')
   const activeStep = location.pathname.split('/').filter(Boolean).pop()
-  const flowSteps = tripFlowSteps.map(([id, label]) => [id, label, `/organizer/trip/${trip.id}/${id}`])
+  const flowSteps = tripFlowSteps.map(([id, label]) => [id, label, buildOrganizerTripStagePath(trip.id, id)])
   const submittedCount = demo.organizerPreferencesSubmitted ? 4 : 3
   return <div className="appShell">
     <div className="appMain">
       {isTripView ? <FlowHeader role="Trip planning" steps={flowSteps} active={activeStep} backTo="/">
-        <Link className={cx('btn btnSecondary selfPrefsNav', !demo.organizerPreferencesSubmitted && 'attention')} to={`/organizer/trip/${trip.id}/preferences`}>{demo.organizerPreferencesSubmitted ? 'My preferences ✓' : 'Submit my preferences'}</Link>
+        <Link className={cx('btn btnSecondary selfPrefsNav', !demo.organizerPreferencesSubmitted && 'attention')} to={buildOrganizerTripPreferencesPath(trip.id)}>{demo.organizerPreferencesSubmitted ? 'My preferences ✓' : 'Submit my preferences'}</Link>
         <div className="topStatus"><Badge tone="green">Live plan</Badge><span>{submittedCount} responses · review closes Friday</span></div>
         <AccountMenu label="Trip organizer" />
       </FlowHeader> : <header className="organizerTop">
@@ -254,8 +256,8 @@ function AccountMenu({ label = 'Organizer workspace' } = {}) {
     </summary>
     <div className="accountDropdown">
       <div className="accountDropdownHead"><div className="avatar">EC</div><div><strong>Emma Carter</strong><span>emma.carter@example.com</span></div></div>
-      <Link to="/organizer/account">○ Account</Link>
-      <Link to="/organizer/settings">⚙ Settings</Link>
+      <Link to={buildOrganizerAccountPath()}>○ Account</Link>
+      <Link to={buildOrganizerSettingsPath()}>⚙ Settings</Link>
       <button type="button" onClick={() => demo.notify('Signed out for demo')}>↗ Sign out</button>
     </div>
   </details>
@@ -263,13 +265,13 @@ function AccountMenu({ label = 'Organizer workspace' } = {}) {
 
 function WorkspaceTabs({ active }) {
   return <nav className="workspaceTabs" aria-label="Trip workspace sections">
-    <Link className={active === 'active' ? 'active' : ''} to="/organizer"><span>Active trips</span><Badge tone="blue">2</Badge></Link>
-    <Link className={active === 'archived' ? 'active' : ''} to="/organizer/archived"><span>Archived</span><Badge>2</Badge></Link>
+    <Link className={active === 'active' ? 'active' : ''} to={buildOrganizerHomePath()}><span>Active trips</span><Badge tone="blue">2</Badge></Link>
+    <Link className={active === 'archived' ? 'active' : ''} to={buildOrganizerArchivedPath()}><span>Archived</span><Badge>2</Badge></Link>
   </nav>
 }
 
 function OrganizerTrips({ archived = false }) {
-  return <OrganizerShell><div className="pageHeading"><div><span className="eyebrow">Workspace</span><h1>My Trips</h1><p>{archived ? 'Completed and paused trips are kept here for reference.' : 'Trips that need your attention appear first.'}</p></div><Link className="btn" to="/organizer/create">＋ Create trip</Link></div>
+  return <OrganizerShell><div className="pageHeading"><div><span className="eyebrow">Workspace</span><h1>My Trips</h1><p>{archived ? 'Completed and paused trips are kept here for reference.' : 'Trips that need your attention appear first.'}</p></div><Link className="btn" to={buildOrganizerCreatePath()}>＋ Create trip</Link></div>
     <WorkspaceTabs active={archived ? 'archived' : 'active'} />
     {archived ? <ArchivedTripsList /> : <ActiveTripsList />}
   </OrganizerShell>
@@ -283,7 +285,7 @@ function ActiveTripsList() {
       <article><span>Plan quality</span><strong>All known must-haves feasible</strong><p>Private constraints remain summarized, not exposed.</p></article>
     </section>
     <div className="sectionLabel">Needs your attention <span>1</span></div>
-    <Link to={`/organizer/trip/${trip.id}/collect`} className="tripCard">
+    <Link to={buildOrganizerTripStagePath(trip.id, 'collect')} className="tripCard">
       <div className="tripThumb photoChicago"><span>Chicago</span></div>
       <div className="tripDate"><strong>14</strong><span>AUG</span></div>
       <div className="tripCardBody"><div className="tripTitle"><h2>{trip.name}</h2><Badge tone="purple">Organizer</Badge></div><p>{trip.destination} · {trip.dates}</p><div className="progressBar"><span style={{ width: '38%' }} /></div><small>4 of 6 preferences submitted · Review closes Friday</small></div>
@@ -353,7 +355,8 @@ function CreateTripPage() {
     assumptions: 'Relaxed pace, central stay, shared dinners, and no activities before 9:00 AM unless everyone agrees.',
     deadline: 'Friday, August 7 at 6:00 PM',
   })
-  const inviteLink = 'http://127.0.0.1:5173/trip-app/#/t/chicago-birthday'
+  const invitePath = buildGuestInvitePath(trip.id)
+  const inviteLink = buildTripPreviewAbsoluteUrl('http://127.0.0.1:5173', invitePath)
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const selectedDates = formatDateRange(dateRange)
 
@@ -361,10 +364,10 @@ function CreateTripPage() {
     return <OrganizerShell><div className="createTripLayout"><PageIntro eyebrow="Create trip" title="Invite link ready">Share this link with the group. People can review the basics first, then join as a guest or with an account.</PageIntro>
       <section className="panel createdTripPanel">
         <div><Badge tone="green">Trip created</Badge><h2>{form.name}</h2><p>{form.destination} · {selectedDates} · {form.flexibility === 'fixed' ? 'fixed dates' : 'flexible dates'} · expected group size {form.size}</p></div>
-        <div className="inviteUrl"><span>{inviteLink}</span><Button secondary onClick={() => demo.notify('Invite link copied')}>Copy link</Button><Link className="btn btnSecondary" to="/t/chicago-birthday">Open invite page</Link></div>
+        <div className="inviteUrl"><span>{inviteLink}</span><Button secondary onClick={() => demo.notify('Invite link copied')}>Copy link</Button><Link className="btn btnSecondary" to={invitePath}>Open invite page</Link></div>
         <div className="inviteRules"><strong>Invite behavior</strong><span>One trip has one main invite link.</span><span>Opening the link does not automatically join the trip.</span><span>Membership is created only after the person confirms as guest or logs in.</span></div>
       </section>
-      <div className="finalActions"><Link className="btn btnSecondary" to="/">Back to My Trips</Link><Link className="btn" to={`/organizer/trip/${trip.id}/collect`}>Go to collect preferences</Link></div>
+      <div className="finalActions"><Link className="btn btnSecondary" to="/">Back to My Trips</Link><Link className="btn" to={buildOrganizerTripStagePath(trip.id, 'collect')}>Go to collect preferences</Link></div>
     </div>
     </OrganizerShell>
   }
@@ -579,7 +582,7 @@ function Preferences({ organizerMode = false }) {
     if (organizerMode) {
       demo.setOrganizerPreferencesSubmitted(true)
       demo.notify('Organizer preferences submitted')
-      nav(`/organizer/trip/${trip.id}/collect`)
+      nav(buildOrganizerTripStagePath(trip.id, 'collect'))
       return
     }
     demo.setGuestStage('submitted')
@@ -626,5 +629,5 @@ function GuestFinal() {
 }
 
 export default function FinalApp() {
-  return <DemoProvider><Routes><Route path="/" element={<Home/>}/><Route path="/organizer" element={<OrganizerTrips/>}/><Route path="/organizer/archived" element={<OrganizerTrips archived/>}/><Route path="/organizer/create" element={<CreateTripPage/>}/><Route path="/organizer/account" element={<AccountPage/>}/><Route path="/organizer/settings" element={<SettingsPage/>}/><Route path="/organizer/trip/:tripId/preferences" element={<OrganizerPreferencesPage/>}/><Route path="/organizer/trip/:tripId/collect" element={<CollectPage/>}/><Route path="/organizer/trip/:tripId/insights" element={<InsightsPage/>}/><Route path="/organizer/trip/:tripId/plan" element={<PlanPage/>}/><Route path="/organizer/trip/:tripId/review" element={<ReviewOrganizerPage/>}/><Route path="/organizer/trip/:tripId/final" element={<FinalOrganizerPage/>}/><Route path="/participant/trip/:tripId" element={<ParticipantPortal/>}/><Route path="/t/:slug" element={<GuestPortal/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></DemoProvider>
+  return <DemoProvider><Routes><Route path="/" element={<Home/>}/><Route path={buildOrganizerHomePath()} element={<OrganizerTrips/>}/><Route path={buildOrganizerArchivedPath()} element={<OrganizerTrips archived/>}/><Route path={buildOrganizerCreatePath()} element={<CreateTripPage/>}/><Route path={buildOrganizerAccountPath()} element={<AccountPage/>}/><Route path={buildOrganizerSettingsPath()} element={<SettingsPage/>}/><Route path="/organizer/trip/:tripId/preferences" element={<OrganizerPreferencesPage/>}/><Route path="/organizer/trip/:tripId/collect" element={<CollectPage/>}/><Route path="/organizer/trip/:tripId/insights" element={<InsightsPage/>}/><Route path="/organizer/trip/:tripId/plan" element={<PlanPage/>}/><Route path="/organizer/trip/:tripId/review" element={<ReviewOrganizerPage/>}/><Route path="/organizer/trip/:tripId/final" element={<FinalOrganizerPage/>}/><Route path="/participant/trip/:tripId" element={<ParticipantPortal/>}/><Route path="/t/:slug" element={<GuestPortal/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></DemoProvider>
 }
