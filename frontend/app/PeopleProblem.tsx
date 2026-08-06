@@ -13,6 +13,7 @@ const quotes = [
   "“I need to stay under $1,500.”",
   "“I want to see as much as possible.”",
   "“I can’t walk for long periods.”",
+  "“I need a little time to recharge.”",
 ];
 
 export default function PeopleProblem() {
@@ -36,6 +37,7 @@ export default function PeopleProblem() {
 
     observer.observe(audience);
     let frame = 0;
+    let resizeTimer = 0;
     const updateShared = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -46,8 +48,12 @@ export default function PeopleProblem() {
     };
     updateShared();
     window.addEventListener("scroll", updateShared, { passive: true });
-    window.addEventListener("resize", updateShared);
-    return () => { observer.disconnect(); window.removeEventListener("scroll", updateShared); window.removeEventListener("resize", updateShared); cancelAnimationFrame(frame); };
+    const onResize = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(updateShared, 120);
+    };
+    window.addEventListener("resize", onResize);
+    return () => { observer.disconnect(); window.removeEventListener("scroll", updateShared); window.removeEventListener("resize", onResize); window.clearTimeout(resizeTimer); cancelAnimationFrame(frame); };
   }, []);
 
   return (
@@ -73,7 +79,7 @@ export default function PeopleProblem() {
             </div>
             <div className="quote-grid">
               {quotes.map((quote, index) => {
-                const reveal = Math.max(0, Math.min(1, (sharedProgress * 3 - index) * 1.22));
+                const reveal = Math.max(0, Math.min(1, (sharedProgress * quotes.length - index) * 1.22));
                 return <article className={`quote-card tone-${index + 1}`} style={{ opacity: .18 + reveal * .82, transform: `translateY(${(1 - reveal) * 42}px) scale(${.97 + reveal * .03})`, zIndex: 8 - index } as CSSProperties} key={quote}>
                   <i className="voice-received" aria-hidden="true" /><span>Traveler 0{index + 1}</span><div className="quote-mask"><p>{quote}</p></div>
                 </article>;

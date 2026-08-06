@@ -13,7 +13,7 @@ const questions = [
 
 export default function FAQ() {
   return <main><Header />
-    <section className="subhero shell"><p className="eyebrow">FAQ</p><h1>Know before.<br />Plan together.</h1></section>
+    <section className="subhero shell"><p className="eyebrow">FAQ</p><h1>Know before.<br />Plan together.</h1><Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link></section>
     <section className="faq-page shell"><div className="faq-list">{questions.map(([question,answer])=><details key={question}><summary>{question}<span>+</span></summary><p>{answer}</p></details>)}</div><aside><p className="eyebrow">STILL CURIOUS?</p><h2>See the complete planning flow.</h2><Link className="button ghost" href="/how-it-works">How It Works</Link></aside></section>
     <Footer />
   </main>;
