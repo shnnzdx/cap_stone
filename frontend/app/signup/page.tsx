@@ -19,9 +19,9 @@ export default function SignupPage() {
     <Link className="signup-brand" href="/"><span className="brand-mark">T</span><span>TripSync</span></Link>
     <section className="signup-layout">
       <div className="signup-story">
-        <p className="signup-kicker">SAVE YOUR TRIPS</p>
-        <h1>Your plans are ready.<br />Whenever you are.</h1>
-        <p>Create an account after joining as a guest to keep your trip history and organize your own group next time.</p>
+        <p className="signup-kicker">PLAN TOGETHER</p>
+        <h1>Join TripSync.<br />Keep every plan.</h1>
+        <p>Save decisions, revisit accepted plans, and start the next trip together.</p>
         <ul><li><i>✓</i><span><strong>Keep every version</strong>Return to accepted plans and past decisions.</span></li><li><i>✓</i><span><strong>Stay in control</strong>Your visibility choices remain attached to each preference.</span></li><li><i>✓</i><span><strong>Start the next trip</strong>Move from guest traveler to organizer whenever you are ready.</span></li></ul>
       </div>
       <div className="signup-card-wrap">

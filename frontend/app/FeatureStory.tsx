@@ -46,23 +46,34 @@ const features = [
   },
 ];
 
+const featureSignals = [
+  ["Destination + dates", "Open shared space", "One invitation link"],
+  ["Private preferences", "Organize constraints", "Clear group needs"],
+  ["Group priorities", "Generate + validate", "One viable draft"],
+  ["Section feedback", "Target revisions", "Accepted decisions"],
+  ["Validated version", "Lock final choices", "Publish shared plan"],
+];
+
 export default function FeatureStory() {
   const sectionRef = useRef<HTMLElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const holdRatio = 0.18;
+  const activeSpan = 1 / (features.length + holdRatio);
 
   useEffect(() => {
     const section = sectionRef.current;
     if (!section) return;
     let frame = 0;
     let displayed = 0;
+    const featureCount = features.length;
 
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const bounds = section.getBoundingClientRect();
         const travel = Math.max(1, bounds.height - window.innerHeight);
-        const progress = Math.max(0, Math.min(1, -bounds.top / travel));
-        const next = Math.min(features.length - 1, Math.floor(progress * features.length));
+        const nextProgress = Math.max(0, Math.min(1, -bounds.top / travel));
+        const next = Math.min(featureCount - 1, Math.floor(nextProgress / activeSpan));
         if (next !== displayed) {
           displayed = next;
           setActiveIndex(next);
@@ -85,7 +96,7 @@ export default function FeatureStory() {
     if (!section) return;
     const top = window.scrollY + section.getBoundingClientRect().top;
     const travel = section.offsetHeight - window.innerHeight;
-    window.scrollTo({ top: top + travel * ((index + 0.12) / features.length), behavior: "smooth" });
+    window.scrollTo({ top: top + travel * (index * activeSpan), behavior: "smooth" });
   };
 
   return (
@@ -114,25 +125,43 @@ export default function FeatureStory() {
             </nav>
           </aside>
 
-          <div className="stacked-features">
-            {features.map((feature, index) => (
-              <article className={`stacked-feature ${index <= activeIndex ? "is-revealed" : ""} ${index === activeIndex ? "is-active" : ""}`} key={feature.number}>
-                <button type="button" className="stacked-heading" onClick={() => goToStep(index)} aria-expanded={index === activeIndex}>
-                  <span className="stacked-icon">{feature.icon}</span>
-                  <span className="stacked-title"><small>{feature.number}</small>{feature.title}</span>
-                  <i>↗</i>
-                </button>
-                <div className="stacked-detail">
-                  <div className="stacked-detail-inner">
-                    <div className="stacked-copy">
-                      <p>{feature.text}</p>
-                      <small>{feature.note}</small>
+          <div className="process-viewport">
+            <div className="stacked-features">
+              {features.map((feature, index) => (
+                <article
+                  className={[
+                    "stacked-feature",
+                    index < activeIndex ? "is-completed" : "",
+                    index === activeIndex ? "is-active" : "",
+                    index > activeIndex ? "is-future" : "",
+                  ].filter(Boolean).join(" ")}
+                  key={feature.number}
+                >
+                  <button type="button" className="stacked-heading" onClick={() => goToStep(index)} aria-expanded={index === activeIndex}>
+                    <span className="stacked-icon">{feature.icon}</span>
+                    <span className="stacked-title"><small>{feature.number}</small>{feature.title}</span>
+                    <i>↗</i>
+                  </button>
+                  <div className="stacked-detail">
+                    <div className="stacked-detail-inner">
+                      <div className="stacked-copy">
+                        <p>{feature.text}</p>
+                        <small>{feature.note}</small>
+                      </div>
+                      <div className="stacked-signal" aria-label={`${feature.title} information flow`}>
+                        {featureSignals[index].map((signal, signalIndex) => (
+                          <div key={signal}>
+                            <span>{["INPUT", "TRIPSYNC", "GROUP RESULT"][signalIndex]}</span>
+                            <strong>{signal}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      <Link href={index === 0 ? "/signup?next=/trips/new" : "/how-it-works"}>{feature.action}<span>→</span></Link>
                     </div>
-                    <Link href={index === 0 ? "/signup?next=/trips/new" : "/how-it-works"}>{feature.action}<span>→</span></Link>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              ))}
+            </div>
           </div>
         </div>
       </div>
