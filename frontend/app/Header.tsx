@@ -34,7 +34,7 @@ export default function Header() {
 
         <div className="nav-actions desktop-actions">
           <Link href="/login">Log in</Link>
-          <Link className="button dark compact" href="/signup?next=/trip">Create a trip</Link>
+          <Link className="button dark compact" href="/signup?next=/trips/new">Create a trip</Link>
         </div>
 
         <button
@@ -61,7 +61,7 @@ export default function Header() {
               TripSync
             </Link>
             <button type="button" className="mobile-nav-close" onClick={() => setOpen(false)} aria-label="Close menu">
-              ×
+              X
             </button>
           </div>
 
@@ -70,14 +70,14 @@ export default function Header() {
               <Link key={link.href} href={link.href} onClick={() => setOpen(false)}>
                 <span className="mobile-nav-index">0{index + 1}</span>
                 <span>{link.label}</span>
-                <span className="mobile-nav-arrow">→</span>
+                <span className="mobile-nav-arrow">-&gt;</span>
               </Link>
             ))}
           </div>
 
           <div className="mobile-nav-actions">
             <Link href="/login" onClick={() => setOpen(false)}>Log in</Link>
-            <Link className="button dark" href="/signup?next=/trip" onClick={() => setOpen(false)}>Create a trip</Link>
+            <Link className="button dark" href="/signup?next=/trips/new" onClick={() => setOpen(false)}>Create a trip</Link>
           </div>
         </div>
       </div>

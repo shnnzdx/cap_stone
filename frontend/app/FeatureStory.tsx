@@ -18,7 +18,7 @@ const features = [
     text: "Each traveler adds priorities, hard limits, and private concerns in their own space.",
     note: "People can be honest without turning every preference into a group debate.",
     action: "See private input",
-    icon: "âœ¦",
+    icon: "*",
   },
   {
     number: "03",
@@ -26,15 +26,15 @@ const features = [
     text: "AI proposes one plan; the backend checks dates, must-haves, and maximum budgets.",
     note: "Generation and deterministic validation remain separate responsibilities.",
     action: "View validation",
-    icon: "â†—",
+    icon: "^",
   },
   {
     number: "04",
     title: "Review",
     text: "The organizer verifies facts. Members accept, suggest, or request a change on a specific section.",
-    note: "Feedback stays attached to the part of the plan it affectsâ€”no real-time chat required.",
+    note: "Feedback stays attached to the part of the plan it affects - no real-time chat required.",
     action: "Explore review",
-    icon: "â—Œ",
+    icon: "o",
   },
   {
     number: "05",
@@ -42,7 +42,7 @@ const features = [
     text: "AI makes targeted revisions; the backend validates the full plan before a new version is published.",
     note: "Members keep control of their conditions. The organizer cannot bypass validation.",
     action: "See versioning",
-    icon: "âœ“",
+    icon: "v",
   },
 ];
 
@@ -104,12 +104,13 @@ export default function FeatureStory() {
       <div className="story-frame">
         <div className="story-topbar">
           <span className="story-mini-brand"><i>T</i> TripSync</span>
-          <span>03 Â· PROCESS</span>
+          <span>03 / PROCESS</span>
         </div>
         <div className="story-window">
           <aside className="story-intro">
             <p className="story-label">HOW IT WORKS</p>
-            <h2>Five steps. One decision.</h2>
+            <h2>Five steps.<br />One decision.</h2>
+            <p>Each stage keeps private input, revision, and final agreement clear.</p>
             <nav className="story-nav" aria-label="Choose a process step">
               {features.map((feature, index) => (
                 <button
@@ -139,7 +140,7 @@ export default function FeatureStory() {
                   <button type="button" className="stacked-heading" onClick={() => goToStep(index)} aria-expanded={index === activeIndex}>
                     <span className="stacked-icon">{feature.icon}</span>
                     <span className="stacked-title"><small>{feature.number}</small>{feature.title}</span>
-                    <i>â†—</i>
+                    <i>-&gt;</i>
                   </button>
                   <div className="stacked-detail">
                     <div className="stacked-detail-inner">
@@ -155,7 +156,7 @@ export default function FeatureStory() {
                           </div>
                         ))}
                       </div>
-                      <Link href={index === 0 ? "/signup?next=/trips/new" : "/how-it-works"}>{feature.action}<span>â†’</span></Link>
+                      <Link href={index === 0 ? "/signup?next=/trips/new" : "/how-it-works"}>{feature.action}<span>-&gt;</span></Link>
                     </div>
                   </div>
                 </article>
