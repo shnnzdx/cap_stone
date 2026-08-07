@@ -1,633 +1,902 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { feedback, insights, members, planSections, trip } from './finalData'
-import { buildTripPreviewAbsoluteUrl } from '../../../shared/tripsync-preview-contract.js'
-import {
-  buildGuestInvitePath,
-  buildOrganizerAccountPath,
-  buildOrganizerArchivedPath,
-  buildOrganizerCreatePath,
-  buildOrganizerHomePath,
-  buildOrganizerSettingsPath,
-  buildOrganizerTripPreferencesPath,
-  buildOrganizerTripStagePath,
-  buildParticipantTripPath,
-  guestStageOrder,
-  organizerStageOrder,
-} from '../../../shared/tripsync-domain.js'
+import { TripAppProvider, useTripApp } from './TripAppState.jsx'
+import { baseUpdates, currentUser, guestDraft, initialComments, initialDays, otherTrips, personalUpdates, routeSegments, trip, tripMembers, tripStyles } from './tripContent.js'
+import TripMap from './TripMap.jsx'
 
-const DemoContext = createContext(null)
-const useDemo = () => useContext(DemoContext)
-
-function DemoProvider({ children }) {
-  const [guestStage, setGuestStage] = useState('preferences')
-  const [inviteJoined, setInviteJoined] = useState(false)
-  const [inviteName, setInviteName] = useState('')
-  const [reviewed, setReviewed] = useState(false)
-  const [selectedSection, setSelectedSection] = useState(null)
-  const [note, setNote] = useState('')
-  const [noteType, setNoteType] = useState('suggestion')
-  const [visibility, setVisibility] = useState('organizer')
-  const [saved, setSaved] = useState(false)
-  const [planUpdated, setPlanUpdated] = useState(false)
-  const [finalized, setFinalized] = useState(false)
-  const [toast, setToast] = useState('')
-  const [coverageChoice, setCoverageChoice] = useState('continue')
-  const [draftCompareOpen, setDraftCompareOpen] = useState(false)
-  const [manualEdit, setManualEdit] = useState(false)
-  const [organizerPreferencesSubmitted, setOrganizerPreferencesSubmitted] = useState(false)
-  const notify = message => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2200)
-  }
-  const value = useMemo(() => ({ guestStage, setGuestStage, inviteJoined, setInviteJoined, inviteName, setInviteName, reviewed, setReviewed, selectedSection, setSelectedSection, note, setNote, noteType, setNoteType, visibility, setVisibility, saved, setSaved, planUpdated, setPlanUpdated, finalized, setFinalized, coverageChoice, setCoverageChoice, draftCompareOpen, setDraftCompareOpen, manualEdit, setManualEdit, organizerPreferencesSubmitted, setOrganizerPreferencesSubmitted, notify }), [guestStage, inviteJoined, inviteName, reviewed, selectedSection, note, noteType, visibility, saved, planUpdated, finalized, coverageChoice, draftCompareOpen, manualEdit, organizerPreferencesSubmitted])
-  return <DemoContext.Provider value={value}>{children}{toast && <div className="toast">{toast}</div>}</DemoContext.Provider>
-}
-
-const cx = (...xs) => xs.filter(Boolean).join(' ')
-
-function Button({ children, secondary, ghost, className, ...props }) {
-  return <button className={cx('btn', secondary && 'btnSecondary', ghost && 'btnGhost', className)} {...props}>{children}</button>
-}
-
-function Badge({ children, tone = 'neutral' }) { return <span className={`badge badge-${tone}`}>{children}</span> }
-
-function Logo() { return <Link to="/" className="logo"><span className="logoMark">T</span><span>TripSync</span></Link> }
-
-function DashboardTripCard({ to, imageClass, when, title, meta, badge, badgeTone, action, progress }) {
-  return <Link to={to} className="dashboardTripCard">
-    <div className={`tripPhoto ${imageClass}`}><span>{when}</span></div>
-    <div className="dashboardTripBody">
-      <div className="tripTitle"><h2>{title}</h2><Badge tone={badgeTone}>{badge}</Badge></div>
-      <p>{meta}</p>
-      <div className="progressBar"><span style={{ width: progress }} /></div>
-      <strong>{action} →</strong>
-    </div>
-  </Link>
-}
-
-function Home() {
-  return <main className="homePage">
-    <header className="topNav">
-      <Logo />
-      <nav><Link className="active" to="/">My Trips</Link><Link to={buildOrganizerCreatePath()}>New Trip</Link></nav>
-      <AccountMenu />
-    </header>
-    <section className="homeContent">
-      <div className="promoCard">
-        <div><Badge tone="purple">Group trip planning</Badge><h1>Your group trips, all in one place.</h1><p>Open upcoming plans, review requests, and trips you created from the same dashboard.</p><Link className="btn" to={buildOrganizerCreatePath()}>+ New trip</Link></div>
-        <div className="promoVisual"><div className="miniMap"/><div className="miniPlan"><span/><span/><span/></div></div>
-      </div>
-      <div className="dashboardHead"><div><span className="eyebrow">My Trips</span><h1>Recently viewed and upcoming trips</h1></div><Link className="btn" to={buildOrganizerCreatePath()}>+ New trip</Link></div>
-      <section className="dashboardGrid">
-        <DashboardTripCard to={buildOrganizerTripStagePath(trip.id, 'collect')} imageClass="photoChicago" when="7 days" title={trip.name} meta="Organizer · Chicago · Aug 14–17" badge="Organizer" badgeTone="purple" action="Collect preferences" progress="38%" />
-        <DashboardTripCard to={buildParticipantTripPath(trip.id)} imageClass="photoLake" when="Needs review" title="Lake house weekend" meta="Participant · Lake Geneva · Sep 4–7" badge="Participant" badgeTone="blue" action="Review plan" progress="72%" />
-        <DashboardTripCard to={buildOrganizerTripStagePath(trip.id, 'final')} imageClass="photoMountain" when="Final" title="Annual ski weekend" meta="Organizer · Park City · Dec 3–7" badge="Final" badgeTone="green" action="Open final plan" progress="100%" />
-      </section>
-    </section>
-  </main>
-}
-
-const organizerNav = organizerStageOrder.map(([id, navLabel]) => [id, navLabel])
-
-const tripFlowSteps = organizerStageOrder.map(([id, _navLabel, flowLabel]) => [id, flowLabel])
-
-const guestFlowSteps = guestStageOrder
+const visibleStatus = status => ['Booked', 'Updated'].includes(status) ? status : ''
+const statusTone = status => status === 'Booked' ? 'purple' : status === 'Updated' ? 'green' : 'blue'
 
 const calendarMonths = [
   { label: 'August 2026', month: 7 },
   { label: 'September 2026', month: 8 },
 ]
-
-const makeDate = (month, day) => new Date(2026, month, day)
-const suggestedTripRange = { start: makeDate(7, 14), end: makeDate(7, 17) }
-const dayKey = date => date ? date.toISOString().slice(0, 10) : ''
+const dayKey = date => date ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : ''
 const sameDay = (a, b) => a && b && dayKey(a) === dayKey(b)
-const isBefore = (a, b) => dayKey(a) < dayKey(b)
-const isAfter = (a, b) => dayKey(a) > dayKey(b)
-const isWithin = (day, range) => range.start && range.end && !isBefore(day, range.start) && !isAfter(day, range.end)
+const isBefore = (a, b) => a.getTime() < b.getTime()
+const isWithin = (day, range) => range.start && range.end && !isBefore(day, range.start) && !isBefore(range.end, day)
 const nightsBetween = range => range.start && range.end ? Math.max(0, Math.round((range.end - range.start) / 86400000)) : 0
 const formatShortDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'
-const formatDateRange = range => range.start && range.end ? `${formatShortDate(range.start)} - ${formatShortDate(range.end)}, 2026` : 'Select dates'
+const formatDateRange = range => range.start && range.end ? `${formatShortDate(range.start)} – ${formatShortDate(range.end)}, 2026` : 'Select dates'
 
-const itineraryDays = [
-  {
-    id: 'day1', date: 'Fri, Aug 14', title: 'Arrival, Riverwalk, and first dinner', booking: 'Flexible', photoClass: 'photoChicago',
-    highlights: ['Flexible arrivals', 'Riverwalk sunset', 'Casual group dinner'],
-    route: 'Keep the first evening walkable from River North so late arrivals can join without a transfer.',
-    why: 'This day stays low-pressure because arrival times vary. It gives the group one shared dinner without making anyone rush from the airport.',
-    locations: ['River North hotel base', 'Chicago Riverwalk', 'Casual dinner nearby'],
-    items: [
-      { id: 'day1-checkin', time: '4:00 PM', title: 'Check in around River North', place: 'Hotel base', note: 'Central enough for transit and dinner.' },
-      { id: 'day1-riverwalk', time: '6:00 PM', title: 'Riverwalk sunset walk', place: 'Chicago Riverwalk', note: 'Easy first shared activity.' },
-      { id: 'day1-dinner', time: '7:30 PM', title: 'Casual welcome dinner', place: 'River North', note: 'No fixed menu yet.' },
-    ],
-  },
-  {
-    id: 'day2', date: 'Sat, Aug 15', title: 'Architecture cruise and birthday dinner', booking: 'Needs reservation', photoClass: 'photoLake',
-    highlights: ['10:00 AM cruise', 'Free afternoon', 'Birthday dinner'],
-    route: 'Use transit or rideshare to the dock, then keep dinner and rooftop plans close together.',
-    why: 'This is the most important day because it carries the main celebration. The later cruise start protects the no-early-morning preference while keeping the birthday dinner intact.',
-    locations: ['Architecture cruise dock', 'River North dinner', 'Rooftop drinks'],
-    items: [
-      { id: 'day2-cruise', time: '10:00 AM', title: 'Architecture cruise', place: 'Chicago River dock', note: 'Reservation needed after group approval.' },
-      { id: 'day2-free', time: '1:00 PM', title: 'Free afternoon buffer', place: 'Loop / River North', note: 'Absorbs different energy levels.' },
-      { id: 'day2-dinner', time: '7:00 PM', title: 'Birthday dinner', place: 'River North', note: 'Highest booking priority.' },
-    ],
-  },
-  {
-    id: 'day3', date: 'Sun, Aug 16', title: 'Neighborhood choice and shared evening', booking: 'Optional holds', photoClass: 'photoMountain',
-    highlights: ['Brunch', 'Wicker Park or West Loop', 'Evening regroup'],
-    route: 'Split the afternoon by interest, then regroup near the dinner area to avoid complex transfers.',
-    why: 'A flexible afternoon lets food, culture, shopping, and rest preferences coexist without forcing one long activity on everyone.',
-    locations: ['Brunch spot', 'Wicker Park option', 'West Loop option'],
-    items: [
-      { id: 'day3-brunch', time: '10:30 AM', title: 'Late brunch', place: 'Near hotel', note: 'Keeps the morning relaxed.' },
-      { id: 'day3-choice', time: '12:30 PM', title: 'Choose a neighborhood lane', place: 'Wicker Park / West Loop', note: 'Group can split safely.' },
-      { id: 'day3-regroup', time: '6:30 PM', title: 'Shared evening meetup', place: 'Dinner area', note: 'Locks the group back together.' },
-    ],
-  },
-]
+const pathLabels = {
+  A: 'Applies now',
+  B: 'Goes to a group round',
+  C: 'Needs confirmation',
+}
 
-function DateRangePicker({ value, onChange, min, max, suggestedRange, caption }) {
-  const disabled = day => (min && isBefore(day, min)) || (max && isAfter(day, max))
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [pathname])
+  return null
+}
+
+// 弹层通用:点击外部即关闭
+function useClickOutside(active, onClose) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!active) return
+    const handle = event => {
+      if (ref.current && !ref.current.contains(event.target)) onClose()
+    }
+    document.addEventListener('pointerdown', handle)
+    return () => document.removeEventListener('pointerdown', handle)
+  }, [active, onClose])
+  return ref
+}
+
+// 路由里的 tripId 命中用户创建的 trip 时返回它,否则回落到芝加哥演示 trip
+function useCurrentTrip() {
+  const { tripId } = useParams()
+  const app = useTripApp()
+  return app.trips.find(item => item.id === tripId) || trip
+}
+
+function DateRangePicker({ value, onChange }) {
   const chooseDay = day => {
-    if (disabled(day)) return
-    if (!value.start || value.end) {
-      onChange({ start: day, end: null })
-      return
-    }
-    if (isBefore(day, value.start)) {
-      onChange({ start: day, end: value.start })
-      return
-    }
+    if (!value.start || value.end) return onChange({ start: day, end: null })
+    if (isBefore(day, value.start)) return onChange({ start: day, end: value.start })
     onChange({ start: value.start, end: day })
   }
-
   return <div className="rangeCalendar">
-    <div className="rangeCalendarSummary">
-      <div><span>Dates</span><strong>{formatDateRange(value)}</strong></div>
-      <small>{value.start && value.end ? `${nightsBetween(value)} nights` : 'Choose a start and end date'}</small>
-    </div>
-    {caption && <p className="calendarCaption">{caption}</p>}
-    <div className="calendarMonths">
-      {calendarMonths.map(month => {
-        const first = new Date(2026, month.month, 1).getDay()
-        const count = new Date(2026, month.month + 1, 0).getDate()
-        const blanks = Array.from({ length: first }, (_, index) => <span className="calendarBlank" key={`blank-${index}`} />)
-        const days = Array.from({ length: count }, (_, index) => {
-          const day = new Date(2026, month.month, index + 1)
-          const inSelectedRange = isWithin(day, value)
-          const inSuggestedRange = suggestedRange && isWithin(day, suggestedRange)
-          return <button
-            type="button"
-            key={dayKey(day)}
-            disabled={disabled(day)}
-            className={cx(
-              sameDay(day, value.start) && 'rangeStart',
-              sameDay(day, value.end) && 'rangeEnd',
-              inSelectedRange && 'inRange',
-              inSuggestedRange && 'suggested',
-            )}
-            onClick={() => chooseDay(day)}
-          >
-            {index + 1}
-          </button>
-        })
-        return <section className="calendarMonth" key={month.label}>
-          <h3>{month.label}</h3>
-          <div className="weekdayRow">{['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}</div>
-          <div className="calendarGrid">{blanks}{days}</div>
-        </section>
-      })}
-    </div>
+    <div className="rangeCalendarSummary"><div><span>Trip dates</span><strong>{formatDateRange(value)}</strong></div><small>{value.start && value.end ? `${nightsBetween(value)} nights` : 'Choose a start and end date'}</small></div>
+    <div className="calendarMonths">{calendarMonths.map(month => {
+      const first = new Date(2026, month.month, 1).getDay()
+      const count = new Date(2026, month.month + 1, 0).getDate()
+      return <section className="calendarMonth" key={month.label}><h3>{month.label}</h3><div className="weekdayRow">{['S','M','T','W','T','F','S'].map((d,i) => <span key={`${d}-${i}`}>{d}</span>)}</div><div className="calendarGrid">
+        {Array.from({ length: first }, (_, i) => <span className="calendarBlank" key={`b-${i}`}/>) }
+        {Array.from({ length: count }, (_, i) => { const day = new Date(2026, month.month, i + 1); return <button type="button" key={dayKey(day)} className={cx(sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
+      </div></section>
+    })}</div>
   </div>
 }
 
-function FlowHeader({ role, steps, active, backTo, children }) {
-  const activeIndex = Math.max(0, steps.findIndex(([id]) => id === active))
-  return <header className="flowHeader">
-    <div className="flowIdentity">
-      <Logo />
-      {backTo && <Link to={backTo} className="topBackLink">← Back to My Trips</Link>}
-      <div><span>{role}</span><strong>{trip.name}</strong></div>
-    </div>
-    <nav className="flowStepper" aria-label={`${role} flow`}>
-      {steps.map(([id, label, href], index) => {
-        const state = index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'upcoming'
-        const content = <><i>{index + 1}</i><span>{label}</span></>
-        return href
-          ? <Link key={id} className={state} to={href}>{content}</Link>
-          : <span key={id} className={state}>{content}</span>
-      })}
-    </nav>
-    <div className="flowActions">{children}</div>
-  </header>
+const cx = (...classes) => classes.filter(Boolean).join(' ')
+
+function Logo() {
+  return <Link to="/" className="logo"><span className="logoMark">T</span><span>TripSync</span></Link>
 }
 
-function OrganizerShell({ children }) {
-  const location = useLocation()
-  const demo = useDemo()
-  const isTripView = location.pathname.includes('/trip/')
-  const activeStep = location.pathname.split('/').filter(Boolean).pop()
-  const flowSteps = tripFlowSteps.map(([id, label]) => [id, label, buildOrganizerTripStagePath(trip.id, id)])
-  const submittedCount = demo.organizerPreferencesSubmitted ? 4 : 3
-  return <div className="appShell">
-    <div className="appMain">
-      {isTripView ? <FlowHeader role="Trip planning" steps={flowSteps} active={activeStep} backTo="/">
-        <Link className={cx('btn btnSecondary selfPrefsNav', !demo.organizerPreferencesSubmitted && 'attention')} to={buildOrganizerTripPreferencesPath(trip.id)}>{demo.organizerPreferencesSubmitted ? 'My preferences ✓' : 'Submit my preferences'}</Link>
-        <div className="topStatus"><Badge tone="green">Live plan</Badge><span>{submittedCount} responses · review closes Friday</span></div>
-        <AccountMenu label="Trip organizer" />
-      </FlowHeader> : <header className="organizerTop">
-        <div className="organizerTopLeft"><Logo /></div>
-        <AccountMenu />
-      </header>}
-      <div className="page">{children}</div>
-    </div>
-  </div>
+function Badge({ children, tone = 'neutral' }) {
+  return <span className={`badge badge-${tone}`}>{children}</span>
 }
 
-function AccountMenu({ label = 'Organizer workspace' } = {}) {
-  const demo = useDemo()
-  return <details className="accountMenu">
-    <summary>
-      <div className="accountBlock"><span className="eyebrow">{label}</span><strong>Emma Carter</strong></div>
-      <div className="avatar">EC</div>
-    </summary>
-    <div className="accountDropdown">
-      <div className="accountDropdownHead"><div className="avatar">EC</div><div><strong>Emma Carter</strong><span>emma.carter@example.com</span></div></div>
-      <Link to={buildOrganizerAccountPath()}>○ Account</Link>
-      <Link to={buildOrganizerSettingsPath()}>⚙ Settings</Link>
-      <button type="button" onClick={() => demo.notify('Signed out for demo')}>↗ Sign out</button>
-    </div>
-  </details>
+function Button({ children, secondary, ghost, className, ...props }) {
+  return <button className={cx('btn', secondary && 'btnSecondary', ghost && 'btnGhost', className)} {...props}>{children}</button>
 }
 
-function WorkspaceTabs({ active }) {
-  return <nav className="workspaceTabs" aria-label="Trip workspace sections">
-    <Link className={active === 'active' ? 'active' : ''} to={buildOrganizerHomePath()}><span>Active trips</span><Badge tone="blue">2</Badge></Link>
-    <Link className={active === 'archived' ? 'active' : ''} to={buildOrganizerArchivedPath()}><span>Archived</span><Badge>2</Badge></Link>
-  </nav>
-}
-
-function OrganizerTrips({ archived = false }) {
-  return <OrganizerShell><div className="pageHeading"><div><span className="eyebrow">Workspace</span><h1>My Trips</h1><p>{archived ? 'Completed and paused trips are kept here for reference.' : 'Trips that need your attention appear first.'}</p></div><Link className="btn" to={buildOrganizerCreatePath()}>＋ Create trip</Link></div>
-    <WorkspaceTabs active={archived ? 'archived' : 'active'} />
-    {archived ? <ArchivedTripsList /> : <ActiveTripsList />}
-  </OrganizerShell>
-}
-
-function ActiveTripsList() {
-  return <>
-    <section className="workspaceSummary">
-      <article><span>Current focus</span><strong>Collect missing preferences</strong><p>Liam is in progress. Ethan has not opened the invite.</p></article>
-      <article><span>Next decision</span><strong>Generate plan from 4 responses</strong><p>Missing guests are excluded until they submit.</p></article>
-      <article><span>Plan quality</span><strong>All known must-haves feasible</strong><p>Private constraints remain summarized, not exposed.</p></article>
-    </section>
-    <div className="sectionLabel">Needs your attention <span>1</span></div>
-    <Link to={buildOrganizerTripStagePath(trip.id, 'collect')} className="tripCard">
-      <div className="tripThumb photoChicago"><span>Chicago</span></div>
-      <div className="tripDate"><strong>14</strong><span>AUG</span></div>
-      <div className="tripCardBody"><div className="tripTitle"><h2>{trip.name}</h2><Badge tone="purple">Organizer</Badge></div><p>{trip.destination} · {trip.dates}</p><div className="progressBar"><span style={{ width: '38%' }} /></div><small>4 of 6 preferences submitted · Review closes Friday</small></div>
-      <div className="tripAction"><Badge tone="orange">Collecting</Badge><strong>Review responses →</strong></div>
-    </Link>
-    <div className="sectionLabel">Upcoming <span>1</span></div>
-    <div className="tripCard mutedCard"><div className="tripThumb photoMountain"><span>Park City</span></div><div className="tripDate"><strong>03</strong><span>DEC</span></div><div className="tripCardBody"><div className="tripTitle"><h2>Annual ski weekend</h2><Badge>Participant</Badge></div><p>Park City, Utah · December 3-7, 2026</p><small>Final plan published · No action needed</small></div><div className="tripAction"><Badge tone="green">Final</Badge></div></div>
-  </>
-}
-
-function ArchivedTripsList() {
-  return <>
-    <section className="archiveSummary">
-      <article><strong>2 archived trips</strong><p>Older plans stay searchable without competing with active work.</p></article>
-      <article><strong>Last archived</strong><p>Napa birthday weekend · July 2026</p></article>
-    </section>
-    <div className="sectionLabel">Archived trips <span>2</span></div>
-    <div className="tripCard archivedCard"><div className="tripThumb photoLake"><span>Napa</span></div><div className="tripDate"><strong>10</strong><span>JUL</span></div><div className="tripCardBody"><div className="tripTitle"><h2>Napa birthday weekend</h2><Badge>Archived</Badge></div><p>Napa Valley, California · July 10-13, 2026</p><small>Final itinerary kept for reference · 6 participants</small></div><div className="tripAction"><Badge>Closed</Badge><strong>View summary →</strong></div></div>
-    <div className="tripCard archivedCard"><div className="tripThumb photoChicago"><span>Boston</span></div><div className="tripDate"><strong>22</strong><span>MAY</span></div><div className="tripCardBody"><div className="tripTitle"><h2>Boston graduation trip</h2><Badge>Archived</Badge></div><p>Boston, Massachusetts · May 22-25, 2026</p><small>Plan completed · feedback exported</small></div><div className="tripAction"><Badge>Closed</Badge><strong>View summary →</strong></div></div>
-  </>
-}
-
-function AccountPage() {
-  const demo = useDemo()
-  const [profile, setProfile] = useState({ name: 'Emma Carter', email: 'emma.carter@example.com', phone: '+1 (312) 555-0148', timezone: 'America/Chicago' })
-  const update = (key, value) => setProfile(current => ({ ...current, [key]: value }))
-  return <OrganizerShell><PageIntro eyebrow="Account" title="Account profile" action={<Button onClick={() => demo.notify('Account profile saved')}>Save changes</Button>}>Manage the identity shown to invited participants and other organizers.</PageIntro>
-    <section className="accountGrid">
-      <div className="panel profilePanel"><div className="profileHero"><div className="avatar bigAvatar">EC</div><div><h2>{profile.name}</h2><p>Organizer · TripSync workspace owner</p></div></div><div className="profileMeta"><span><strong>Visible name</strong>{profile.name}</span><span><strong>Login email</strong>{profile.email}</span><span><strong>Workspace role</strong>Organizer</span></div></div>
-      <form className="panel accountForm">
-        <label><span>Full name</span><input value={profile.name} onChange={e => update('name', e.target.value)} /></label>
-        <label><span>Email</span><input type="email" value={profile.email} onChange={e => update('email', e.target.value)} /></label>
-        <label><span>Phone</span><input value={profile.phone} onChange={e => update('phone', e.target.value)} /></label>
-        <label><span>Timezone</span><select value={profile.timezone} onChange={e => update('timezone', e.target.value)}><option>America/Chicago</option><option>America/New_York</option><option>America/Los_Angeles</option></select></label>
-      </form>
-    </section>
-  </OrganizerShell>
-}
-
-function SettingsPage() {
-  const demo = useDemo()
-  const [settings, setSettings] = useState({ email: true, reminders: true, privateSummary: true, autoArchive: false })
-  const toggle = key => setSettings(current => ({ ...current, [key]: !current[key] }))
-  return <OrganizerShell><PageIntro eyebrow="Settings" title="Workspace settings" action={<Button onClick={() => demo.notify('Settings saved')}>Save settings</Button>}>Control organizer notifications, privacy defaults, and trip lifecycle behavior.</PageIntro>
-    <section className="panel settingsPanel">
-      {[
-        ['email', 'Email updates', 'Receive response, review, and final-plan notifications.'],
-        ['reminders', 'Smart reminders', 'Suggest reminders for participants who are late or in progress.'],
-        ['privateSummary', 'Protect private inputs by default', 'Summarize protected constraints without exposing original text.'],
-        ['autoArchive', 'Auto-archive completed trips', 'Move finalized trips into Archived after 30 days.'],
-      ].map(([key, title, detail]) => <button type="button" className={settings[key] ? 'settingRow enabled' : 'settingRow'} onClick={() => toggle(key)} key={key}><span><strong>{title}</strong><small>{detail}</small></span><i>{settings[key] ? 'On' : 'Off'}</i></button>)}
-    </section>
-  </OrganizerShell>
-}
-
-
-function CreateTripPage() {
-  const demo = useDemo()
-  const [created, setCreated] = useState(false)
-  const [dateRange, setDateRange] = useState(suggestedTripRange)
-  const [form, setForm] = useState({
-    name: "Mia's 30th in Chicago",
-    destination: 'Chicago, Illinois',
-    flexibility: 'fixed',
-    size: '6',
-    currency: 'USD',
-    assumptions: 'Relaxed pace, central stay, shared dinners, and no activities before 9:00 AM unless everyone agrees.',
-    deadline: 'Friday, August 7 at 6:00 PM',
-  })
-  const invitePath = buildGuestInvitePath(trip.id)
-  const inviteLink = buildTripPreviewAbsoluteUrl('http://127.0.0.1:5173', invitePath)
-  const update = (key, value) => setForm(current => ({ ...current, [key]: value }))
-  const selectedDates = formatDateRange(dateRange)
-
-  if (created) {
-    return <OrganizerShell><div className="createTripLayout"><PageIntro eyebrow="Create trip" title="Invite link ready">Share this link with the group. People can review the basics first, then join as a guest or with an account.</PageIntro>
-      <section className="panel createdTripPanel">
-        <div><Badge tone="green">Trip created</Badge><h2>{form.name}</h2><p>{form.destination} · {selectedDates} · {form.flexibility === 'fixed' ? 'fixed dates' : 'flexible dates'} · expected group size {form.size}</p></div>
-        <div className="inviteUrl"><span>{inviteLink}</span><Button secondary onClick={() => demo.notify('Invite link copied')}>Copy link</Button><Link className="btn btnSecondary" to={invitePath}>Open invite page</Link></div>
-        <div className="inviteRules"><strong>Invite behavior</strong><span>One trip has one main invite link.</span><span>Opening the link does not automatically join the trip.</span><span>Membership is created only after the person confirms as guest or logs in.</span></div>
-      </section>
-      <div className="finalActions"><Link className="btn btnSecondary" to="/">Back to My Trips</Link><Link className="btn" to={buildOrganizerTripStagePath(trip.id, 'collect')}>Go to collect preferences</Link></div>
-    </div>
-    </OrganizerShell>
-  }
-
-  return <OrganizerShell><div className="createTripLayout"><PageIntro eyebrow="Create trip" title="Start a new group trip">Set the trip basics, choose a date window, and share one invite link with the group.</PageIntro>
-    <form className="panel createTripForm" onSubmit={e => { e.preventDefault(); setCreated(true) }}>
-      <label><span>Trip name</span><input value={form.name} onChange={e => update('name', e.target.value)} /></label>
-      <label><span>Destination</span><input value={form.destination} onChange={e => update('destination', e.target.value)} /></label>
-      <fieldset className="dateChoice dateModeChoice">
-        <legend>Date flexibility</legend>
-        <div>
-          <button type="button" className={form.flexibility === 'fixed' ? 'selected' : ''} onClick={() => update('flexibility', 'fixed')}><span>Fixed dates</span><strong>Guests choose within this window</strong></button>
-          <button type="button" className={form.flexibility === 'flexible' ? 'selected' : ''} onClick={() => update('flexibility', 'flexible')}><span>Flexible dates</span><strong>Guests can suggest another range</strong></button>
-        </div>
-      </fieldset>
-      <DateRangePicker
-        value={dateRange}
-        onChange={setDateRange}
-        suggestedRange={suggestedTripRange}
-        caption={form.flexibility === 'fixed' ? 'This range becomes the trip window.' : 'This range is the organizer suggestion. Guests may propose a different range.'}
-      />
-      <div className="formRow"><label><span>Expected group size</span><input type="number" min="2" value={form.size} onChange={e => update('size', e.target.value)} /></label><label><span>Currency</span><select value={form.currency} onChange={e => update('currency', e.target.value)}><option>USD</option><option>CAD</option><option>EUR</option><option>GBP</option></select></label></div>
-      <label><span>Shared trip assumptions</span><textarea rows="4" value={form.assumptions} onChange={e => update('assumptions', e.target.value)} /></label>
-      <label><span>Preferences deadline</span><input value={form.deadline} onChange={e => update('deadline', e.target.value)} /></label>
-      <div className="formActions"><Link className="btn btnSecondary" to="/">Cancel</Link><Button disabled={!dateRange.start || !dateRange.end}>Create trip and generate invite</Button></div>
-    </form>
-  </div>
-  </OrganizerShell>
-}
-
-function OrganizerPreferencesPage() {
-  return <OrganizerShell><PageIntro eyebrow="My preferences" title="Submit your own preferences">You are organizing this trip, but you are also a member of the group. These answers are included in the same planning logic as everyone else's.</PageIntro><Preferences organizerMode /></OrganizerShell>
-}
-
-function PageIntro({ eyebrow, title, children, action }) { return <div className="pageHeading"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{children && <p>{children}</p>}</div>{action}</div> }
-
-function CollectPage() {
-  const nav = useNavigate()
-  const demo = useDemo()
-  const visibleMembers = members.map(m => m.role === 'Organizer' ? { ...m, status: demo.organizerPreferencesSubmitted ? 'Submitted' : 'Not started' } : m)
-  const submittedCount = visibleMembers.filter(m => m.status === 'Submitted').length
-  const inProgressCount = visibleMembers.filter(m => m.status === 'In progress').length
-  const notStartedCount = visibleMembers.filter(m => m.status === 'Not started').length
-  const responseCoverage = Math.round((submittedCount / trip.people) * 100)
-  return <OrganizerShell><PageIntro eyebrow="Step 1 of 5" title="Collect preferences" action={<Button disabled={!demo.organizerPreferencesSubmitted} onClick={() => nav(`/organizer/trip/${trip.id}/insights`)}>Continue with {submittedCount} responses →</Button>}>See who has responded. The organizer is also a trip member, so Emma's own preferences must be submitted before planning.</PageIntro>
-    <section className={cx('panel organizerPreferenceCard', demo.organizerPreferencesSubmitted && 'submitted')}>
-      <div><span className="memberAvatar">EM</span><div><Badge tone={demo.organizerPreferencesSubmitted ? 'green' : 'orange'}>{demo.organizerPreferencesSubmitted ? 'Submitted' : 'Required'}</Badge><h2>My preferences as a trip member</h2><p>Emma is counted in the group plan. Her budget, dates, and must-haves need to be submitted just like every other participant.</p></div></div>
-      <Link className="btn" to={`/organizer/trip/${trip.id}/preferences`}>{demo.organizerPreferencesSubmitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
-    </section>
-    <div className="notice noticeBlue"><strong>Response window open</strong><span>{trip.deadline}</span><Button secondary onClick={() => demo.notify('Invitation link copied')}>Copy invitation link</Button></div>
-    <div className="metricRow"><Metric value={`${submittedCount} / ${trip.people}`} label="Submitted"/><Metric value={String(inProgressCount)} label="In progress"/><Metric value={String(notStartedCount)} label="Not started"/><Metric value={`${responseCoverage}%`} label="Response coverage"/></div>
-    <section className="panel"><div className="panelHeader"><div><h2>Participants</h2><p>Organizer and participant submission status is visible here. Private preferences remain protected.</p></div><Button secondary onClick={() => demo.notify('Reminders sent to pending participants')}>Remind pending</Button></div>
-      <div className="memberList">{visibleMembers.map(m => <div className={cx('memberRow', m.role === 'Organizer' && 'memberSelf')} key={m.name}><span className="memberAvatar">{m.avatar}</span><div><strong>{m.name}</strong><small>{m.role}{m.role === 'Organizer' ? ' · trip member' : ''}</small></div><span className="spacer"/><Badge tone={m.status === 'Submitted' ? 'green' : m.status === 'In progress' ? 'orange' : 'neutral'}>{m.status}</Badge>{m.role === 'Organizer' ? <Link className="textBtn" to={`/organizer/trip/${trip.id}/preferences`}>{demo.organizerPreferencesSubmitted ? 'Edit response' : 'Submit preferences'}</Link> : m.status !== 'Submitted' && <button className="textBtn" onClick={() => demo.notify(`Reminder sent to ${m.name}`)}>Send reminder</button>}</div>)}</div>
-    </section>
-    <section className="panel decisionPanel"><div><span className="eyebrow">Organizer decision</span><h2>Continue now or wait?</h2><p>{demo.organizerPreferencesSubmitted ? 'Continuing now is allowed, but the generated plan will explicitly state that two invitees are not represented.' : 'Submit your own preferences first. Organizer preferences are part of the group input, not only workspace settings.'}</p></div><div className="decisionOptions"><button className={demo.coverageChoice === 'continue' ? 'selected' : ''} disabled={!demo.organizerPreferencesSubmitted} onClick={() => { demo.setCoverageChoice('continue'); demo.notify('Plan will continue with current coverage') }}><strong>Continue with current coverage</strong><span>{demo.organizerPreferencesSubmitted ? 'Fastest path · clearly disclosed' : 'Locked until organizer response is submitted'}</span></button><button className={demo.coverageChoice === 'wait' ? 'selected' : ''} onClick={() => { demo.setCoverageChoice('wait'); demo.notify('Review window kept open') }}><strong>Wait for more responses</strong><span>Fairer plan · slower progress</span></button></div></section>
-    <div className="notice noticeWarn"><strong>Continue without everyone?</strong><span>{demo.organizerPreferencesSubmitted ? `This plan will reflect ${submittedCount} submitted responses. Liam and Ethan are not represented until they submit.` : 'Emma has not submitted her organizer-member preferences yet, so planning cannot fairly continue.'}</span></div>
-  </OrganizerShell>
-}
-
-function Metric
-({ value, label }) { return <div className="metric"><strong>{value}</strong><span>{label}</span></div> }
-
-function InsightsPage() {
-  const nav = useNavigate()
-  return <OrganizerShell><PageIntro eyebrow="Step 2 of 5" title="Group insights" action={<Button onClick={() => nav(`/organizer/trip/${trip.id}/plan`)}>Generate recommended plan →</Button>}>Rules calculate overlap and summarize trade-offs without exposing private responses.</PageIntro>
-    <div className="insightGrid">{insights.map(x => <article className={`insight insight-${x.tone}`} key={x.label}><span>{x.label}</span><strong>{x.value}</strong><p>{x.detail}</p></article>)}</div>
-    <div className="twoCol"><section className="panel"><div className="panelHeader"><div><h2>Availability overlap</h2><p>Submitted respondents only</p></div><Badge tone="green">Feasible</Badge></div><CalendarStrip/><div className="aiBox"><span>✦</span><div><strong>Why this window works</strong><p>August 14–17 is the only three-night window shared by every submitted respondent.</p></div></div></section>
-      <section className="panel"><div className="panelHeader"><div><h2>Main planning trade-off</h2><p>Budget ↔ central location</p></div><Badge tone="orange">1 trade-off</Badge></div><div className="tradeScale"><div><strong>Lower cost</strong><span>Stay farther out</span></div><div className="tradeLine"><i/></div><div><strong>Central stay</strong><span>+$38 per person</span></div></div><div className="privateBox"><span>🔒</span><div><strong>Private constraints protected</strong><p>The recommended plan can satisfy all submitted must-haves. Original private text is not shown.</p></div></div></section></div>
-    <section className="panel"><div className="panelHeader"><div><h2>What the plan will prioritize</h2><p>Priority order is explicit and reviewable.</p></div></div><div className="priorityList"><span><b>1</b>Submitted must-haves</span><span><b>2</b>Shared availability</span><span><b>3</b>Comfortable budgets</span><span><b>4</b>Approval blockers</span><span><b>5</b>Flexible preferences</span></div></section>
-  </OrganizerShell>
-}
-
-function CalendarStrip() { return <div className="calendarStrip">{['12 Wed','13 Thu','14 Fri','15 Sat','16 Sun','17 Mon','18 Tue'].map((d,i) => <div className={i >= 2 && i <= 5 ? 'selected' : ''} key={d}><strong>{d.split(' ')[0]}</strong><span>{d.split(' ')[1]}</span><small>{i >= 2 && i <= 5 ? '4/4' : i === 1 ? '3/4' : '2/4'}</small></div>)}</div> }
-
-function AiExplanation({ explanation }) {
-  const confidence = explanation.confidence.replace('AI synthesis', 'Generated summary').replace('AI estimate', 'Estimate').replace('AI recommendation', 'Recommendation')
-  return <details className="aiExplanation"><summary><span>✦</span><strong>Why this works</strong><em>{confidence}</em></summary><div className="aiDetail"><p>{explanation.why}</p><div><strong>What it satisfies</strong>{explanation.satisfies.map(x => <span key={x}>✓ {x}</span>)}</div><div><strong>Trade-off</strong><span>{explanation.tradeoff}</span></div></div></details>
-}
-
-function PlanCard({ section, reviewMode, onComment, onAcceptSection, organizerMode, onOrganizerComment, organizerComment }) {
-  const badge = section.badge.replace('AI estimate', 'Estimate')
-  return <article className={`planCard planCard-${section.id}`} id={section.id}><div className="planMedia"><span>{section.title.split(' · ')[0]}</span></div><div className="planCardTop"><span className="planIcon">{section.icon}</span><div><h2>{section.title}</h2><p>{section.summary}</p></div><Badge tone={badge.includes('review') ? 'orange' : 'neutral'}>{badge}</Badge></div><div className="planFacts">{section.details.map(x => <span key={x}>{x}</span>)}</div><AiExplanation explanation={section.explanation}/>{organizerComment && <div className="organizerComment"><strong>Organizer comment</strong><p>{organizerComment}</p></div>}{organizerMode && <div className="sectionActions organizerSectionActions"><span>Add context before sending this plan to the group.</span><Button secondary onClick={() => onOrganizerComment(section)}>{organizerComment ? 'Edit comment' : 'Add comment'}</Button></div>}{reviewMode && <div className="sectionActions"><span>Does this section work for you?</span><button className="textBtn" onClick={() => onAcceptSection(section)}>✓ Works for me</button><Button secondary onClick={() => onComment(section)}>Request changes</Button></div>}</article>
-}
-
-function InlineCommentComposer({ item, value, onChange, onSave, onCancel }) {
-  return <div className="inlineCommentComposer" id="organizerCommentComposer"><div className="composerHead"><span>Anonymous comment on</span><strong>{item.title}</strong><button onClick={onCancel}>×</button></div><textarea rows="2" value={value} onChange={e => onChange(e.target.value)} placeholder="Add a concern or suggested change. Your name will not be shown."/><div className="composerFoot"><span>Visible to everyone · anonymous</span><Button disabled={!value.trim()} onClick={onSave}>Send</Button></div></div>
-}
-
-function TripPlanOverview() {
-  return <section className="tripPlanOverview">
-    <article><span>Trip summary</span><h2>{trip.name}</h2><p>Three nights in Chicago built around food, architecture, a birthday dinner, and a relaxed pace.</p><div><Badge tone="green">Aug 14-17</Badge><Badge tone="purple">6 travelers</Badge><Badge tone="blue">$612 estimate pp</Badge></div></article>
-    <article><span>Stay overview</span><h2>River North base</h2><p>Boutique hotel area near transit, dinner plans, and the river. Prices are estimates until booking is verified.</p><div><Badge>2 rooms</Badge><Badge tone="orange">Verify price</Badge><Badge tone="green">Central</Badge></div></article>
-  </section>
-}
-
-function ItineraryItem({ item, index, comments = [], reaction, likeCount, onReact, onComment, activeComment, commentDraft, onDraftChange, onSaveComment, onCancelComment }) {
-  const commentCount = comments.length
-  return <article className={cx('itineraryItem placeBlock', activeComment && 'commentOpen')}><div className="itemPin">{index + 1}</div><div className="placeCard"><div className={`placePhoto ${item.photoClass || ''}`}></div><div className="placeContent"><div className="placeTitle"><span>⌖</span><h3>{item.title}</h3></div><p className="placeMeta">◷ {item.time} · {item.place}</p><p className="placeDesc">{item.note}</p></div><div className="placeQuickActions"><button className={reaction === 'like' ? 'selected' : ''} onClick={() => onReact(item.id, 'like')} aria-label="Like this place">👍 {likeCount > 0 ? likeCount : ''}</button><button onClick={() => onComment(item)} aria-label="Comment on this place">💬 {commentCount > 0 ? commentCount : ''}</button></div></div>{commentCount > 0 && <div className="anonymousThread">{comments.map((text, i) => <div className="anonymousComment" key={`${item.id}-${i}`}><span>{i + 1}</span><p>{text}</p></div>)}</div>}{activeComment && <InlineCommentComposer item={item} value={commentDraft} onChange={onDraftChange} onSave={onSaveComment} onCancel={onCancelComment} />}</article>
-}
-
-function ItineraryDay({ day, open, comments, reactions, likeCounts, activeCommentId, commentDraft, onDraftChange, onSaveComment, onCancelComment, onToggle, onReact, onComment }) {
-  const needsBooking = day.booking.toLowerCase().includes('reservation')
-  return <article className={cx('itineraryDay', open && 'open')}>
-    <button className="dayHeader" onClick={onToggle} aria-expanded={open}>
-      <div><span>{day.date}</span><h2>{day.title}</h2></div>
-      <div className="dayHighlights">{day.highlights.map(x => <small key={x}>{x}</small>)}</div>
-      <Badge tone={needsBooking ? 'orange' : 'green'}>{day.booking}</Badge>
-      <i>{open ? '−' : '+'}</i>
+function CustomSelect({ label, value, options, onChange, className }) {
+  const [open, setOpen] = useState(false)
+  const ref = useClickOutside(open, () => setOpen(false))
+  const selected = options.find(option => option.value === value) || options[0]
+  return <div className={cx('customSelectField', className)} ref={ref}>
+    <label>{label}</label>
+    <button type="button" className={cx('customSelectButton', open && 'open')} onClick={() => setOpen(current => !current)}>
+      <span>{selected.label}</span>
+      <i aria-hidden="true">⌄</i>
     </button>
-    <div className="dayBody"><div className="dayBodyInner"><section className="dayTimeline">{day.items.map((item, index) => <ItineraryItem key={item.id} item={{ ...item, photoClass: day.photoClass }} index={index} comments={comments[item.id]} reaction={reactions[item.id]} likeCount={likeCounts[item.id] || 0} onReact={onReact} onComment={onComment} activeComment={activeCommentId === item.id} commentDraft={commentDraft} onDraftChange={onDraftChange} onSaveComment={onSaveComment} onCancelComment={onCancelComment} />)}</section></div></div>
+    {open && <div className="customSelectMenu">
+      {options.map(option => <button type="button" key={option.value} className={cx(option.value === value && 'selected')} onClick={() => { onChange(option.value); setOpen(false) }}>
+        <span>{option.label}</span>
+        {option.value === value && <b>✓</b>}
+      </button>)}
+    </div>}
+  </div>
+}
+
+function Account() {
+  return <div className="account"><ProfileMenu/></div>
+}
+
+function ActionBell() {
+  const app = useTripApp()
+  const [open, setOpen] = useState(false)
+  const ref = useClickOutside(open, () => setOpen(false))
+  const actions = []
+  if (app.activeRound?.status === 'open') actions.push({ trip: trip.name, text: 'A group round is open — pick an option', to: `/trip/${trip.id}/updates` })
+  if (app.conflictCreated && !app.decisionResolved) actions.push({ trip: trip.name, text: 'A proposal is waiting for confirmation', to: `/trip/${trip.id}/updates` })
+  return <div className="actionBellWrap" ref={ref}>
+    <button className={cx('actionBell', actions.length && 'hasActions')} type="button" onClick={() => setOpen(current => !current)} aria-label="Action inbox">🔔</button>
+    {open && <div className="actionInbox">
+      <div className="actionInboxHead"><span>Actions</span><small>{actions.length ? `${actions.length} waiting` : 'Clear'}</small></div>
+      {actions.length === 0 && <div className="actionInboxEmpty">No trip actions right now.</div>}
+      {actions.map(action => <Link key={action.text} to={action.to} className="actionInboxItem">
+        <strong>{action.trip}</strong>
+        <span>{action.text}</span>
+      </Link>)}
+      {actions.length > 0 && <Link className="actionInboxFooter" to={`/trip/${trip.id}/updates`}>Open trip actions →</Link>}
+    </div>}
+  </div>
+}
+
+function ProfileMenu() {
+  const [open, setOpen] = useState(false)
+  const ref = useClickOutside(open, () => setOpen(false))
+  return <div className="profileMenuWrap" ref={ref}>
+    <button className="profileButton" type="button" onClick={() => setOpen(current => !current)} aria-label="Profile menu">{currentUser.initials}</button>
+    {open && <div className="profileMenu">
+      <div className="profileMenuHead"><span className="profilePhoto">{currentUser.initials}</span><div><strong>{currentUser.name}</strong><small>{currentUser.email}</small></div></div>
+      <button type="button"><span>◌</span> Profile</button>
+      <button type="button"><span>✈</span> Travel profile</button>
+      <button type="button"><span>🔔</span> Notifications</button>
+      <button type="button"><span>◍</span> Privacy</button>
+      <button type="button"><span>☾</span> Appearance</button>
+      <button type="button"><span>⚙</span> Settings</button>
+      <button type="button"><span>↪</span> Sign out</button>
+    </div>}
+  </div>
+}
+
+const cardPhotos = ['photoLake', 'photoMountain', 'photoNight', 'photoChicago']
+
+function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to }) {
+  return <Link className="dashboardTripCard" to={to || `/trip/${trip.id}/plan`}>
+    <div className={`tripPhoto ${imageClass}`}><Badge tone={tone}>{status}</Badge></div>
+    <div className="dashboardTripBody">
+      <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
+      <p>{location} · {dates}</p>
+      <div className="cardFooter"><span>{detail || 'Open current plan'}</span><strong>Open →</strong></div>
+    </div>
+  </Link>
+}
+
+function ActivityPhoto({ item }) {
+  const [failed, setFailed] = useState(false)
+  if (!item.photoUrl || failed) return <div className="activityPhoto activityPhotoFallback"><span>Photo</span></div>
+  return <div className="activityPhoto"><img src={item.photoUrl} alt="" loading="lazy" onError={() => setFailed(true)}/></div>
+}
+
+function Home() {
+  const app = useTripApp()
+  // Guest 没有账户,也就没有跨 trip 的仪表盘。直连过来就送回他所在的那趟旅行。
+  if (currentUser.role === 'guest') return <Navigate to={`/trip/${trip.id}/plan`} replace/>
+  const roundOpen = app.activeRound?.status === 'open'
+  const proposalPending = app.conflictCreated && !app.decisionResolved
+  return <main className="homePage">
+    <header className="editorialNav"><Logo/><nav><Link className="active" to="/">MY TRIPS</Link><Link to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
+    <section className="homeContent">
+      <div className="dashboardMasthead">
+        <div><span className="eyebrow">My trips</span><h1>Upcoming trips</h1><p>Pick up where the group left off.</p></div>
+      </div>
+      <Link className="createTripStrip featureCreateTrip" to="/create"><div><span className="roleChip">Create new trip</span><h2>Start a group trip frame</h2><p>Choose destination, dates, budget, and invite people when the frame is ready.</p></div><strong>New trip →</strong></Link>
+      {roundOpen && <Link className="dashboardAlert" to={`/trip/${trip.id}/updates`}><span>◇</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option — it closes on its own.</p></div><b>Choose →</b></Link>}
+      {proposalPending && <Link className="dashboardAlert" to={`/trip/${trip.id}/updates`}><span>!</span><div><strong>A proposal is waiting for confirmation</strong><p>The current plan stays active until the affected members accept.</p></div><b>Review →</b></Link>}
+      <section className="dashboardGrid">
+        {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Ready to plan" to={`/trip/${created.id}/plan`}/>)}
+        <DashboardCard title={trip.name} location="Chicago" dates="Aug 14–17" status="Traveling" tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Awaiting confirmation' : 'Today · 2:00 PM next'} />
+        {otherTrips.map(other => <DashboardCard key={other.id} title={other.name} location={other.destination} dates={other.dates} status={other.status} tone={other.tone} imageClass={other.photo} detail={other.detail}/>)}
+      </section>
+    </section>
+  </main>
+}
+
+function TripShell({ children }) {
+  const location = useLocation()
+  const app = useTripApp()
+  const currentTrip = useCurrentTrip()
+  const isDemoTrip = currentTrip.id === trip.id
+  let pending = 0
+  if (isDemoTrip && app.activeRound?.status === 'open') pending += 1
+  if (isDemoTrip && app.conflictCreated && !app.decisionResolved) pending += 1
+  const segment = location.pathname.split('/').filter(Boolean).pop()
+  const active = segment === 'conflict' ? 'chat' : segment
+  // 组织者不是超级用户,只是多了几个「维护公共框架」的入口。
+  // Plan / Chat / Updates / Preferences 三种角色完全一致。
+  const isOrganizer = currentUser.role === 'organizer'
+  const isGuest = currentUser.role === 'guest'
+  return <div className="tripPage">
+    <header className="tripUnifiedHeader">
+      {/* trip 页里 logo 和「My Trips」原本是两个指向同一处的链接,合并成一个返回入口 */}
+      <div className="tripUnifiedBrand">
+        {isGuest
+          ? <span className="brandBack" aria-label="TripSync"><span className="logoMark">T</span><span>TripSync</span></span>
+          : <Link className="brandBack" to="/"><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
+      </div>
+      <div className="tripUnifiedCenter">
+        <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
+          <Link className={active === 'plan' ? 'active' : ''} to={`/trip/${currentTrip.id}/plan`}>Plan</Link>
+          <Link className={active === 'chat' ? 'active' : ''} to={`/trip/${currentTrip.id}/chat`}>Chat</Link>
+          <Link className={active === 'updates' ? 'active' : ''} to={`/trip/${currentTrip.id}/updates`}>Updates{pending > 0 && <i>{pending}</i>}</Link>
+          <Link className={active === 'preferences' ? 'active' : ''} to={`/trip/${currentTrip.id}/preferences`}>Preferences</Link>
+          {isOrganizer && <Link className={active === 'members' ? 'active' : ''} to={`/trip/${currentTrip.id}/members`}>Members</Link>}
+          {isOrganizer && <Link className={active === 'invite' ? 'active' : ''} to={`/trip/${currentTrip.id}/invite`}>Invite</Link>}
+        </nav></div>
+      </div>
+      <div className="tripUnifiedRight">
+        {isGuest ? <SaveToAccount/> : <Account/>}
+      </div>
+    </header>
+    <main className="workspaceContent">
+      <TripPill trip={currentTrip} role={currentUser.role}/>
+      {children}
+    </main>
+  </div>
+}
+
+/* 行程元信息胶囊。原本贴在顶栏最上方,信息又长又碎;
+   改成灵动岛式的深色胶囊,放进内容区顶部,只留最少的字。 */
+function TripPill({ trip: t, role }) {
+  const city = (t.destination || '').split(',')[0].trim()
+  const dates = (t.dates || '').replace(/,?\s*\d{4}$/, '')
+  return <div className="tripPill">
+    <span className="pillDot" aria-hidden="true"/>
+    <span className="pillStatus">{t.status}</span>
+    <i/>
+    <span>{city}</span>
+    <i/>
+    <span>{dates}</span>
+    <i/>
+    <span>{t.people}</span>
+    {role !== 'participant' && <><i/><span className="pillRole">{role === 'guest' ? 'Guest' : 'Organizer'}</span></>}
+  </div>
+}
+
+// Guest 绑定账户:保留原 membership,不新建成员,已提交的偏好不丢
+function SaveToAccount() {
+  const app = useTripApp()
+  return <Button secondary onClick={() => app.notify('Account signup connects to the backend later — your membership and preferences carry over')}>Save to account</Button>
+}
+
+// 组织者专属。只显示「加没加入 / 交没交偏好」,永远不显示偏好内容。
+function MembersPage() {
+  const app = useTripApp()
+  const currentTrip = useCurrentTrip()
+  // 新建的 trip 还没有别人加入,名单应该只有创建者 + 若干未加入的空位,
+  // 不能复用演示 trip 的六人名单。
+  const roster = currentTrip.isCreated
+    ? [
+        { id: currentUser.id, name: currentUser.name, initials: currentUser.initials, role: 'organizer', joined: true, preferencesSubmitted: app.preferencesSubmittedFor.includes(currentTrip.id) },
+        ...Array.from({ length: Math.max(0, (currentTrip.people || 1) - 1) }, (_, i) => ({
+          id: `invited-${i}`, name: 'Invited · not joined yet', initials: '—', role: 'participant', joined: false, preferencesSubmitted: false,
+        })),
+      ]
+    : tripMembers
+  const submitted = roster.filter(member => member.preferencesSubmitted).length
+  const joined = roster.filter(member => member.joined).length
+  if (currentUser.role !== 'organizer') {
+    return <TripShell><div className="emptyState quietEmptyState"><span></span><h2>Organizer only</h2><p>The member roster is part of maintaining the trip frame. Your own preferences and the shared plan are unaffected.</p><Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/plan`}>Back to plan</Link></div></TripShell>
+  }
+  return <TripShell>
+    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Members</span><h1>Who is on this trip</h1><p>You can see whether people replied — never what they asked for. Preference content stays private, including from you.</p></div></div>
+    <div className="memberStats">
+      <div><strong>{joined}</strong><span>joined</span></div>
+      <div><strong>{submitted}</strong><span>preferences in</span></div>
+      <div><strong>{roster.length - submitted}</strong><span>still waiting</span></div>
+    </div>
+    <section className="memberList">
+      {roster.map(member => <article className="memberRow" key={member.id}>
+        <span className={cx('memberAvatar', !member.joined && 'pendingAvatar')}>{member.initials}</span>
+        <div>
+          <h3>{member.id === currentUser.id ? `${member.name} (you)` : member.name}</h3>
+          <p>{member.role === 'organizer' ? 'Organizer' : 'Participant'}{member.isGuest && ' · guest, no account'}{!member.joined && ' · invite not opened yet'}</p>
+        </div>
+        <span className={cx('memberState', member.preferencesSubmitted ? 'done' : 'waiting')}>{member.preferencesSubmitted ? 'Preferences in' : member.joined ? 'No preferences yet' : 'Not joined'}</span>
+        {!member.preferencesSubmitted && member.joined && <button className="memberRemind" onClick={() => app.notify('Reminder sent')}>Remind</button>}
+      </article>)}
+    </section>
+    <div className="organizerLimits">
+      <h3>What you cannot do here</h3>
+      <ul>
+        <li>Fill in or edit anyone else's preferences</li>
+        <li>Treat a non-reply as agreement</li>
+        <li>Read private preference text — the same rule applies to you as to everyone</li>
+        <li>Confirm a proposal on someone else's behalf</li>
+      </ul>
+      <div className="btnRow">
+        <Button secondary onClick={() => app.notify('Deadline extended by 48 hours')}>Extend deadline</Button>
+        <Button ghost onClick={() => app.notify('Reminder sent to everyone still waiting')}>Remind everyone waiting</Button>
+      </div>
+    </div>
+  </TripShell>
+}
+
+// 倒计时环:剩余时间占整个窗口的比例
+function DeadlineRing({ round, closed }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (closed) return
+    const timer = window.setInterval(() => setNow(Date.now()), 30000)
+    return () => window.clearInterval(timer)
+  }, [closed])
+  const remaining = Math.max(0, round.closesAt - now)
+  const fraction = closed ? 0 : Math.max(0, Math.min(1, remaining / round.windowMs))
+  const hours = Math.floor(remaining / 3600000)
+  const minutes = Math.floor((remaining % 3600000) / 60000)
+  const label = closed ? 'Applied' : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+  const radius = 15
+  const circumference = 2 * Math.PI * radius
+  return <div className={cx('deadlineRing', closed && 'done')}>
+    <svg viewBox="0 0 36 36" aria-hidden="true">
+      <circle className="ringTrack" cx="18" cy="18" r={radius}/>
+      <circle className="ringFill" cx="18" cy="18" r={radius} strokeDasharray={circumference} strokeDashoffset={circumference * (1 - fraction)}/>
+    </svg>
+    <div><small>{closed ? 'Round' : 'Closes in'}</small><strong>{label}</strong></div>
+  </div>
+}
+
+// 路径 B 的界面:并行表态的卡片,不是聊天
+function DecisionRoundCard({ round, compact }) {
+  const app = useTripApp()
+  const navigate = useNavigate()
+  const myVote = round.votes[currentUser.id] ?? round.votes.self
+  const voters = Object.keys(round.votes)
+  const voteCount = voters.length
+  const closed = round.status === 'closed'
+  const winner = closed ? round.options.find(option => option.id === round.winningOptionId) : null
+  // 每个候选项拿到多少票 —— 只展示票数,不展示谁投的
+  const tally = round.options.reduce((acc, option) => ({ ...acc, [option.id]: Object.values(round.votes).filter(id => id === option.id).length }), {})
+  const leading = Math.max(1, ...Object.values(tally))
+  return <article className={cx('roundCard', compact && 'roundCardCompact', closed && 'roundClosed')}>
+    <div className="roundHead">
+      <div>
+        <Badge tone={closed ? 'green' : 'blue'}>{closed ? 'Round closed' : 'Group round'}</Badge>
+        <h3>{closed ? `Settled: ${winner?.title}` : `This block is contested: ${round.itemTitle}`}</h3>
+        <p>{closed
+          ? 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
+          : 'Everyone weighs in at once, so this is settled in one round instead of one conversation at a time.'}</p>
+      </div>
+      <DeadlineRing round={round} closed={closed}/>
+    </div>
+    <div className="roundTally">
+      <div className="voterDots" aria-label={`${voteCount} of ${round.totalMembers} responded`}>
+        {Array.from({ length: round.totalMembers }, (_, i) => <i key={i} className={cx(i < voteCount && 'filled')}/>)}
+      </div>
+      <span>{voteCount} of {round.totalMembers} responded{!closed && ' · silence counts as no preference'}</span>
+    </div>
+    <div className="roundOptions">
+      {round.options.map(option => {
+        const count = tally[option.id] || 0
+        return <button key={option.id} type="button" className={cx('roundOption', myVote === option.id && 'chosen', closed && round.winningOptionId === option.id && 'won')} disabled={closed} onClick={() => app.castVote(option.id)}>
+          <span className="roundOptionTop"><span className="roundOptionLabel">{option.label}</span>{myVote === option.id && <em>Your pick</em>}</span>
+          <strong>{option.title}</strong>
+          <small>{option.body}</small>
+          <span className="voteBar"><i style={{ width: `${(count / leading) * 100}%` }}/></span>
+          <span className="voteCount">{count === 0 ? 'No votes yet' : count === 1 ? '1 vote' : `${count} votes`}</span>
+        </button>
+      })}
+    </div>
+    {!closed && <div className="roundFooter">
+      <span>Anonymous — nobody sees who picked what.</span>
+      <button type="button" className="roundDiscuss" onClick={() => navigate(`/trip/${trip.id}/conflict`)}>None of these work — discuss instead</button>
+    </div>}
   </article>
 }
 
-function DraftItinerary({ comments, reactions, likeCounts, openDays, activeCommentId, commentDraft, onDraftChange, onSaveComment, onCancelComment, onToggleDay, onReact, onComment }) {
-  return <section className="draftItinerary"><TripPlanOverview />{itineraryDays.map(day => <ItineraryDay key={day.id} day={day} open={openDays.includes(day.id)} comments={comments} reactions={reactions} likeCounts={likeCounts} activeCommentId={activeCommentId} commentDraft={commentDraft} onDraftChange={onDraftChange} onSaveComment={onSaveComment} onCancelComment={onCancelComment} onToggle={() => onToggleDay(day.id)} onReact={onReact} onComment={onComment} />)}</section>
-}
-
-function ItineraryPlanExperience({ participantMode = false, onSendForReview }) {
-  const demo = useDemo()
-  const [openDays, setOpenDays] = useState(['day2'])
-  const [commentSection, setCommentSection] = useState(null)
-  const [commentDraft, setCommentDraft] = useState('')
-  const [comments, setComments] = useState({
-    'day2-dinner': ['Could we confirm a quieter table for dinner?'],
-    'day2-cruise': ['Later start helps. Please keep this after 9:30.'],
-  })
-  const [reactions, setReactions] = useState({})
-  const [likeCounts, setLikeCounts] = useState({ 'day2-dinner': 3, 'day2-cruise': 2 })
-  const openComment = item => {
-    setCommentSection(item)
-    setCommentDraft('')
-    window.setTimeout(() => document.getElementById('organizerCommentComposer')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 20)
-  }
-  const saveComment = () => {
-    setComments(current => ({ ...current, [commentSection.id]: [...(current[commentSection.id] || []), commentDraft.trim()] }))
-    setCommentSection(null)
-    setCommentDraft('')
-    demo.notify('Anonymous comment saved')
-  }
-  const reactToItem = (id, value) => {
-    setReactions(current => {
-      const nextValue = current[id] === value ? null : value
-      setLikeCounts(counts => ({ ...counts, [id]: Math.max(0, (counts[id] || 0) + (nextValue === 'like' ? 1 : current[id] === 'like' ? -1 : 0)) }))
-      return { ...current, [id]: nextValue }
-    })
-    demo.notify('Feedback saved')
-  }
-  const toggleDay = id => setOpenDays(current => current.includes(id) ? current.filter(day => day !== id) : [...current, id])
-  const commentCount = Object.values(comments).reduce((total, xs) => total + xs.length, 0)
-  const likedCount = Object.values(likeCounts).reduce((total, count) => total + count, 0)
-  return <div className="planLayout itineraryLayout"><main><DraftItinerary comments={comments} reactions={reactions} likeCounts={likeCounts} openDays={openDays} activeCommentId={commentSection?.id} commentDraft={commentDraft} onDraftChange={setCommentDraft} onSaveComment={saveComment} onCancelComment={() => { setCommentSection(null); setCommentDraft('') }} onToggleDay={toggleDay} onReact={reactToItem} onComment={openComment} /></main><aside className="summaryRail"><h3>Live group feedback</h3><div className="healthItem"><span>Open days</span><strong>{openDays.length}</strong></div><div className="healthItem"><span>👍 total</span><strong>{likedCount}</strong></div><div className="healthItem"><span>Anonymous comments</span><strong>{commentCount}</strong></div><div className="healthItem"><span>Needs booking</span><strong>1 day</strong></div><hr/><h3>Feedback rule</h3><p>Everyone can see comments and like counts, but names are hidden. No action means the item is acceptable.</p>{!participantMode && <Button className="wideBtn" onClick={onSendForReview}>Send for group review →</Button>}</aside></div>
+// 新建的 trip 还没有行程。不伪造计划,而是显示偏好收集进度和下一步动作。
+function NewTripPlan({ currentTrip }) {
+  const app = useTripApp()
+  const total = Math.max(1, currentTrip.people || 1)
+  const submitted = app.preferencesSubmittedFor.includes(currentTrip.id) ? 1 : 0
+  // 收齐半数(至少 2 份)才允许生成初稿。但阈值不能超过总人数 ——
+  // 1~2 人的小团队否则永远达不到。
+  const threshold = Math.min(total, Math.max(2, Math.ceil(total / 2)))
+  const ready = submitted >= threshold
+  return <>
+    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Current Plan</span><h1>No itinerary yet</h1><p>Waiting for preferences.</p></div></div>
+    <div className="planEmptyPanel">
+      <section className="collectPanel">
+        <div className="collectHead">
+          <div><span className="eyebrow">Collecting preferences</span><h3>{submitted} of {total} submitted</h3></div>
+          <span className="collectCount">{ready ? 'Ready' : `${threshold - submitted} more to start`}</span>
+        </div>
+        <div className="collectBar"><i style={{ width: `${Math.min(100, (submitted / total) * 100)}%` }}/><b style={{ left: `${Math.min(100, (threshold / total) * 100)}%` }} title={`Draft can be generated at ${threshold}`}/></div>
+        <p className="fieldHint">Draft starts at {threshold} submitted. No reply is recorded as no preference, not agreement.</p>
+        {currentTrip.deadline && <div className="collectDeadline"><span>◷</span><div><strong>Preferences deadline</strong><p>{currentTrip.deadline}</p></div></div>}
+      </section>
+      <div className="proposalCard tripFrameLine"><span>Trip frame</span><h3>{currentTrip.destination} · {currentTrip.dates}</h3><p>{currentTrip.assumptions || 'Share the invite link.'}</p></div>
+      <div className="btnRow">
+        <Button disabled={!ready} onClick={() => app.notify('Draft generation connects to the backend later')}>Generate draft itinerary</Button>
+        <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/invite`}>Share invite link</Link>
+        <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/preferences`}>{submitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
+      </div>
+    </div>
+  </>
 }
 
 function PlanPage() {
-  const nav = useNavigate()
-  const demo = useDemo()
-  return <OrganizerShell><PageIntro eyebrow="Draft itinerary" title="Draft itinerary" action={<Button onClick={() => nav(`/organizer/trip/${trip.id}/review`)}>Send for group review →</Button>}>Review the same itinerary participants will see. Multiple days can stay open while you compare the plan.</PageIntro>
-    <div className="notice noticePurple"><strong>Draft itinerary</strong><span>Day 2 starts open because it has the birthday dinner and reservation risk. Open any other day without closing it.</span><Button secondary onClick={() => demo.notify('New draft generated')}>Regenerate</Button></div>
-    <ItineraryPlanExperience onSendForReview={() => nav(`/organizer/trip/${trip.id}/review`)} />
-  </OrganizerShell>
-}
-
-function ReviewOrganizerPage() {
-  const demo = useDemo(); const nav = useNavigate()
-  return <OrganizerShell><PageIntro eyebrow="Step 4 of 5" title="Review feedback" action={<Button onClick={() => nav(`/organizer/trip/${trip.id}/final`)}>Check approval readiness →</Button>}>Comments are grouped by plan section. Suggestions do not block approval; required changes do.</PageIntro>
-    <div className="metricRow"><Metric value="4 / 6" label="Reviewed"/><Metric value="3" label="Accepted"/><Metric value="1" label="Needs changes"/><Metric value="2" label="Not reviewed"/></div>
-    <div className="twoCol reviewCols"><section className="panel"><div className="panelHeader"><div><h2>Feedback by section</h2><p>Private notes are summarized without member identity.</p></div></div>{feedback.map((f,i) => <div className="feedbackCard" key={f.section}><div className="feedbackTitle"><div><h3>{f.section}</h3><Badge tone={f.kind === 'Needs adjustment' ? 'orange' : 'blue'}>{f.kind}</Badge></div><span>{f.count} response{f.count > 1 ? 's' : ''}</span></div><p>"{f.note}"</p><div className="aiSuggestion"><strong>Suggested update</strong><p>{f.suggestion}</p><small>{f.impact}</small></div><div className="feedbackActions"><Button onClick={() => { i === 0 && demo.setPlanUpdated(true); demo.notify(i === 0 ? 'Suggested update applied' : 'Information update added') }}>{i === 0 && demo.planUpdated ? 'Applied ✓' : 'Apply suggestion'}</Button><Button secondary onClick={() => demo.notify('Current version kept')}>Keep current</Button><button className="textBtn" onClick={() => { demo.setManualEdit(true); demo.notify('Manual edit opened') }}>Edit manually</button></div>{demo.manualEdit && i === 0 && <textarea className="manualEdit" rows="3" defaultValue="Move the cruise to 10:00 AM and keep lunch 45 minutes later."/>}</div>)}</section>
-      <aside className="panel approvalPanel"><div className="panelHeader"><div><h2>Approval readiness</h2><p>Based on required review actions</p></div></div><div className="checklist compact"><div><span>✓</span><p><strong>3 accepted</strong>No changes requested by these reviewers</p></div><div><span>!</span><p><strong>1 needs changes</strong>Day 2 start time blocks approval until resolved</p></div><div><span>!</span><p><strong>2 not reviewed</strong>Not counted as approval yet</p></div></div></aside></div>
-  </OrganizerShell>
-}
-
-function FinalOrganizerPage() {
-  const demo = useDemo()
-  return <OrganizerShell><PageIntro eyebrow="Step 5 of 5" title="Finalize the trip">Publish only after the group approval threshold and all submitted must-haves pass.</PageIntro>
-    <div className="approvalHero"><div className="approvalRing">80<small>%</small></div><div><Badge tone="green">Group approved</Badge><h2>Approval threshold reached</h2><p>4 of 5 eligible reviewers accepted. One participant has not reviewed and is not counted as approval.</p></div></div>
-    <section className="panel checklist"><h2>Final checks</h2><div><span>✓</span><p><strong>Submitted must-haves</strong>All satisfied by the current plan</p></div><div><span>✓</span><p><strong>Group approval</strong>80% approval · threshold 70%</p></div><div><span>✓</span><p><strong>Required adjustments</strong>Day 2 start-time issue resolved</p></div><div><span>!</span><p><strong>Response coverage</strong>Plan represents 4 of 6 invited participants</p></div></section>
-    <section className="decisionSummary"><span className="eyebrow">Decision summary</span><h2>Why this plan is ready</h2><p>It fits every submitted availability window, stays within most comfortable budgets, and satisfies all protected must-haves. The Day 2 start moved later after participant feedback. Two invited members did not submit preferences and are not represented.</p></section>
-    <div className="finalActions"><Button secondary onClick={() => { demo.setGuestStage('final'); demo.notify('Participant preview ready') }}>Preview participant view</Button><Button onClick={() => {demo.setFinalized(true); demo.setGuestStage('final'); demo.notify('Final plan published')}}>{demo.finalized ? 'Final plan published ✓' : 'Publish final plan'}</Button></div>
-  </OrganizerShell>
-}
-
-function GuestShell({ children, signedIn = false }) {
-  const demo = useDemo()
-  const active = demo.guestStage === 'review' || demo.guestStage === 'update' || demo.guestStage === 'submitted' ? 'review' : demo.guestStage === 'final' ? 'final' : 'preferences'
-  return <div className="guestShell"><FlowHeader role="Participant" steps={guestFlowSteps} active={active}>
-    <div className="guestHeaderActions"><select aria-label="Demo participant state" value={demo.guestStage} onChange={e => demo.setGuestStage(e.target.value)}><option value="preferences">Preferences</option><option value="submitted">Waiting</option><option value="review">Plan review</option><option value="update">Plan update</option><option value="final">Final plan</option></select>{signedIn || demo.saved ? <Link className="btn btnSecondary" to="/">My Trips</Link> : <Button secondary onClick={() => demo.setSaved(true)}>Save to account</Button>}</div>
-  </FlowHeader><main className="guestMain">{children}</main><footer className="guestFooter"><span>Private inputs are protected by your visibility settings.</span><Link to="/">Back to My Trips</Link></footer></div>
-}
-
-function GuestContent() {
-  const demo = useDemo()
-  return <>{demo.guestStage === 'preferences' && <Preferences/>}{demo.guestStage === 'submitted' && <Submitted/>}{demo.guestStage === 'review' && <GuestReview/>}{demo.guestStage === 'update' && <GuestUpdate/>}{demo.guestStage === 'final' && <GuestFinal/>}</>
-}
-
-function GuestPortal() {
-  const demo = useDemo()
-  if (demo.inviteJoined) return <GuestShell><GuestContent/></GuestShell>
-  return <div className="guestShell"><header className="guestHeader"><Logo/><div className="guestTrip"><strong>{trip.name}</strong><span>{trip.dates}</span></div><div className="guestHeaderActions"><Link className="btn btnSecondary" to="/">My Trips</Link></div></header>
-    <main className="inviteLanding"><section className="inviteCard"><Badge tone="purple">Invitation</Badge><h1>{trip.name}</h1><p>{trip.destination} · {trip.dates}</p><div className="inviteInfo"><div><strong>What happens next</strong><span>Review the trip basics, enter a nickname, then confirm how you want to join.</span></div><div><strong>Privacy</strong><span>Your private constraints are used for planning but are not shown to the organizer unless you choose that visibility.</span></div></div><label><span>Nickname</span><input value={demo.inviteName} onChange={e => demo.setInviteName(e.target.value)} placeholder="Mia" /></label><div className="formActions"><Button disabled={!demo.inviteName.trim()} onClick={() => { demo.setGuestStage('preferences'); demo.setInviteJoined(true); demo.setSaved(false); demo.notify('Guest membership created') }}>Continue as guest</Button><Button secondary disabled={!demo.inviteName.trim()} onClick={() => { demo.setGuestStage('preferences'); demo.setInviteJoined(true); demo.setSaved(true); demo.notify('Membership saved to account') }}>Log in and join</Button></div></section></main>
-  </div>
-}
-
-function ParticipantPortal() {
-  return <GuestShell signedIn><GuestContent/></GuestShell>
-}
-
-function Preferences({ organizerMode = false }) {
-  const demo = useDemo(); const nav = useNavigate(); const [budget, setBudget] = useState(620); const [dateMode,setDateMode]=useState('attend'); const [availability,setAvailability]=useState(suggestedTripRange); const [alternative,setAlternative]=useState({ start: makeDate(7, 21), end: makeDate(7, 24) }); const [vibes,setVibes]=useState(['Food','Relaxed','Culture']); const [must,setMust]=useState('A private room and no activities before 9:00 AM.'); const [avoid,setAvoid]=useState('Very crowded nightlife venues.'); const [privacy,setPrivacy]=useState('ai'); const [quick,setQuick]=useState(false); const [question,setQuestion]=useState(null)
-  const toggle=v=>setVibes(s=>s.includes(v)?s.filter(x=>x!==v):s.length<3?[...s,v]:s)
-  const dateSummary = dateMode === 'unsure' ? 'Not sure yet' : dateMode === 'alternative' ? formatDateRange(alternative) : formatDateRange(availability)
-  const submitPreferences = () => {
-    if (organizerMode) {
-      demo.setOrganizerPreferencesSubmitted(true)
-      demo.notify('Organizer preferences submitted')
-      nav(buildOrganizerTripStagePath(trip.id, 'collect'))
-      return
+  const app = useTripApp()
+  const currentTrip = useCurrentTrip()
+  const [openDays, setOpenDays] = useState(['day2'])
+  const [comments, setComments] = useState(initialComments)
+  const [commenting, setCommenting] = useState(null)
+  const [commentDraft, setCommentDraft] = useState('')
+  const [menuOpen, setMenuOpen] = useState(null)
+  const [bookedItems, setBookedItems] = useState(() => new Set(['dinner']))
+  const [drawerItem, setDrawerItem] = useState(null)
+  const [drawerMode, setDrawerMode] = useState('ask')
+  const [selectedTripItemId, setSelectedTripItemId] = useState(null)
+  const [railDay, setRailDay] = useState('all')
+  useEffect(() => {
+    if (!menuOpen) return
+    const handle = event => {
+      if (!event.target.closest('.moreWrap')) setMenuOpen(null)
     }
-    demo.setGuestStage('submitted')
+    document.addEventListener('pointerdown', handle)
+    return () => document.removeEventListener('pointerdown', handle)
+  }, [menuOpen])
+  // 已生效的改动(路径 A 直接写入 / 路径 B 落地 / 路径 C 确认后)统一以 patch 覆盖
+  const patched = item => app.appliedPatches[item.id] ? { ...item, ...app.appliedPatches[item.id], status: 'Updated' } : item
+  const days = initialDays.map(day => ({ ...day, items: day.items.map(patched) }))
+  const itemDayById = useMemo(() => Object.fromEntries(days.flatMap(day => day.items.map(item => [item.id, day.id]))), [days])
+  const handleSelectTripItem = useCallback(itemId => {
+    setSelectedTripItemId(itemId)
+    const dayId = itemDayById[itemId]
+    if (dayId) setOpenDays(current => current.includes(dayId) ? current : [...current, dayId])
+    window.setTimeout(() => document.getElementById(`trip-item-${itemId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)
+  }, [itemDayById])
+  const railDays = railDay === 'all' ? days : days.filter(day => day.id === railDay)
+  const toggleDay = id => setOpenDays(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id])
+  const addComment = id => {
+    if (!commentDraft.trim()) return
+    setComments(current => ({ ...current, [id]: [...(current[id] || []), { name: currentUser.name.split(' ')[0], text: commentDraft.trim() }] }))
+    setCommentDraft('')
+    setCommenting(null)
+    app.notify('Group note posted')
   }
-  return <div className={cx('guestNarrow', organizerMode && 'organizerPreferenceForm')}><div className="guestIntro"><Badge tone="purple">{organizerMode ? 'Organizer response' : 'No account needed'}</Badge><h1>{organizerMode ? 'Share your own preferences' : 'Share your trip preferences'}</h1><p>{organizerMode ? 'Your availability, budget, and must-haves count in the group plan just like every participant response.' : 'Five quick questions help the group plan around what actually works for you.'}</p><span className="timeEstimate">About 60 seconds</span></div>
-    <section className="formCard"><div className="question"><span className="qNum">1</span><div><h2>When can you join?</h2><p>Organizer suggested {formatDateRange(suggestedTripRange)}. Choose your availability or propose another range.</p></div></div>
-      <div className="dateModeTabs">
-        <button type="button" className={dateMode === 'attend' ? 'selected' : ''} onClick={() => setDateMode('attend')}>I can attend</button>
-        <button type="button" className={dateMode === 'alternative' ? 'selected' : ''} onClick={() => setDateMode('alternative')}>Suggest new dates</button>
-        <button type="button" className={dateMode === 'unsure' ? 'selected' : ''} onClick={() => setDateMode('unsure')}>I'm not sure yet</button>
+  const openDrawer = (item, mode, day) => {
+    setDrawerItem(day ? { ...item, dayLabel: `${day.label} · ${day.date}` } : item)
+    setDrawerMode(mode)
+    setMenuOpen(null)
+  }
+  const markBooked = id => {
+    setBookedItems(current => new Set([...current, id]))
+    setMenuOpen(null)
+    app.notify('Marked as booked')
+  }
+  if (currentTrip.isCreated) return <TripShell><NewTripPlan currentTrip={currentTrip}/></TripShell>
+  return <TripShell>
+    <div className={cx('planSplit', !drawerItem && 'withMap', drawerItem && 'withAssistant')}>
+      <section className="planMainPane">
+        <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Button secondary className="askTripSyncBtn" onClick={() => openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask TripSync</Button></div></div>
+        {app.conflictCreated && !app.decisionResolved && <Link className="planNotice" to={`/trip/${currentTrip.id}/updates`}><span>!</span><div><strong>Proposed change waiting for confirmation</strong><p>A hard constraint is involved. The current plan remains active until the affected members accept.</p></div><b>Review →</b></Link>}
+        {app.decisionResolved && <div className="successNotice"><span>✓</span><div><strong>The plan was updated</strong><p>Every affected member confirmed. Bookings elsewhere in the plan are unchanged.</p></div></div>}
+        <div className="accordionPlan">
+          {days.map(day => {
+            const open = openDays.includes(day.id)
+            return <section className={cx('accordionDay', open && 'open')} key={day.id}>
+              <button className="accordionHead" onClick={() => toggleDay(day.id)} aria-expanded={open}>
+                <span className="dayNumber">{day.label}</span><div><small>{day.date}</small><h2>{day.title}</h2></div><p>{day.summary}</p><i>{open ? '−' : '+'}</i>
+              </button>
+              <div className="accordionBody"><div className="accordionInner">
+                {/* 每天不再单独放地图 —— 右侧总览已能按天切换,重复且拥挤。
+                    这里只留一行路线摘要,保持简约。 */}
+                <div className="dayRouteLine">
+                  <span>{day.items.length} stops</span>
+                  <strong>{day.items.map(item => item.place).join(' → ')}</strong>
+                  <button type="button" onClick={() => setRailDay(day.id)}>Show on map</button>
+                </div>
+                <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
+                  <article id={`trip-item-${item.id}`} className={cx('activityBlock', selectedTripItemId === item.id && 'selected')} onClick={() => setSelectedTripItemId(item.id)}>
+                    <span className="activityIndex"><b>{index + 1}</b></span>
+                    <ActivityPhoto item={item}/>
+                    <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{item.title}</h3></div>{visibleStatus(bookedItems.has(item.id) ? 'Booked' : item.status) && <Badge tone={statusTone(bookedItems.has(item.id) ? 'Booked' : item.status)}>{visibleStatus(bookedItems.has(item.id) ? 'Booked' : item.status)}</Badge>}</div><p className="activityMeta">⌖ {item.place} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
+                    <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => { setCommenting(commenting === item.id ? null : item.id); setMenuOpen(null) }}>💬{(comments[item.id] || []).length > 0 && <i>{comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask TripSync" onClick={() => openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => setMenuOpen(menuOpen === item.id ? null : item.id)}>•••</button>{menuOpen === item.id && <div className="actionMenu"><button onClick={() => openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => openDrawer(item, 'replacePlace', day)}>Replace place</button><button onClick={() => markBooked(item.id)}>{bookedItems.has(item.id) ? 'Booked' : 'Mark as booked'}</button><button onClick={() => openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
+                    {(comments[item.id] || []).length > 0 && <div className="publicThread">{comments[item.id].map((comment, i) => <div key={`${item.id}-${i}`}><span>{comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
+                    {commenting === item.id && <div className="publicComposer"><label>Group note</label><textarea rows="2" value={commentDraft} onChange={e => setCommentDraft(e.target.value)} placeholder="Everyone in this trip can see this note."/><div><button onClick={() => { setCommenting(null); setCommentDraft('') }}>Cancel</button><Button onClick={() => addComment(item.id)}>Post note</Button></div></div>}
+                  </article>
+                  {app.activeRound?.itemId === item.id && <DecisionRoundCard round={app.activeRound} compact/>}
+                  {index < day.items.length - 1 && <div className="routeSegment"><strong>{routeSegments[index % routeSegments.length]}</strong><button type="button">Route</button></div>}
+                </div>)}</div>
+              </div></div>
+            </section>
+          })}
+        </div>
+      </section>
+      {!drawerItem && <aside className="tripMapRail" aria-label="Trip route overview">
+        <div className="tripMapCard">
+          <div className="mapDayTabs">
+            <button type="button" className={railDay === 'all' ? 'active' : ''} onClick={() => setRailDay('all')}>All</button>
+            {days.map(day => <button type="button" key={day.id} className={railDay === day.id ? 'active' : ''} onClick={() => setRailDay(day.id)}>{day.label.split(' · ')[0]}</button>)}
+          </div>
+          <TripMap key={railDay} days={railDays} destination={currentTrip.destination} selectedItemId={selectedTripItemId} onSelectItem={handleSelectTripItem} variant="real" markerMode={railDay === 'all' ? 'day' : 'stop'}/>
+          <div className="tripMapSummary">
+            <strong>{railDay === 'all' ? `${days.reduce((n, d) => n + d.items.length, 0)} stops across ${days.length} days` : `${railDays[0]?.items.length || 0} stops · ${railDays[0]?.date || ''}`}</strong>
+            <p>Tap a pin to jump to that stop.</p>
+          </div>
+        </div>
+      </aside>}
+      {drawerItem && <AssistantDrawer item={drawerItem} mode={drawerMode} onClose={() => setDrawerItem(null)} inline/>}
+    </div>
+  </TripShell>
+}
+
+function AssistantDrawer({ item, mode, onClose, inline = false }) {
+  const app = useTripApp()
+  const navigate = useNavigate()
+  const [verdict, setVerdict] = useState(null)
+  const [done, setDone] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [messages, setMessages] = useState([])
+  const actionLabels = {
+    global: 'Ask TripSync',
+    ask: 'Ask TripSync',
+    editTime: 'Edit time',
+    moveDay: 'Move to another day',
+    replacePlace: 'Replace place',
+    removePlan: 'Remove from plan',
+    details: 'View details',
+  }
+  const needsCheck = ['editTime', 'moveDay', 'replacePlace', 'removePlan'].includes(mode)
+  const placeholder = {
+    global: 'Ask about the whole plan...',
+    ask: 'Ask about this activity...',
+    editTime: 'Example: move this to 3:30 PM',
+    moveDay: 'Example: move this to Day 3 afternoon',
+    replacePlace: 'Example: replace with something near dinner and less walking',
+    removePlan: 'Optional: why remove this?',
+    details: '',
+  }[mode]
+  const runCheck = () => {
+    const request = draft.trim() || placeholder
+    const classification = app.classify({ item, actionType: mode, request })
+    setVerdict({ ...classification, request })
+    setMessages(current => [...current,
+      { from: 'you', text: request },
+      { from: 'tripSync', text: `${classification.headline}. ${classification.detail}` },
+    ])
+    setDraft('')
+  }
+  const commit = () => {
+    if (!verdict || done) return
+    if (verdict.path === 'A') {
+      app.applyDirectChange({ item, actionType: mode, request: verdict.request })
+      app.notify('Applied — the group just gets a notice')
+    } else if (verdict.path === 'B') {
+      app.openDecisionRound({ item, request: verdict.request })
+      app.notify('Group round opened')
+    } else {
+      app.createChangeProposal({ item, actionType: mode, request: verdict.request, classification: verdict })
+      app.notify('Sent for confirmation')
+    }
+    setDone(true)
+    if (verdict.path === 'C') navigate(`/trip/${trip.id}/conflict`)
+    else navigate(`/trip/${trip.id}/updates`)
+  }
+  const sendMessage = () => {
+    if (needsCheck && !verdict) return runCheck()
+    if (!draft.trim()) return
+    setMessages(current => [...current, { from: 'you', text: draft.trim() }, { from: 'tripSync', text: 'I checked this against the itinerary context. Ask me to compare options or draft a change if you want to adjust it.' }])
+    setDraft('')
+  }
+  const commitLabel = { A: 'Apply now', B: 'Open the round', C: 'Send for confirmation' }
+  const drawer = <aside className={cx('assistantDrawer', inline && 'inlineAssistant')} onClick={event => event.stopPropagation()}>
+      <header><div><span className="eyebrow">{actionLabels[mode]}</span><h2>{item.title}</h2><p>{item.place} · {item.time}</p></div><button type="button" onClick={onClose}>×</button></header>
+      <div className="drawerThread">
+        <div className="assistantBubbleRail"><i/><i/><i/></div>
+        <ChatBubble from="tripSync">{mode === 'details' ? 'Here are the details for this itinerary item.' : needsCheck ? 'Tell me the change you want. I check hard constraints first, then whether anyone else already asked about this slot.' : 'Ask about timing, location, tradeoffs, or why this item is in the plan.'}</ChatBubble>
+        {messages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
+        {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
+        {verdict && <div className={`impactResult pathResult path${verdict.path}`}>
+          <span>{pathLabels[verdict.path]}</span>
+          <h3>{verdict.headline}</h3>
+          <p>{verdict.detail}</p>
+          <ul className="verdictChecks">
+            {verdict.checks?.map(check => <li key={check.id} className={cx(check.hit && 'hit')}>
+              <span>{check.hit ? '✕' : '✓'}</span>
+              <div><strong>{check.label}</strong>{check.hit && check.privateNote && <small>{check.privateNote}</small>}</div>
+              <em>{check.hit ? 'hit' : 'clear'}</em>
+            </li>)}
+          </ul>
+          <div className="pathLadder">
+            {['A', 'B', 'C'].map(step => <i key={step} className={cx(verdict.path === step && 'on')}>{step === 'A' ? 'Notice' : step === 'B' ? 'Round' : 'Confirm'}</i>)}
+          </div>
+          <div className="miniAlternatives">
+            <button onClick={commit} disabled={done}>{done ? 'Done' : commitLabel[verdict.path]}</button>
+            <button onClick={onClose}>Cancel</button>
+          </div>
+        </div>}
+        {!verdict && needsCheck && <div className="proposalCard"><span>Before changing</span><h3>Current Plan stays unchanged</h3><p>TripSync checks hard constraints first, then whether this slot is already contested.</p></div>}
       </div>
-      {dateMode === 'attend' && <DateRangePicker value={availability} onChange={setAvailability} min={suggestedTripRange.start} max={suggestedTripRange.end} suggestedRange={suggestedTripRange} caption="Choose the part of the organizer's dates that works for you." />}
-      {dateMode === 'alternative' && <DateRangePicker value={alternative} onChange={setAlternative} suggestedRange={suggestedTripRange} caption="Your alternative will be shown as a date suggestion, not as confirmed availability." />}
-      {dateMode === 'unsure' && <div className="uncertainDates"><strong>No dates selected yet</strong><span>The organizer will see that your dates need follow-up.</span></div>}
-    </section>
-    <section className="formCard"><div className="question"><span className="qNum">2</span><div><h2>What total budget feels comfortable?</h2><p>Per person for the full trip, excluding flights.</p></div></div><div className="budgetValue">Up to <strong>${budget}</strong></div><input type="range" min="350" max="900" step="10" value={budget} onChange={e=>setBudget(e.target.value)}/><div className="rangeLabels"><span>$350</span><span>$900+</span></div></section>
-    <section className="formCard"><div className="question"><span className="qNum">3</span><div><h2>Anything the trip must accommodate?</h2><p>Examples: accessibility, dietary needs, a firm budget limit, or a required time.</p></div></div><textarea rows="3" value={must} onChange={e=>setMust(e.target.value)}/><Visibility value={privacy} onChange={setPrivacy}/></section>
-    <section className="formCard"><div className="question"><span className="qNum">4</span><div><h2>What should this trip feel like?</h2><p>Choose up to three.</p></div></div><div className="chipGrid">{['Relaxed','Food','Culture','Nature','Nightlife','Shopping','Adventure','Photography'].map(v=><button className={vibes.includes(v)?'selected':''} onClick={()=>toggle(v)} key={v}>{v}</button>)}</div></section>
-    <section className="formCard"><div className="question"><span className="qNum">5</span><div><h2>Anything you definitely want to avoid?</h2><p>Optional · one sentence is enough.</p></div></div><input value={avoid} onChange={e=>setAvoid(e.target.value)}/></section>
-    {!quick && <section className="quickCheckOffer"><span className="aiOrb">✦</span><div><h2>Check my answers</h2><p>Optional. TripSync can structure your free text, spot ambiguity, and ask up to three important questions.</p></div><Button secondary onClick={()=>setQuick(true)}>Check answers</Button></section>}
-    {quick && <section className="quickCheck"><div className="quickTitle"><span className="aiOrb">✦</span><div><span className="eyebrow">Preference check</span><h2>One detail needs confirmation</h2></div><Badge tone="purple">1 of 1</Badge></div><p>You wrote "private room." How important is this?</p><div className="optionStack"><button className={question==='must'?'selected':''} onClick={()=>setQuestion('must')}><strong>Must be met</strong><span>I cannot join under a shared-room arrangement.</span></button><button className={question==='flexible'?'selected':''} onClick={()=>setQuestion('flexible')}><strong>Prefer, but flexible</strong><span>I would consider another arrangement.</span></button></div><div className="aiSummary"><strong>Structured summary</strong><span>Budget · Up to ${budget}</span><span>Dates · {dateSummary}</span><span>Vibe · {vibes.join(' · ')}</span><span>Protected condition · Private room · {question==='must'?'Must be met':'Needs confirmation'}</span></div></section>}
-    <div className="submitBar"><div><strong>{organizerMode ? 'Your organizer response will be included in the plan.' : 'Your answers are saved automatically.'}</strong><span>{organizerMode ? 'After submitting, you return to the collect dashboard.' : 'You can return to this link before the deadline.'}</span></div><Button onClick={submitPreferences}>{organizerMode ? 'Submit organizer preferences →' : 'Confirm and submit →'}</Button></div>
+      {mode !== 'details' && !verdict && <div className="drawerComposer"><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendMessage()} placeholder={placeholder}/><button onClick={sendMessage}>{needsCheck ? 'Check impact' : 'Send'}</button></div>}
+    </aside>
+  if (inline) return drawer
+  return <div className="drawerOverlay" onClick={onClose}>{drawer}</div>
+}
+
+function ChatBubble({ from, children }) {
+  const isUser = from === 'you'
+  return <div className={cx('chatBubbleRow', isUser && 'mine')}>
+    {!isUser && <span className="chatAvatar tripSync">T</span>}
+    <div className={cx('drawerMessage', isUser ? 'mine' : 'assistant')}><strong>{isUser ? 'You' : 'TripSync'}</strong><p>{children}</p></div>
+    {isUser && <span className="chatAvatar user">{currentUser.initials}</span>}
   </div>
 }
 
-function Visibility({ value, onChange }) { return <div className="visibility"><span>Who can see this?</span>{[['ai','Planning only'],['organizer','Organizer can view'],['group','Everyone']].map(([v,l])=><button key={v} onClick={()=>onChange(v)} className={value===v?'selected':''}>{v==='ai'?'🔒':'○'} {l}</button>)}</div> }
-
-function Submitted() { const demo=useDemo(); const reviewMode = demo.reviewed; return <div className="centerState"><div className="successMark">✓</div><Badge tone="green">{reviewMode ? 'Review submitted' : 'Preferences submitted'}</Badge><h1>{reviewMode ? 'Thanks. Your review was saved.' : 'You’re all set.'}</h1><p>{reviewMode ? 'The organizer can now resolve any requested changes before the trip is finalized.' : 'Your responses are included in the current planning window. Come back to this same trip when the plan is ready.'}</p><div className="statusCard"><div><strong>{reviewMode ? (demo.selectedSection ? '1 request' : 'Accepted') : '4 of 6'}</strong><span>{reviewMode ? (demo.selectedSection ? 'needs organizer review' : 'plan works for you') : 'people submitted'}</span></div><div className="miniProgress"><i style={{width: reviewMode ? '80%' : '67%'}}/></div><small>{reviewMode ? 'Review status updated' : trip.deadline}</small></div><Button onClick={()=>demo.setGuestStage(reviewMode ? 'update' : 'review')}>{reviewMode ? 'View plan update →' : 'Preview the plan review →'}</Button></div> }
-
-function GuestReview() {
-  const demo = useDemo()
-  const acceptPlan = () => { demo.setSelectedSection(null); demo.setNote(''); demo.setReviewed(true); demo.setGuestStage('submitted'); demo.notify('Plan accepted') }
-  return <div className="guestWide"><div className="guestIntro reviewIntro"><Badge tone="blue">Plan ready for review</Badge><h1>Review the Chicago itinerary</h1><p>You see the same day-by-day plan as the organizer. You only need to comment when something does not work or needs a change.</p><span className="timeEstimate">Silent means acceptable</span></div><ItineraryPlanExperience participantMode /><div className="reviewSubmit"><div><strong>Everything acceptable?</strong><span>You can accept the plan without reacting to each item. Anonymous comments stay attached to their itinerary item.</span></div><Button onClick={acceptPlan}>Accept plan</Button></div></div>
+function ChatWorkspace({ thread }) {
+  const app = useTripApp()
+  const currentTrip = useCurrentTrip()
+  const isDemoTrip = currentTrip.id === trip.id
+  const showTradeoff = isDemoTrip && app.conflictCreated
+  return <TripShell>
+    <div className="chatLayout">
+      <aside className="conversationList">
+        <div className="conversationHead"><span className="eyebrow">Conversations</span><h2>Chat</h2></div>
+        <Link className={cx('conversation', thread === 'personal' && 'active')} to={`/trip/${currentTrip.id}/chat`}><span className="aiAvatar">T</span><div><strong>TripSync</strong><small>Private planning assistant</small></div></Link>
+        {showTradeoff && <Link className={cx('conversation', thread === 'tradeoff' && 'active')} to={`/trip/${currentTrip.id}/conflict`}><span className="pairAvatar anon">◍</span><div><strong>Constraint tradeoff</strong><small>Anonymous · affected members only</small></div></Link>}
+      </aside>
+      {thread === 'tradeoff' && showTradeoff ? <TradeoffThread/> : thread === 'tradeoff' ? <EmptyTradeoffPanel tripId={currentTrip.id}/> : <PersonalThread/>}
+    </div>
+  </TripShell>
 }
 
-function CommentComposer
-() { const demo=useDemo(); return <section className="commentComposer" id="commentComposer"><div className="panelHeader"><div><span className="eyebrow">Note on</span><h2>{demo.selectedSection.title}</h2></div><button className="closeBtn" onClick={()=>demo.setSelectedSection(null)}>×</button></div><label>What should the group know?</label><textarea rows="3" value={demo.note} onChange={e=>demo.setNote(e.target.value)} placeholder="One sentence is enough..."/><label>How important is this?</label><div className="optionStack horizontal"><button className={demo.noteType==='suggestion'?'selected':''} onClick={()=>demo.setNoteType('suggestion')}><strong>Suggestion</strong><span>I can still accept the plan.</span></button><button className={demo.noteType==='required'?'selected':''} onClick={()=>demo.setNoteType('required')}><strong>Required change</strong><span>This section does not work for me.</span></button></div><Visibility value={demo.visibility} onChange={demo.setVisibility}/></section> }
+function EmptyTradeoffPanel({ tripId }) {
+  return <section className="chatPanel">
+    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>No active conversation</p></div></div></header>
+    <div className="messages">
+      <div className="emptyState quietEmptyState"><span></span><h2>Nothing to resolve</h2><p>Most changes never reach a conversation. One opens here only when a change touches a hard constraint that cannot be settled by choosing an option.</p><Link className="btn btnSecondary" to={`/trip/${tripId}/plan`}>Back to plan</Link></div>
+    </div>
+  </section>
+}
 
-function GuestUpdate() { const demo=useDemo(); return <div className="guestNarrow"><div className="guestIntro"><Badge tone="orange">One change needs your review</Badge><h1>Day 2 starts later</h1><p>Only this affected section needs your confirmation. Your acceptance for the rest of the plan stays in place.</p></div><section className="changeCard"><div className="compare"><div><span>Before</span><strong>8:00 AM</strong><p>Architecture cruise</p></div><div className="arrow">→</div><div className="after"><span>Now</span><strong>10:00 AM</strong><p>Architecture cruise</p></div></div><div className="aiBox"><span>✦</span><div><strong>Why it changed</strong><p>The later start addresses participant feedback without changing the budget. Lunch moves 45 minutes later.</p></div></div></section><div className="submitBar"><div><strong>Everything else is unchanged.</strong><span>Your previous acceptance is retained.</span></div><Button onClick={()=>demo.setGuestStage('final')}>Accept update</Button></div></div> }
+function PersonalThread() {
+  const [draft, setDraft] = useState('')
+  const [messages, setMessages] = useState([])
+  const send = () => {
+    if (!draft.trim()) return
+    setMessages(current => [...current, { from: 'you', text: draft.trim() }, { from: 'tripSync', text: 'I can check that against the current plan — hard constraints first, then whether anyone else has asked about the same slot. Most requests apply straight away; only the hard ones need other people.' }])
+    setDraft('')
+  }
+  return <section className="chatPanel">
+    <header><div><span className="aiAvatar">T</span><div><h2>TripSync</h2><p>Private · not shared with the group</p></div></div><Badge>My AI</Badge></header>
+    <div className="messages">
+      <ChatBubble from="tripSync">This conversation is just between us. Ask about the plan, flag fatigue or weather, or request a change — nothing reaches the group until I have checked what it affects.</ChatBubble>
+      {messages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
+    </div>
+    <div className="chatComposer"><button>＋</button><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && send()} placeholder="Message TripSync privately..."/><button className="sendBtn" onClick={send}>↑</button></div>
+  </section>
+}
 
-function GuestFinal() {
-  const demo = useDemo()
-  return <div className="guestWide"><div className="finalBanner"><div className="successMark smallMark">✓</div><div><Badge tone="green">Ready to confirm</Badge><h1>{trip.name}</h1><p>{trip.dates} · {trip.destination}</p><span className="finalHint">This plan is not locked yet. You can return to review before confirming.</span></div><div className="finalBannerActions"><Button secondary onClick={() => { demo.setGuestStage('review'); demo.notify('Returned to plan review') }}>Back to review</Button><Button onClick={() => demo.notify('Trip confirmed')}>Confirm trip</Button></div></div><div className="planLayout guestPlan"><main>{planSections.map(s=><PlanCard key={s.id} section={s}/>)}</main><aside className="summaryRail"><h3>Approval summary</h3><div className="healthItem"><span>Accepted</span><strong>4 of 5</strong></div><div className="healthItem"><span>Approval</span><strong>80%</strong></div><div className="healthItem"><span>Must-haves</span><strong className="greenText">All satisfied</strong></div><hr/><p>This plan represents submitted responses. It remains editable until the participant confirms the trip.</p></aside></div></div>
+// 路径 C:只有受影响成员 + AI。除了当前用户,所有人匿名。
+function TradeoffThread() {
+  const app = useTripApp()
+  const [reply, setReply] = useState('')
+  const [threadMessages, setThreadMessages] = useState([])
+  const proposal = app.activeProposal
+  useEffect(() => {
+    if (app.decisionResolved) return
+    const timer = window.setTimeout(() => {
+      app.resolveProposal()
+      app.notify('The other affected member accepted — plan updated')
+    }, 4000)
+    return () => window.clearTimeout(timer)
+  }, [app.decisionResolved])
+  if (!proposal) return null
+  const { before, after, affectedMembers } = proposal
+  const sendReply = () => {
+    if (!reply.trim()) return
+    setThreadMessages(current => [...current,
+      { from: 'you', text: reply.trim() },
+      { from: 'tripSync', text: 'Noted. The Current Plan stays unchanged until every affected member confirms.' },
+    ])
+    setReply('')
+  }
+  return <section className="chatPanel">
+    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>{affectedMembers.length} affected members · anonymous</p></div></div><Badge tone={app.decisionResolved ? 'green' : 'orange'}>{app.decisionResolved ? 'Resolved' : 'Awaiting confirmation'}</Badge></header>
+    <div className="messages conflictMessages">
+      <div className="anonBanner"><span>◍</span><p>{proposal.privacyNote}</p></div>
+      <div className="message ai"><span>✦</span><div><p>{proposal.headline}. {proposal.detail}</p><p>This could not be settled by picking an option, so it comes to the affected members directly. The person who proposed it counts as accepted.</p></div></div>
+      <div className="changeCompare conflictCompare"><div><small>Current{before.dayLabel ? ` · ${before.dayLabel}` : ''}</small><strong>{before.time} · {before.title}</strong><span>{before.place}</span></div><b>→</b><div className="new"><small>Proposed{after.dayLabel ? ` · ${after.dayLabel}` : ''}</small><strong>{after.time} · {after.title}</strong><span>{after.place}</span></div></div>
+      <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{member.label}: {app.decisionResolved || member.status === 'accepted' ? 'accepted' : 'needs decision'}{member.proposer ? ' (proposer)' : ''}</span>)}<span>Names hidden</span><span>Private reasons hidden</span></div>
+      <div className="message other"><span className="avatar small anon">◍</span><div><p>This works for me as long as the confirmed booking stays untouched.</p><small>{proposal.affectedMembers[1]?.label} · 10:47 AM</small></div></div>
+      {!app.decisionResolved && <div className="message ai"><span>✦</span><div><p>The booking stays as it is and one private constraint is protected. Waiting on the remaining affected member — the Current Plan does not move until then.</p><div className="messageActions"><Button secondary onClick={() => app.notify('Alternative requested')}>Suggest another option</Button><Button ghost onClick={() => { app.withdrawProposal(); app.notify('Withdrawn — current plan kept') }}>Withdraw</Button></div></div></div>}
+      {threadMessages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
+      {app.decisionResolved && <div className="message ai resolvedMessage"><span>✓</span><div><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={`/trip/${trip.id}/plan`}>View updated plan →</Link></div></div>}
+    </div>
+    <div className="chatComposer"><button>＋</button><input value={reply} onChange={event => setReply(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendReply()} placeholder="Reply anonymously in this conversation..."/><button className="sendBtn" onClick={sendReply}>↑</button></div>
+  </section>
+}
+
+function UpdatesPage() {
+  const app = useTripApp()
+  const navigate = useNavigate()
+  const currentTrip = useCurrentTrip()
+  const isDemoTrip = currentTrip.id === trip.id
+  const round = isDemoTrip ? app.activeRound : null
+  const roundOpen = round?.status === 'open'
+  const proposalPending = isDemoTrip && app.conflictCreated && !app.decisionResolved
+  const proposal = app.activeProposal
+  const hasActions = roundOpen || proposalPending
+  return <TripShell>
+    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Updates</span><h1>Trip notes</h1><p>Most changes land here as a notice. Only contested or constrained ones ask you for something.</p></div></div>
+    <div className="updateFilters editorialUpdateTabs">
+      <button className={app.updateFilter === 'all' ? 'active' : ''} onClick={() => app.setUpdateFilter('all')}>All</button>
+      <button className={app.updateFilter === 'forYou' ? 'active' : ''} onClick={() => app.setUpdateFilter('forYou')}>For you</button>
+      <button className={app.updateFilter === 'actions' ? 'active' : ''} onClick={() => app.setUpdateFilter('actions')}>Actions {hasActions && <i>{(roundOpen ? 1 : 0) + (proposalPending ? 1 : 0)}</i>}</button>
+    </div>
+    <section className="updatesList">
+      {app.updateFilter === 'actions' && <>
+        {!hasActions && <div className="emptyState quietEmptyState"><span></span><h2>No actions right now</h2><p>If a block becomes contested, or a change touches a hard constraint, it will appear here.</p></div>}
+        {roundOpen && <DecisionRoundCard round={round}/>}
+        {proposalPending && <article className="decisionCard">
+          <div className="decisionTop"><div><Badge tone="orange">Needs confirmation</Badge><h2>{proposal.headline}</h2><p>{proposal.detail} You proposed this, so you already count as accepted.</p></div><span>{proposal.createdAt}</span></div>
+          <div className="changeCompare"><div><small>Current{proposal.before.dayLabel ? ` · ${proposal.before.dayLabel}` : ''}</small><strong>{proposal.before.time} · {proposal.before.title}</strong><span>{proposal.before.place}</span></div><b>→</b><div className="new"><small>Proposed{proposal.after.dayLabel ? ` · ${proposal.after.dayLabel}` : ''}</small><strong>{proposal.after.time} · {proposal.after.title}</strong><span>{proposal.after.place}</span></div></div>
+          <div className="impactRow">{proposal.affectedMembers.map(member => <span key={member.id}>{member.label}: {member.status === 'accepted' ? 'accepted' : 'needs decision'}</span>)}<span>Names hidden</span></div>
+          <div className="decisionActions"><Button onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>Open the conversation</Button><Button ghost onClick={() => { app.withdrawProposal(); app.notify('Withdrawn — current plan kept') }}>Withdraw</Button></div>
+        </article>}
+      </>}
+      {app.updateFilter === 'all' && <>
+        {isDemoTrip ? [...app.notices, ...baseUpdates].map(item => <article className="updateRow" key={item.id}><span className={`updateIcon ${item.kind}`}>{item.icon}</span><div><h3>{item.title}</h3><p>{item.body}</p>{item.canObject && <button className="objectLink" onClick={() => { app.objectToNotice(item); app.setUpdateFilter('actions'); app.notify('Escalated to a group round') }}>I have a different idea →</button>}</div><time>{item.time}</time></article>)
+          : <div className="emptyState quietEmptyState"><span></span><h2>No updates yet</h2><p>Activity for this trip will appear here once members join and preferences arrive.</p></div>}
+      </>}
+      {app.updateFilter === 'forYou' && <>
+        {isDemoTrip ? <>
+          {personalUpdates.map(item => <article className="updateRow" key={item.id}><span className={`updateIcon ${item.kind}`}>{item.icon}</span><div><h3>{item.title}</h3><p>{item.body}</p></div><time>{item.time}</time></article>)}
+        </> : <div className="emptyState quietEmptyState"><span></span><h2>Nothing for you yet</h2><p>Mentions and replies that involve you will appear here.</p></div>}
+      </>}
+    </section>
+  </TripShell>
+}
+
+function PreferencesPage() {
+  const app = useTripApp()
+  const currentTrip = useCurrentTrip()
+  const [form, setForm] = useState(app.preferences)
+  const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
+  const toggleStyle = style => setForm(current => {
+    const selected = current.interests || []
+    if (selected.includes(style)) return { ...current, interests: selected.filter(item => item !== style) }
+    if (selected.length >= 3) return { ...current, interests: [...selected.slice(1), style] }
+    return { ...current, interests: [...selected, style] }
+  })
+  const setNeed = (id, key, value) => setForm(current => ({ ...current, essentialNeeds: current.essentialNeeds.map(need => need.id === id ? { ...need, [key]: value } : need) }))
+  const addNeed = () => setForm(current => ({ ...current, essentialNeeds: [...current.essentialNeeds, { id: `need-${Date.now()}`, text: '', importance: 'flexible', visibility: 'planning' }] }))
+  const removeNeed = id => setForm(current => ({ ...current, essentialNeeds: current.essentialNeeds.filter(need => need.id !== id) }))
+  const save = () => {
+    app.setPreferences({ ...form, essentialNeeds: form.essentialNeeds.filter(need => need.text.trim()) })
+    app.submitPreferencesFor(currentTrip.id)
+    app.notify('Preferences saved · shared anonymously')
+  }
+  return <TripShell>
+    <div className="preferenceWrap editorialForm">
+      <div className="pageHeading"><div><span className="eyebrow">My preferences</span><h1>Share only what matters.</h1><p>Ideal versus acceptable are separate on purpose: TripSync optimizes toward your ideal, and never crosses your confirmed limits.</p></div></div>
+      <section className="preferenceCard preferenceFlow">
+        <div className="wide dateField"><label>Preferred dates — the trip you would ideally join</label><DateRangePicker value={form.preferredRange} onChange={range => set('preferredRange', range)}/></div>
+        <details className="wide optionalPanel"><summary>Available date range — the widest window that still works for you</summary><div className="dateField" style={{ marginTop: 12 }}><DateRangePicker value={form.availableRange} onChange={range => set('availableRange', range)}/></div></details>
+        <div className="wide fieldPair">
+          <label>Ideal total budget<input value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
+          <label>Maximum acceptable budget<input value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
+        </div>
+        <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Planning system only' }, { value: 'organizer', label: 'Planning system + organizer' }, { value: 'everyone', label: 'Everyone in this trip' }]}/>
+        <CustomSelect className="wide" label="Preferred pace" value={form.pace} onChange={value => set('pace', value)} options={['Relaxed', 'Balanced', 'Full schedule'].map(option => ({ value: option, label: option }))}/>
+        <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={() => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small></button>)}</div></div>
+        <div className="wide needsPanel">
+          <label>Essential needs</label>
+          {form.essentialNeeds.map(need => <div className="needRow" key={need.id}>
+            <input value={need.text} placeholder="e.g. No activities before 9:00 AM" onChange={e => setNeed(need.id, 'text', e.target.value)}/>
+            <CustomSelect value={need.importance} onChange={value => setNeed(need.id, 'importance', value)} options={[{ value: 'required', label: 'Required' }, { value: 'flexible', label: 'Flexible' }]}/>
+            <CustomSelect value={need.visibility} onChange={value => setNeed(need.id, 'visibility', value)} options={[{ value: 'planning', label: 'Private' }, { value: 'organizer', label: 'Organizer' }, { value: 'everyone', label: 'Everyone' }]}/>
+            <button type="button" className="needRemove" aria-label="Remove need" onClick={() => removeNeed(need.id)}>×</button>
+          </div>)}
+          <button type="button" className="needAdd" onClick={addNeed}>＋ Add essential need</button>
+        </div>
+        <details className="wide optionalPanel"><summary>Anything to avoid</summary><label>Prefer to avoid<textarea rows="3" value={form.avoid} onChange={e => set('avoid', e.target.value)}/></label></details>
+        <div className="privacyBox wide"><div><strong>Anonymous by default</strong><p>Private needs never show your name or raw text. Others only see anonymous impact, like “one requirement affects this activity.”</p></div><Badge tone="green">Protected</Badge></div>
+        <div className="formFooter"><span>Preference updates are never announced to the group with your name.</span><Button onClick={save}>Save preferences</Button></div>
+      </section>
+    </div>
+  </TripShell>
+}
+
+function CreateTrip() {
+  const navigate = useNavigate()
+  const app = useTripApp()
+  const [dateRange, setDateRange] = useState({ start: null, end: null })
+  const [form, setForm] = useState({ name: '', destination: '', theme: '', groupSize: '', currency: 'USD', budget: '', assumptions: '', deadline: '' })
+  const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
+  const canCreate = form.name.trim() && form.destination.trim() && dateRange.start && dateRange.end
+  const createTrip = () => {
+    const created = app.addTrip({
+      name: form.name.trim(),
+      destination: form.destination.trim(),
+      theme: form.theme.trim(),
+      dates: formatDateRange(dateRange),
+      people: Number(form.groupSize) || 1,
+      currency: form.currency,
+      budget: form.budget.trim(),
+      assumptions: form.assumptions.trim(),
+      deadline: form.deadline.trim(),
+    })
+    app.setInviteCopied(false)
+    app.notify('Trip created')
+    navigate(`/trip/${created.id}/invite`)
+  }
+  return <div className="simplePage createPage"><header className="editorialNav glassTop"><Logo/><nav><Link to="/">MY TRIPS</Link><Link className="active" to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header><main className="createEditorial">
+    <section className="createHero"><div><span className="roleChip">Organizer</span><h1>Create the trip frame.</h1><p>Set the destination, date window, group size, and shared assumptions. Guests add their preferences after joining.</p></div><div className="createHeroPhoto"><Badge tone="blue">New trip</Badge></div></section>
+    <section className="preferenceCard createGrid createFlow">
+      <div className="formChapter wide"><span>01</span><h2>Where and why</h2></div>
+      <label>Trip name<input value={form.name} placeholder="e.g. Mia's 30th in Chicago" onChange={e => set('name', e.target.value)}/></label><label>Destination<input value={form.destination} placeholder="e.g. Chicago, Illinois" onChange={e => set('destination', e.target.value)}/></label>
+      <label>Trip theme<input value={form.theme} placeholder="e.g. Birthday weekend" onChange={e => set('theme', e.target.value)}/></label><label>Expected group size<input type="number" min="1" value={form.groupSize} placeholder="6" onChange={e => set('groupSize', e.target.value)}/></label>
+      <div className="formChapter wide"><span>02</span><h2>Date window</h2></div>
+      <div className="wide dateField"><DateRangePicker value={dateRange} onChange={setDateRange}/></div>
+      <div className="formChapter wide"><span>03</span><h2>Budget and assumptions</h2></div>
+      <label>Currency<select value={form.currency} onChange={e => set('currency', e.target.value)}><option>USD</option><option>CAD</option><option>CNY</option><option>EUR</option></select></label><label>Approximate budget<input value={form.budget} placeholder="e.g. $600 per person" onChange={e => set('budget', e.target.value)}/></label>
+      <label className="wide">Shared trip assumptions<textarea rows="4" value={form.assumptions} placeholder="e.g. Relaxed pace, central stay, shared dinners." onChange={e => set('assumptions', e.target.value)}/></label>
+      <label className="wide">Preferences deadline<input value={form.deadline} placeholder="e.g. Friday, August 7 at 6:00 PM" onChange={e => set('deadline', e.target.value)}/></label>
+      <div className="formFooter wide"><span>Guests will choose dates and styles from this frame.</span><Button disabled={!canCreate} onClick={createTrip}>Create trip</Button></div>
+    </section>
+  </main></div>
+}
+
+function InvitePage() {
+  const app = useTripApp()
+  const navigate = useNavigate()
+  const currentTrip = useCurrentTrip()
+  const inviteUrl = `${window.location.origin}${window.location.pathname}#/join/${currentTrip.id}`
+  const copyLink = () => {
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(inviteUrl).catch(() => {})
+    app.setInviteCopied(true)
+    app.notify('Invite link copied')
+  }
+  return <TripShell>
+    <div className="inviteManager">
+      <section className="shareHero">
+        <span className="eyebrow">Invite link</span>
+        <h1>Share this trip with the group.</h1>
+        <p>Guests open this link, join the trip, and submit preferences. Their answers default to anonymous summary.</p>
+      </section>
+      <section className="linkPanel">
+        <div><span className="roleChip">{app.inviteCopied ? 'Link copied' : 'Ready to share'}</span><h2>{currentTrip.name}</h2><p>{currentTrip.destination} · {currentTrip.dates}</p></div>
+        <label>Invite link<input readOnly value={inviteUrl}/></label>
+        <div className="copyActions"><Button onClick={copyLink}>{app.inviteCopied ? 'Copied' : 'Copy link'}</Button><Button secondary onClick={() => navigate(`/trip/${currentTrip.id}/plan`)}>Start planning</Button></div>
+        {app.inviteCopied && <div className="copiedState"><strong>Link ready to share</strong><p>Guests will join from this link and their preferences will feed into this trip.</p></div>}
+        <div className="privacyBox"><div><strong>Privacy default</strong><p>Guests can choose whether raw answers are visible. Organizer sees anonymous summaries by default.</p></div><Badge tone="green">Anonymous</Badge></div>
+      </section>
+    </div>
+  </TripShell>
+}
+
+function JoinInvitePage() {
+  const app = useTripApp()
+  const navigate = useNavigate()
+  const currentTrip = useCurrentTrip()
+  return <div className="invitePage">
+    <header className="inviteGlass"><Logo/><div><span className="roleChip">Guest invite</span><strong>{currentTrip.name}</strong></div></header>
+    <main className="inviteLayout">
+      <section className="invitePhoto"><div><Badge tone="blue">{currentTrip.dates}</Badge><h1>{currentTrip.destination} with the group.</h1><p>Join the trip, share your dates, and set a few preferences before the plan changes around you.</p></div></section>
+      <section className="invitePanel">
+        <span className="eyebrow">Join TripSync</span><h2>You have been invited</h2><p>The organizer receives an anonymous summary unless you allow raw answers.</p>
+        <label>Your name<input defaultValue={guestDraft.name}/></label><label>Email<input defaultValue={guestDraft.email}/></label>
+        <div className="privacyBox"><div><strong>Anonymous summary</strong><p>Your sensitive preferences stay grouped by default.</p></div><Badge tone="green">Default</Badge></div>
+        <Button onClick={() => { app.notify('Joined trip'); navigate(`/trip/${currentTrip.id}/preferences`) }}>Join and set preferences</Button>
+      </section>
+    </main>
+  </div>
 }
 
 export default function FinalApp() {
-  return <DemoProvider><Routes><Route path="/" element={<Home/>}/><Route path={buildOrganizerHomePath()} element={<OrganizerTrips/>}/><Route path={buildOrganizerArchivedPath()} element={<OrganizerTrips archived/>}/><Route path={buildOrganizerCreatePath()} element={<CreateTripPage/>}/><Route path={buildOrganizerAccountPath()} element={<AccountPage/>}/><Route path={buildOrganizerSettingsPath()} element={<SettingsPage/>}/><Route path="/organizer/trip/:tripId/preferences" element={<OrganizerPreferencesPage/>}/><Route path="/organizer/trip/:tripId/collect" element={<CollectPage/>}/><Route path="/organizer/trip/:tripId/insights" element={<InsightsPage/>}/><Route path="/organizer/trip/:tripId/plan" element={<PlanPage/>}/><Route path="/organizer/trip/:tripId/review" element={<ReviewOrganizerPage/>}/><Route path="/organizer/trip/:tripId/final" element={<FinalOrganizerPage/>}/><Route path="/participant/trip/:tripId" element={<ParticipantPortal/>}/><Route path="/t/:slug" element={<GuestPortal/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></DemoProvider>
+  return <TripAppProvider><Routes>
+    <Route path="*" element={<Navigate to="/" replace/>}/>
+    <Route path="/" element={<Home/>}/>
+    <Route path="/create" element={<CreateTrip/>}/>
+    <Route path="/trip/:tripId/plan" element={<PlanPage/>}/>
+    <Route path="/trip/:tripId/chat" element={<ChatWorkspace thread="personal"/>}/>
+    <Route path="/trip/:tripId/conflict" element={<ChatWorkspace thread="tradeoff"/>}/>
+    <Route path="/trip/:tripId/updates" element={<UpdatesPage/>}/>
+    <Route path="/trip/:tripId/preferences" element={<PreferencesPage/>}/>
+    <Route path="/trip/:tripId/members" element={<MembersPage/>}/>
+    <Route path="/trip/:tripId/invite" element={<InvitePage/>}/>
+    <Route path="/join/:tripId" element={<JoinInvitePage/>}/>
+  </Routes><ScrollToTop/></TripAppProvider>
 }

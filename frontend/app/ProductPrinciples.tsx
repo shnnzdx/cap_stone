@@ -12,24 +12,13 @@ const principles = [
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const getReveal = (progress: number, start: number, end: number) => clamp((progress - start) / Math.max(end - start, 0.0001));
 const easeOutQuad = (value: number) => 1 - Math.pow(1 - value, 2);
-
-type MotionMetrics = {
-  heading: number;
-  items: number[];
-  transition: number;
-};
+const headingOffset = 108;
+const itemOffsets = [202, 156, 118, 84] as const;
+const transitionOffset = 64;
 
 export default function ProductPrinciples() {
   const sectionRef = useRef<HTMLDivElement>(null);
-  const headingRef = useRef<HTMLDivElement>(null);
-  const transitionRef = useRef<HTMLDivElement>(null);
-  const principleRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [progress, setProgress] = useState(0);
-  const [metrics, setMetrics] = useState<MotionMetrics>({
-    heading: 0,
-    items: principles.map(() => 0),
-    transition: 0,
-  });
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -42,31 +31,6 @@ export default function ProductPrinciples() {
     }
 
     let progressFrame = 0;
-    let measureFrame = 0;
-    let resizeObserver: ResizeObserver | null = null;
-
-    const measureNodeOffset = (node: HTMLDivElement | null) => {
-      if (!node) return 0;
-      const rect = node.getBoundingClientRect();
-      return Math.max(window.innerHeight - rect.top + 40, 0);
-    };
-
-    const measureOffsets = () => {
-      setMetrics({
-        heading: measureNodeOffset(headingRef.current),
-        items: principles.map((_, index) => measureNodeOffset(principleRefs.current[index])),
-        transition: measureNodeOffset(transitionRef.current),
-      });
-    };
-
-    const scheduleMeasure = () => {
-      if (measureFrame) cancelAnimationFrame(measureFrame);
-      measureFrame = requestAnimationFrame(() => {
-        measureOffsets();
-        measureFrame = 0;
-      });
-    };
-
     const updateProgress = () => {
       const rect = section.getBoundingClientRect();
       const distance = Math.max(1, section.offsetHeight - window.innerHeight);
@@ -79,34 +43,14 @@ export default function ProductPrinciples() {
     };
 
     updateProgress();
-    scheduleMeasure();
-
-    const observedNodes = [
-      section,
-      headingRef.current,
-      transitionRef.current,
-      ...principleRefs.current,
-    ].filter(Boolean) as HTMLDivElement[];
-
-    if ("ResizeObserver" in window) {
-      resizeObserver = new ResizeObserver(() => scheduleMeasure());
-      observedNodes.forEach((node) => resizeObserver?.observe(node));
-    }
 
     window.addEventListener("scroll", updateProgress, { passive: true });
     window.addEventListener("resize", updateProgress);
-    window.addEventListener("resize", scheduleMeasure);
-    window.addEventListener("load", scheduleMeasure);
-    document.fonts?.ready.then(() => scheduleMeasure()).catch(() => {});
 
     return () => {
       window.removeEventListener("scroll", updateProgress);
       window.removeEventListener("resize", updateProgress);
-      window.removeEventListener("resize", scheduleMeasure);
-      window.removeEventListener("load", scheduleMeasure);
-      resizeObserver?.disconnect();
       cancelAnimationFrame(progressFrame);
-      cancelAnimationFrame(measureFrame);
     };
   }, []);
 
@@ -123,32 +67,9 @@ export default function ProductPrinciples() {
   return (
     <div className="principle-scroll" ref={sectionRef} aria-label="TripSync core product principles">
       <div className="principle-stage">
-        <div className="principle-map" aria-hidden="true" style={getMotionStyle(0.0, 0.26, metrics.heading)}>
-          <div className="principle-map-land" />
-          <svg className="principle-route" viewBox="0 0 1200 660" preserveAspectRatio="xMidYMid meet">
-            <path className="principle-route-guide" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
-            <path className="principle-route-line" pathLength="1" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
-            <g className="principle-route-points">
-              {[
-                [154,174],[232,166],[310,206],[390,230],[474,242],[554,274],[630,324],
-                [694,378],[770,412],[862,420],[940,442],[1004,474],[1052,510],
-              ].map(([x,y], index) => (
-                <circle className="principle-route-point" cx={x} cy={y} r="5" key={`${x}-${y}`}>
-                  <animate
-                    attributeName="opacity"
-                    dur="8s"
-                    repeatCount="indefinite"
-                    values="0;0;.62;.62;0"
-                    keyTimes={`0;${(0.1 + index * 0.056).toFixed(3)};${(0.12 + index * 0.056).toFixed(3)};.88;1`}
-                  />
-                </circle>
-              ))}
-            </g>
-          </svg>
-        </div>
         <header className="principle-heading">
-          <div className="principle-heading-position" ref={headingRef}>
-            <div className="principle-heading-motion" style={getMotionStyle(0.0, 0.26, metrics.heading)}>
+          <div className="principle-heading-position">
+            <div className="principle-heading-motion" style={getMotionStyle(0.0, 0.26, headingOffset)}>
               <p className="eyebrow"><span>01</span><span>PRODUCT CORE</span></p>
               <h2><span>Built for real group</span><strong>decisions.</strong></h2>
             </div>
@@ -158,15 +79,10 @@ export default function ProductPrinciples() {
         {principles.map((principle, index) => (
           <div className={`principle-line ${principle.tone}`} key={principle.key}>
             <div className="principle-mask">
-              <div
-                className="principle-item-position"
-                ref={(node) => {
-                  principleRefs.current[index] = node;
-                }}
-              >
+              <div className="principle-item-position">
                 <div
                   className="principle-word principle-item-motion"
-                  style={getMotionStyle(principle.range[0], principle.range[1], metrics.items[index] ?? 0)}
+                  style={getMotionStyle(principle.range[0], principle.range[1], itemOffsets[index])}
                 >
                   <span>{principle.symbol}</span>
                   <strong>{principle.word}</strong>
@@ -177,8 +93,8 @@ export default function ProductPrinciples() {
         ))}
 
         <footer className="principle-transition">
-          <div className="principle-transition-position" ref={transitionRef}>
-            <div className="principle-transition-motion" style={getMotionStyle(0.86, 1.0, metrics.transition)}>
+          <div className="principle-transition-position">
+            <div className="principle-transition-motion" style={getMotionStyle(0.86, 1.0, transitionOffset)}>
               <p>AI generates. Rules validate. People decide.</p>
               <i aria-hidden="true" style={{ height: `${18 + lineReveal * 48}px` }} />
               <a href="#process">

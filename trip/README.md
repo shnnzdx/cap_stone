@@ -1,9 +1,8 @@
-# TripSync · 前端逻辑原型 (v4)
+# TripSync · Living Demo
 
-AI 协调的多人旅行计划工具。本仓库是**前端逻辑原型**:不追求美观,只追求逻辑链清晰、板块清晰。
-界面语言全站英文;代码注释与逻辑说明为中文。
+AI 协调的多人旅行规划工具的前端原型。核心理念:**没有 Final 发布或 Lock 流程**,系统维护一份持续更新的 Current Plan。
 
-**技术栈**:Vite + React 18 + React Router 6 + CSS Modules(无 UI 框架,无后端)
+**技术栈**:Vite + React 18 + React Router 6(HashRouter,无 UI 框架,无后端;数据为前端 mock + localStorage)
 
 ## 快速开始
 
@@ -12,139 +11,119 @@ npm install
 npm run dev
 ```
 
-打开 http://localhost:5173
+打开 http://localhost:5173/trip-app/
 
 其他命令:`npm run build` 打生产包到 `dist/`,`npm run preview` 本地预览生产包。
+
+---
+
+## 核心机制:一个改动怎么进入 Current Plan
+
+这是整个产品最重要的一段逻辑。**每个改动先问两个问题,答案决定它走三条路里的哪一条。默认走最便宜的那条。**
+
+**问题一:碰硬东西了吗?**(违反谁的 Required / 超谁的 Max budget / 动到已 Booked / 超出谁的 Available 日期)
+碰了 → 路径 C。没碰 → 继续问第二个。
+
+**问题二:有人跟它抢吗?**(同一时段最近已经有别人表达过不同意愿)
+有 → 路径 B。没有 → 路径 A。
+
+判定实现在 `TripAppState.jsx` 的 `classifyChange()`。接后端后应由 Constraint Engine 实现,前端只消费结果。
+
+### 路径 A · 直接生效 + 匿名通知(约 80%)
+
+AI 直接改 Current Plan,在 Updates 发一条通知。**不要求任何人做任何操作。** 通知上有「I have a different idea」,谁点了就升级成路径 B。
+
+### 路径 B · 决策回合(约 15%)
+
+那个时段变成一张**卡片**(不是聊天)。AI 给 3 个候选,**必须包含「分头行动」**。全员一键表态并行进行,显示 `n / 6 responded`,有截止时间(旅行前 24h,旅行中 2h)。到点按票数落地。卡片上有「None of these work — discuss instead」可手动升级到路径 C。
+
+### 路径 C · 冲突对话(约 5%)
+
+只有受影响成员 + AI 进 Chat。**全程匿名**:当前用户显示 You,其他人显示 Member A / Member B,姓名和私密原因都不进前端。发起人默认已同意,其余成员各自确认,**全部确认才写入 Current Plan**。谈不拢升级组织者。
+
+### 四条防乱规则
+
+1. **沉默的含义按路径分档。** 路径 A 的沉默 = 同意(反对只要点一下,成本极低);路径 B/C 的沉默 = 未表态,**不算同意也不阻塞**,到截止就按已有表态落地。
+2. **已定的时段,单个人的想法不足以重开。** 需触碰硬约束或多人联署,否则就是无限重新审议。
+3. **Traveling 状态整体降级。** 路径 B 截止缩到 2h;街上站着六个人时不跑异步投票。
+4. **三条路径都不暴露偏好原文。** 永远只说 "one private constraint",不出现姓名和原因。
+
+### 为什么不默认用聊天
+
+聊天是这套工具里最贵的东西:串行、无截止、参与成本高、没被拉进去的人不知道发生过。而回合是并行的、有 deadline 的、一键完成的。把选择题塞进聊天,等于用最贵的工具解决最便宜的问题,而且会漏人。
+
+**A 想逛街 → B 想去河边 → C 想去艺术馆** 这个场景下,正确流程是:A 的诉求走路径 A 直接生效;B 提出竞争意见时才开一轮,**C 自动在同一轮里**;全程零次聊天。
+
+---
 
 ## 目录结构
 
 ```
 src/
-├── main.jsx                  应用入口
-├── App.jsx                   路由表（= 信息架构）
-├── styles/
-│   ├── tokens.css            ★ 设计 token：对接 Design System 的唯一改动点
-│   └── global.css            重置 + 基础排版 + 少量工具类
-├── data/
-│   ├── trips.js              旅行列表、阶段定义、阶段三态判定
-│   └── seed.js               芝加哥四人组种子数据（计划部分卡、摘要、反馈聚合…）
-├── context/
-│   └── TripContext.jsx       全局 trip 状态；接后端时只改这里
-├── components/               可复用组件
-│   ├── primitives.jsx        Card / Badge / CredibilityTag / Chip / Banner / Button …
-│   ├── PlanSectionCard.jsx   ★ 计划部分卡（全站核心组件）
-│   ├── ReviewPanel.jsx       ★ 满意度与接受分离控件
-│   ├── AiNote.jsx            AI 统一可识别样式
-│   ├── Sidebar.jsx           主导航
-│   ├── SubNav.jsx            二级栏（阶段导航 + 权限闸门）
-│   ├── StepStatus.jsx        成员端三行文案
-│   ├── TripRow.jsx           列表行
-│   ├── DemoSwitch.jsx        △ 演示状态切换器（原型脚手架）
-│   └── LogicNote.jsx         △ 逻辑说明块（原型脚手架）
-├── layouts/
-│   ├── OrganizerLayout.jsx   组织者外壳
-│   ├── MemberLayout.jsx      成员外壳
-│   └── TripWorkspace.jsx     ★ trip 工作区 + 路由守卫
-└── pages/
-    ├── HomePage.jsx          原型入口（真实产品由登录态决定，不存在这一页）
-    ├── organizer/            TripList / CreateTrip / Collect / Analyze / Plan / Review / Lock
-    └── member/               TripList / Invite / Preferences / Review / Confirm
+├── main.jsx                入口
+├── App.jsx                 HashRouter 外壳
+└── final/
+    ├── FinalApp.jsx        ★ 全部页面与路由
+    ├── TripAppState.jsx    ★ 全局状态 + classifyChange 三路径判定
+    ├── tripContent.js      ★ 全部 mock 数据(含 currentUser),每项都标了对应接口
+    └── final.css           全站样式(追加式,详见文件头注释)
+FRONTEND.md                 ★ 前端逻辑 + 每个按钮的行为规格(接手先读这份)
+BACKEND.md                  ★ 后端契约:实体、接口、隐私红线、未实现清单
+legacy/                     旧版原型(v4 五阶段版)与旧交接文档,仅存档,不参与构建
 ```
 
-★ = 核心,改动前先读注释  △ = 原型脚手架,上线前整组删除
+**接手顺序:[FRONTEND.md](FRONTEND.md) → [BACKEND.md](BACKEND.md) → 代码。**
+数据只存在于 `tripContent.js` 和 `TripAppState.jsx` 两个文件里,组件不持有任何业务数据。
 
-## 路由表(= 信息架构)
+## 路由(HashRouter,均在 `#/` 下)
 
 ```
-/                                    入口页（选择进入哪一端）
-
-/organizer                           My Trips
-/organizer/archived                  Archived
-/organizer/create                    创建旅行
-/organizer/trip/:tripId/:stage       stage ∈ collect | analyze | plan | review | lock
-
-/member                              My Trips
-/member/archived                     Archived
-/member/invite                       邀请落地
-/member/trip/:tripId/:stage          stage ∈ preferences | review | confirm
+/                      My Trips dashboard
+/create                创建 Trip(组织者)
+/trip/:id/plan         共享 Current Plan(行程 + 路线图 + TripSync 侧栏 + 回合卡)
+/trip/:id/chat         Chat:个人 AI 私聊
+/trip/:id/conflict     Chat:匿名的冲突对话(仅路径 C)
+/trip/:id/updates      Updates:All / For you / Actions
+/trip/:id/preferences  三层约束 Preference 表单
+/trip/:id/invite       组织者邀请链接页
+/join/:id              Guest 通过邀请链接加入
 ```
 
-**「深链表达意图,不表达位置」** 在 `TripWorkspace.jsx` 落地:
+## 其他已实现的逻辑
 
-| 深链情况 | 行为 |
-|---|---|
-| 未指定阶段 | 重定向到「我的下一步动作」所在阶段 |
-| 指向未到的阶段 | 降级重定向到当前阶段(越权不报错,只是看不到) |
-| 指向已完成阶段 | 放行,但显示只读横幅 +「返回当前阶段」 |
-| trip 不存在 | 404 兜底页,不出现空白页 |
+- **三层约束 Preference**:Preferred dates vs Available range、Ideal vs Maximum budget、Essential needs 每条自带 Required/Flexible + 三档可见性(Private / Organizer / Everyone)。Required 会真的触发路径 C。
+- **Preference 更新匿名**:共享 feed 里永远不出现"某某更新了偏好",只有匿名系统条目。
+- **创建 Trip 是真实的**:表单受控,创建后**新增**一张卡片进 My Trips(localStorage 持久化),不替换演示卡。新 trip 的 Plan 页是 Planning 空状态,不伪造行程。
+- **邀请链接**从当前部署地址动态生成;guest 加入后直接进入 Preference 表单。
+- Updates 页右上有 **Reset demo**,一键清空演示状态。
 
-## 导航结构(两端一致)
+## Demo 演示路径
 
-**主导航 = 侧边栏**:My Trips / Archived / 账号设置。点 My Trips → 主内容区出现该分区的旅行列表。
+1. Plan → Day 2 → 「Art Institute」三点菜单 → Replace place → **Check impact**
+   → 判定 **路径 A**,点 Apply now,直接生效,Updates 只多一条通知,**没有人需要操作**
+2. 在那条通知上点 **I have a different idea**
+   → 升级 **路径 B**,Actions 出现回合卡,三个选项,投一票后其余成员陆续表态,自动落地并写入 Plan
+3. Plan → 「Birthday dinner」(已预订)→ Edit time → **Check impact**
+   → 判定 **路径 C**,点 Send for confirmation,进入**匿名**冲突对话(You / Member A),对方确认后才更新
 
-**点进某个 trip → 二级栏出现该 trip 的阶段页**:
+另可演示:`/create` 创建新 trip → 复制邀请链接 → `#/join/:id` 走 guest 加入 → 填三层 Preference。
 
-- 组织者端:`① Collect → ② Analyze → ③ Plan vN ⇄ ④ Review → ⑤ Lock`
-- 成员端:`① Share preferences → ② Review the plan → ③ Confirm the trip`
-- 覆盖关系:成员① = 组织者①②;成员② = 组织者③④;成员③ = 组织者⑤
+## 接后端
 
-阶段标签三态:**已完成**(✓,可点回看)、**当前**(高亮)、**未到**(🔒,不可点)。
+完整契约见 **[BACKEND.md](BACKEND.md)**。三条红线:
 
-## 核心概念
+- `classifyChange()` 必须搬到服务端——**判定和确认状态放前端 = 任何人都能替别人确认**。
+- 邀请链接要换成不可猜的 token,现在的 `trip-{timestamp}` 可被枚举。
+- `visibility: planning_only` 的偏好原文和冲突对话里的成员姓名**永不下发到客户端**,在 API 层就过滤,不要指望前端。
 
-**锁定(Lock)不是"让 AI 确定方案",而是全组正式拍板。** 锁定标志决策期结束、执行期开始:
+## 已知未实现
 
-| | 决策期(锁定前) | 执行期(锁定后 → 旅行结束) |
-|---|---|---|
-| 计划性质 | 待议方案 | 大家照着执行的文件 |
-| 变更成本 | 重:新版本 + 全员重新表态 | 轻:多数改动不需全员表态 |
-| 版本号 | v1 → v2 → v3(协商轮次) | v2.1 → v2.2(执行期调整) |
-| 结束 | 全组接受 → 锁定 | 过结束日期 → 转「已结束」,真正只读 |
-
-## 已实现的不可砍项
-
-- **可信度标签**(四种可区分):Mock 数据 / AI 估算 / 人工验证 / 未验证 → `primitives.jsx`
-- **部分状态徽章**(五种):已接受 / 待反馈 / 本版已修改 / 违反硬约束(配锁图标)/ 已冻结 ❄
-- **满意度与接受分离** → `ReviewPanel.jsx`。条件必填、Reject 必须指认部分,均由提交闸门强制
-- **修改摘要卡**:保留 / 改了 / 为什么 / 解决了谁 / 影响
-- **修改预案卡**(组织者专属):AI 改前预告,全部取消须填理由
-- **硬约束标识**永远配锁图标、永远不点名
-- **草稿自动保存**提示(云端,跨设备恢复)
-- **AI 统一样式** → `AiNote.jsx`,全站 AI 输出只走这一个组件
-
-## 三条语义原则
-
-1. 全站一个主强调色(`--c-accent`)
-2. AI 发言有统一可识别样式(`AiNote`)
-3. 硬约束标识永远配锁图标、永远不点名
-
-## 颜色怎么改
-
-**所有颜色集中在 `src/styles/tokens.css`**,业务组件一律只引用 CSS 变量。
-Design System 页定稿后,只替换该文件的值即可全站生效,不需要动任何组件。
-
-## 怎么看这份原型
-
-- 每屏顶部有蓝色 **演示状态** 切换器,演示该屏分支(v1/v2/生成失败、锁定前/执行期/已结束、链接四态等)
-- 每屏底部有黄色 **📋 逻辑说明** 折叠块:入口、目标、关键分支、出口、对应的边界决策编号
-- 种子数据统一为芝加哥四人组(Emma / Noah / Mia / Liam)
-
-上线前删除脚手架:全局搜索 `DemoSwitch` 与 `LogicNote`,连同 `components/DemoSwitch.*`、`components/LogicNote.*` 一起移除。
-
-## 与 v4 文档的差异(需同步文档)
-
-1. **主导航改为侧边栏**,阶段导航上升为 trip 级二级栏 —— 推翻了文档第二节「不设侧边栏、阶段导航由页内 Stepper 承担」。
-2. **② Analyze 的组织者权限收窄**:涉及成员私密硬约束的妥协由 AI 私聊该成员本人三选一(调约束/提方案/退出),组织者无按钮、只见匿名结论(决策8);组织者只能改自己创建时设为 Fixed 的字段。任何在该页做出的选择写入 v1 解释行与 Decision Log,成员可在 ④ Review 提条件推翻(防锚定)。
+组织者角色、成员名单、AI Explanation 与可信度标签、预算视图、初始行程生成与 Blocked 状态、
+Suggestion/Needs adjustment 区分、多个并发决策回合。详见 BACKEND.md 第六节。
 
 ## 部署到 GitHub Pages
 
-1. 把 `vite.config.js` 里的 `base` 改成 `'/<仓库名>/'`
-2. `npm run build`,把 `dist/` 内容发布到 `gh-pages` 分支(或用 GitHub Actions)
+1. `vite.config.js` 里的 `base` 改成 `'/<仓库名>/'`
+2. `npm run build`,把 `dist/` 发布到 gh-pages 分支
 
-注意:React Router 用的是 history 模式,GitHub Pages 直接访问子路径会 404。
-简单做法是把 `dist/index.html` 复制一份为 `dist/404.html`。
-
-## 待办
-
-- What-if 面板(组织者专属,③ Plan 侧栏)—— 最后实施,未完成则以截图入答辩 PPT(决策13)
-- 落地页 Interactive Example 目前用东京,需与组员统一为芝加哥
+HashRouter 下子路由都在 `#/` 后,不需要 404 重写。

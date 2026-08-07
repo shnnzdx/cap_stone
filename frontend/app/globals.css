@@ -1312,16 +1312,3 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
     animation:none !important;
   }
 }
-
-/* Product overview map: preserve the existing wash while a quiet route loops behind the copy. */
-.product-page .principle-map{position:absolute;z-index:0;inset:clamp(70px,9vh,96px) 0 clamp(28px,4vh,48px);pointer-events:none;overflow:hidden;will-change:transform,opacity}
-.product-page .principle-map-land{position:absolute;inset:-4%;background:rgba(105,99,112,.105);-webkit-mask:url("/images/world-map-overlay.png") 44% 44%/118% auto no-repeat;mask:url("/images/world-map-overlay.png") 44% 44%/118% auto no-repeat}
-.product-page .principle-route{position:absolute;inset:0;width:100%;height:100%;overflow:visible;opacity:.66;transform:translate3d(2.5%,2.5%,0)}
-.product-page .principle-route-guide,.product-page .principle-route-line{fill:none;stroke-linecap:round;stroke-linejoin:round}
-.product-page .principle-route-guide{stroke:rgba(98,91,104,.12);stroke-width:2;stroke-dasharray:4 14}
-.product-page .principle-route-line{stroke:#927466;stroke-width:2.5;stroke-dasharray:1;stroke-dashoffset:1;animation:principle-route-draw 8s cubic-bezier(.55,.08,.38,.98) infinite}
-.product-page .principle-route-point{fill:#756e79;opacity:0}
-@keyframes principle-route-draw{0%,5%{stroke-dashoffset:1;opacity:0}10%{opacity:1}78%,88%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
-.product-page .principle-heading,.product-page .principle-line,.product-page .principle-transition{z-index:2}
-@media(max-width:760px){.product-page .principle-map{inset:96px 0 36px;opacity:.72}.product-page .principle-map-land{-webkit-mask-position:44% 44%;mask-position:44% 44%;-webkit-mask-size:135% auto;mask-size:135% auto}.product-page .principle-route{width:124%;left:-12%;max-width:none;transform:translate3d(2%,2%,0)}}
-@media(prefers-reduced-motion:reduce){.product-page .principle-route-line{stroke-dashoffset:0;animation:none}.product-page .principle-route-point{opacity:.34}}
