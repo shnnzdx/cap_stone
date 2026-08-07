@@ -1,0 +1,10 @@
+:root{
+  --text-primary:#17314d;
+  --text-secondary:#60758b;
+  --border-soft:rgba(86,119,153,.16);
+  --bg-marketing:linear-gradient(145deg,#e2edf8 0%,#e8eff8 48%,#e2ebf5 100%);
+  --bg-app:#eef3fa;
+  --surface:#ffffff;
+  --radius-lg:24px;
+  --radius-sm:10px;
+}

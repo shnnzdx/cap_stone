@@ -87,6 +87,25 @@ function Button({ children, secondary, ghost, className, ...props }) {
   return <button className={cx('btn', secondary && 'btnSecondary', ghost && 'btnGhost', className)} {...props}>{children}</button>
 }
 
+function CustomSelect({ label, value, options, onChange, className }) {
+  const [open, setOpen] = useState(false)
+  const ref = useClickOutside(open, () => setOpen(false))
+  const selected = options.find(option => option.value === value) || options[0]
+  return <div className={cx('customSelectField', className)} ref={ref}>
+    <label>{label}</label>
+    <button type="button" className={cx('customSelectButton', open && 'open')} onClick={() => setOpen(current => !current)}>
+      <span>{selected.label}</span>
+      <i aria-hidden="true">⌄</i>
+    </button>
+    {open && <div className="customSelectMenu">
+      {options.map(option => <button type="button" key={option.value} className={cx(option.value === value && 'selected')} onClick={() => { onChange(option.value); setOpen(false) }}>
+        <span>{option.label}</span>
+        {option.value === value && <b>✓</b>}
+      </button>)}
+    </div>}
+  </div>
+}
+
 function Account() {
   return <div className="account"><ProfileMenu/></div>
 }
@@ -151,6 +170,8 @@ function ActivityPhoto({ item }) {
 
 function Home() {
   const app = useTripApp()
+  // Guest 没有账户,也就没有跨 trip 的仪表盘。直连过来就送回他所在的那趟旅行。
+  if (currentUser.role === 'guest') return <Navigate to={`/trip/${trip.id}/plan`} replace/>
   const roundOpen = app.activeRound?.status === 'open'
   const proposalPending = app.conflictCreated && !app.decisionResolved
   return <main className="homePage">
@@ -187,9 +208,13 @@ function TripShell({ children }) {
   const isGuest = currentUser.role === 'guest'
   return <div className="tripPage">
     <header className="tripUnifiedHeader">
-      <div className="tripUnifiedBrand"><Logo/>{!isGuest && <Link className="backLink" to="/">← My Trips</Link>}</div>
+      {/* trip 页里 logo 和「My Trips」原本是两个指向同一处的链接,合并成一个返回入口 */}
+      <div className="tripUnifiedBrand">
+        {isGuest
+          ? <span className="brandBack" aria-label="TripSync"><span className="logoMark">T</span><span>TripSync</span></span>
+          : <Link className="brandBack" to="/"><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
+      </div>
       <div className="tripUnifiedCenter">
-        <div className="identityLine"><Badge tone="purple">{currentTrip.status}</Badge><span>{currentTrip.destination} · {currentTrip.dates} · {currentTrip.people} members</span>{isOrganizer && <span className="roleTag">Organizer</span>}{isGuest && <span className="roleTag guest">Guest</span>}</div>
         <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
           <Link className={active === 'plan' ? 'active' : ''} to={`/trip/${currentTrip.id}/plan`}>Plan</Link>
           <Link className={active === 'chat' ? 'active' : ''} to={`/trip/${currentTrip.id}/chat`}>Chat</Link>
@@ -200,11 +225,38 @@ function TripShell({ children }) {
         </nav></div>
       </div>
       <div className="tripUnifiedRight">
-        {isGuest ? <Button secondary onClick={() => {}}>Save to account</Button> : <Account/>}
+        {isGuest ? <SaveToAccount/> : <Account/>}
       </div>
     </header>
-    <main className="workspaceContent">{children}</main>
+    <main className="workspaceContent">
+      <TripPill trip={currentTrip} role={currentUser.role}/>
+      {children}
+    </main>
   </div>
+}
+
+/* 行程元信息胶囊。原本贴在顶栏最上方,信息又长又碎;
+   改成灵动岛式的深色胶囊,放进内容区顶部,只留最少的字。 */
+function TripPill({ trip: t, role }) {
+  const city = (t.destination || '').split(',')[0].trim()
+  const dates = (t.dates || '').replace(/,?\s*\d{4}$/, '')
+  return <div className="tripPill">
+    <span className="pillDot" aria-hidden="true"/>
+    <span className="pillStatus">{t.status}</span>
+    <i/>
+    <span>{city}</span>
+    <i/>
+    <span>{dates}</span>
+    <i/>
+    <span>{t.people}</span>
+    {role !== 'participant' && <><i/><span className="pillRole">{role === 'guest' ? 'Guest' : 'Organizer'}</span></>}
+  </div>
+}
+
+// Guest 绑定账户:保留原 membership,不新建成员,已提交的偏好不丢
+function SaveToAccount() {
+  const app = useTripApp()
+  return <Button secondary onClick={() => app.notify('Account signup connects to the backend later — your membership and preferences carry over')}>Save to account</Button>
 }
 
 // 组织者专属。只显示「加没加入 / 交没交偏好」,永远不显示偏好内容。
@@ -375,6 +427,7 @@ function PlanPage() {
   const [drawerItem, setDrawerItem] = useState(null)
   const [drawerMode, setDrawerMode] = useState('ask')
   const [selectedTripItemId, setSelectedTripItemId] = useState(null)
+  const [railDay, setRailDay] = useState('all')
   useEffect(() => {
     if (!menuOpen) return
     const handle = event => {
@@ -393,6 +446,7 @@ function PlanPage() {
     if (dayId) setOpenDays(current => current.includes(dayId) ? current : [...current, dayId])
     window.setTimeout(() => document.getElementById(`trip-item-${itemId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80)
   }, [itemDayById])
+  const railDays = railDay === 'all' ? days : days.filter(day => day.id === railDay)
   const toggleDay = id => setOpenDays(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id])
   const addComment = id => {
     if (!commentDraft.trim()) return
@@ -415,7 +469,7 @@ function PlanPage() {
   return <TripShell>
     <div className={cx('planSplit', !drawerItem && 'withMap', drawerItem && 'withAssistant')}>
       <section className="planMainPane">
-        <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1><p>This is the plan everyone sees. Accepted changes appear here as they happen.</p></div><div className="planHeadingActions"><Badge tone="blue">Current version</Badge><Button secondary className="askTripSyncBtn" onClick={() => openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask TripSync</Button></div></div>
+        <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Button secondary className="askTripSyncBtn" onClick={() => openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask TripSync</Button></div></div>
         {app.conflictCreated && !app.decisionResolved && <Link className="planNotice" to={`/trip/${currentTrip.id}/updates`}><span>!</span><div><strong>Proposed change waiting for confirmation</strong><p>A hard constraint is involved. The current plan remains active until the affected members accept.</p></div><b>Review →</b></Link>}
         {app.decisionResolved && <div className="successNotice"><span>✓</span><div><strong>The plan was updated</strong><p>Every affected member confirmed. Bookings elsewhere in the plan are unchanged.</p></div></div>}
         <div className="accordionPlan">
@@ -426,9 +480,12 @@ function PlanPage() {
                 <span className="dayNumber">{day.label}</span><div><small>{day.date}</small><h2>{day.title}</h2></div><p>{day.summary}</p><i>{open ? '−' : '+'}</i>
               </button>
               <div className="accordionBody"><div className="accordionInner">
-                <div className="routePreview" aria-label={`${day.label} route preview`}>
-                  <TripMap days={[day]} destination={currentTrip.destination} selectedItemId={selectedTripItemId} onSelectItem={handleSelectTripItem} compact/>
-                  <div className="routePreviewCopy"><span>{day.label} route</span><strong>{day.items.length} stops · mostly walkable</strong></div>
+                {/* 每天不再单独放地图 —— 右侧总览已能按天切换,重复且拥挤。
+                    这里只留一行路线摘要,保持简约。 */}
+                <div className="dayRouteLine">
+                  <span>{day.items.length} stops</span>
+                  <strong>{day.items.map(item => item.place).join(' → ')}</strong>
+                  <button type="button" onClick={() => setRailDay(day.id)}>Show on map</button>
                 </div>
                 <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
                   <article id={`trip-item-${item.id}`} className={cx('activityBlock', selectedTripItemId === item.id && 'selected')} onClick={() => setSelectedTripItemId(item.id)}>
@@ -449,11 +506,14 @@ function PlanPage() {
       </section>
       {!drawerItem && <aside className="tripMapRail" aria-label="Trip route overview">
         <div className="tripMapCard">
-          <TripMap days={days} destination={currentTrip.destination} selectedItemId={selectedTripItemId} onSelectItem={handleSelectTripItem} variant="real"/>
+          <div className="mapDayTabs">
+            <button type="button" className={railDay === 'all' ? 'active' : ''} onClick={() => setRailDay('all')}>All</button>
+            {days.map(day => <button type="button" key={day.id} className={railDay === day.id ? 'active' : ''} onClick={() => setRailDay(day.id)}>{day.label.split(' · ')[0]}</button>)}
+          </div>
+          <TripMap key={railDay} days={railDays} destination={currentTrip.destination} selectedItemId={selectedTripItemId} onSelectItem={handleSelectTripItem} variant="real" markerMode={railDay === 'all' ? 'day' : 'stop'}/>
           <div className="tripMapSummary">
-            <span>Chicago route</span>
-            <strong>River North → Loop → West Loop</strong>
-            <p>OpenStreetMap route preview. Missing coords are cached after lookup.</p>
+            <strong>{railDay === 'all' ? `${days.reduce((n, d) => n + d.items.length, 0)} stops across ${days.length} days` : `${railDays[0]?.items.length || 0} stops · ${railDays[0]?.date || ''}`}</strong>
+            <p>Tap a pin to jump to that stop.</p>
           </div>
         </div>
       </aside>}
@@ -659,7 +719,7 @@ function UpdatesPage() {
   const proposal = app.activeProposal
   const hasActions = roundOpen || proposalPending
   return <TripShell>
-    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Updates</span><h1>Trip notes</h1><p>Most changes land here as a notice. Only contested or constrained ones ask you for something.</p></div>{isDemoTrip && <Button ghost onClick={() => { app.resetDemo(); app.notify('Demo state reset') }}>Reset demo</Button>}</div>
+    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Updates</span><h1>Trip notes</h1><p>Most changes land here as a notice. Only contested or constrained ones ask you for something.</p></div></div>
     <div className="updateFilters editorialUpdateTabs">
       <button className={app.updateFilter === 'all' ? 'active' : ''} onClick={() => app.setUpdateFilter('all')}>All</button>
       <button className={app.updateFilter === 'forYou' ? 'active' : ''} onClick={() => app.setUpdateFilter('forYou')}>For you</button>
@@ -697,7 +757,7 @@ function PreferencesPage() {
   const toggleStyle = style => setForm(current => {
     const selected = current.interests || []
     if (selected.includes(style)) return { ...current, interests: selected.filter(item => item !== style) }
-    if (selected.length >= 3) return current
+    if (selected.length >= 3) return { ...current, interests: [...selected.slice(1), style] }
     return { ...current, interests: [...selected, style] }
   })
   const setNeed = (id, key, value) => setForm(current => ({ ...current, essentialNeeds: current.essentialNeeds.map(need => need.id === id ? { ...need, [key]: value } : need) }))
@@ -718,17 +778,15 @@ function PreferencesPage() {
           <label>Ideal total budget<input value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
           <label>Maximum acceptable budget<input value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
         </div>
-        <p className="wide fieldHint">Between ideal and maximum is acceptable with stated tradeoffs. Above maximum breaks your confirmed limit and is never applied without you.</p>
-        <label className="wide">Who can see my budget<select value={form.budgetVisibility} onChange={e => set('budgetVisibility', e.target.value)}><option value="planning">Planning system only</option><option value="organizer">Planning system + organizer</option><option value="everyone">Everyone in this trip</option></select></label>
-        <label className="wide">Preferred pace<select value={form.pace} onChange={e => set('pace', e.target.value)}><option>Relaxed</option><option>Balanced</option><option>Full schedule</option></select></label>
+        <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Planning system only' }, { value: 'organizer', label: 'Planning system + organizer' }, { value: 'everyone', label: 'Everyone in this trip' }]}/>
+        <CustomSelect className="wide" label="Preferred pace" value={form.pace} onChange={value => set('pace', value)} options={['Relaxed', 'Balanced', 'Full schedule'].map(option => ({ value: option, label: option }))}/>
         <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={() => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small></button>)}</div></div>
         <div className="wide needsPanel">
           <label>Essential needs</label>
-          <p className="fieldHint">Required needs are never violated — a change that would break one always goes to the affected members. Flexible needs are optimized for, but can be traded off.</p>
           {form.essentialNeeds.map(need => <div className="needRow" key={need.id}>
             <input value={need.text} placeholder="e.g. No activities before 9:00 AM" onChange={e => setNeed(need.id, 'text', e.target.value)}/>
-            <select value={need.importance} onChange={e => setNeed(need.id, 'importance', e.target.value)}><option value="required">Required</option><option value="flexible">Flexible</option></select>
-            <select value={need.visibility} onChange={e => setNeed(need.id, 'visibility', e.target.value)}><option value="planning">Private</option><option value="organizer">Organizer</option><option value="everyone">Everyone</option></select>
+            <CustomSelect value={need.importance} onChange={value => setNeed(need.id, 'importance', value)} options={[{ value: 'required', label: 'Required' }, { value: 'flexible', label: 'Flexible' }]}/>
+            <CustomSelect value={need.visibility} onChange={value => setNeed(need.id, 'visibility', value)} options={[{ value: 'planning', label: 'Private' }, { value: 'organizer', label: 'Organizer' }, { value: 'everyone', label: 'Everyone' }]}/>
             <button type="button" className="needRemove" aria-label="Remove need" onClick={() => removeNeed(need.id)}>×</button>
           </div>)}
           <button type="button" className="needAdd" onClick={addNeed}>＋ Add essential need</button>

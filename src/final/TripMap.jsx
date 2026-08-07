@@ -59,19 +59,23 @@ const geocodePlace = ({ place, destination }) => {
 
 const flattenDays = days => {
   let globalIndex = 0
-  return days.flatMap(day => day.items.map((item, index) => ({
+  return days.flatMap((day, dayIdx) => day.items.map((item, index) => ({
     ...item,
     dayLabel: day.label,
     dayDate: day.date,
+    dayIndex: dayIdx,
+    dayTag: (day.label.match(/\d+/) || [dayIdx + 1])[0],
     stopNumber: days.length > 1 ? ++globalIndex : index + 1,
   })))
 }
 
-const markerIcon = (item, selected) => L.divIcon({
-  className: `leafletTripMarker${selected ? ' selected' : ''}`,
-  html: `<span><b>${item.stopNumber}</b></span>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 26],
+// markerMode 'day':右侧总览按天标注(D1/D2/D3),同一天同色
+// markerMode 'stop':单天视图按顺序标注(1/2/3)
+const markerIcon = (item, selected, markerMode) => L.divIcon({
+  className: `leafletTripMarker day${item.dayIndex % 4}${selected ? ' selected' : ''}${markerMode === 'day' ? ' byDay' : ''}`,
+  html: `<span><b>${markerMode === 'day' ? 'D' + item.dayTag : item.stopNumber}</b></span>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 30],
 })
 
 const curvedRoute = points => {
@@ -96,7 +100,7 @@ const curvedRoute = points => {
   }).concat([points[points.length - 1]])
 }
 
-export default function TripMap({ days, destination, selectedItemId, onSelectItem, compact = false, variant = 'sketch' }) {
+export default function TripMap({ days, destination, selectedItemId, onSelectItem, compact = false, variant = 'sketch', markerMode = 'stop' }) {
   const mapRef = useRef(null)
   const layerRef = useRef(null)
   const containerRef = useRef(null)
@@ -164,13 +168,14 @@ export default function TripMap({ days, destination, selectedItemId, onSelectIte
 
     const points = mappedItems.map(item => item.coords)
     mappedItems.forEach(item => {
-      L.marker(item.coords, { icon: markerIcon(item, item.id === selectedItemId) })
+      L.marker(item.coords, { icon: markerIcon(item, item.id === selectedItemId, markerMode) })
         .addTo(layer)
-        .bindTooltip(`${item.time} · ${item.title}`, {
+        // compact = 每天那张宽图,有空间常驻显示地名;窄的右栏只在悬停时显示,否则会溢出
+        .bindTooltip(markerMode === 'day' ? `${item.dayLabel} · ${item.title}` : `${item.stopNumber}. ${item.title}`, {
           className: 'handDrawnMapLabel',
-          direction: compact ? 'top' : 'right',
-          offset: compact ? [0, -20] : [16, -16],
-          permanent: !compact,
+          direction: 'top',
+          offset: [0, -22],
+          permanent: compact,
         })
         .on('click', () => onSelectItem?.(item.id))
     })
@@ -187,7 +192,7 @@ export default function TripMap({ days, destination, selectedItemId, onSelectIte
 
     const bounds = L.latLngBounds(points)
     map.fitBounds(bounds, { padding: compact ? [20, 20] : [34, 34], maxZoom: compact ? 14 : 13 })
-  }, [compact, mappedItems, onSelectItem, selectedItemId, variant])
+  }, [compact, mappedItems, markerMode, onSelectItem, selectedItemId, variant])
 
   return <div className={cx('tripLeafletMap', variant === 'real' ? 'realMap' : 'handDrawn', compact && 'compact')} ref={containerRef}/>
 }
