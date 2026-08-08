@@ -2,6 +2,13 @@
 
 给接手的人。**先读这份,再读代码。** 后端契约见 [BACKEND.md](BACKEND.md)。
 
+> **后端已经存在了。** 判定、三条路径、投票结算、流水账都在服务端跑通了(13 个接口)。
+> 本文描述的仍是**当前前端的 mock 实现**;哪一段该换成哪个接口,见 `BACKEND.md` 第五节,
+> 接入注意事项见 [HANDOFF.md](HANDOFF.md)。
+>
+> 接后端后前端最大的一处简化:**不用再自己分三条路了。**
+> 统一提交到 `POST /api/plans/items/{id}/changes`,后端回一个 `path` 告诉你走了哪条,照着渲染即可。
+
 ---
 
 ## 一、一句话逻辑
@@ -210,14 +217,29 @@ Guest 随时可以 Save to account,**绑定后保留原 membership,不新建成�
 
 ## 四、目前是假的东西(接后端时必须处理)
 
-1. `castVote` 里 2.6 秒模拟其他成员投票 —— 删掉
-2. `TradeoffThread` 里 4 秒模拟对方确认 —— 删掉
-3. `classifyChange` 在前端 —— **搬到服务端**,否则任何人都能替别人确认
-4. `localStorage('tripsync:createdTrips')` —— 删掉
-5. 路线距离 `routeSegments` —— 换成真实路径数据
-6. 地图是 CSS 画的示意图 —— 换成真地图
-7. `activeRound` / `activeProposal` 是单数 —— 改成数组
-8. Reset demo 按钮 —— 删掉
+| # | 假在哪 | 怎么办 | 后端准备好了吗 |
+|---|---|---|---|
+| 1 | `castVote` 里 2.6 秒模拟其他成员投票 | 删掉。服务端定时任务到点结算 | ✅ 已实现 |
+| 2 | `TradeoffThread` 里 4 秒模拟对方确认 | 删掉。对方在自己客户端点 | ✅ 已实现 |
+| 3 | `classifyChange` 在前端 | 删掉整个函数,改调接口 | ✅ 已搬到服务端 |
+| 4 | `localStorage('tripsync:createdTrips')` | 删掉 | ⬜ 建 trip 接口还没做 |
+| 5 | 路线距离 `routeSegments` | 换成真实路径数据 | ⬜ 先继续 mock |
+| 6 | 地图是 CSS 画的示意图 | 换成真地图 | ✅ 行程条目已带 `coords: [lat, lng]` |
+| 7 | `activeRound` / `activeProposal` 是单数 | 改成数组 | ✅ 后端已允许多个时段并发,但**同一个时段只允许一件未决的事**(返回 409) |
+| 8 | Reset demo 按钮 | 上线前删掉 | — |
+
+### 接后端后前端要新处理的东西
+
+| 后端给的 | 前端要做什么 |
+|---|---|
+| `path: "notice"` + `applied: true` | 行程当场更新,Updates 加一条通知,**不弹任何待办** |
+| `path: "round"` / `"reopen_round"` | 渲染投票卡。行程不变 |
+| `path: "confirm"` | 跳冲突对话。行程不变 |
+| `needs_reason: true` | 提交前弹一个**必填**的理由框(重开轮) |
+| `kind: "reopen"` + `reason` | 投票卡显示成"重开"的样子,显示发起人的理由,并把说明文字改成**"没有表态 = 维持原决定"**(和普通轮不一样) |
+| `findings[]` | 显示脱敏理由。里面**不会有**姓名和原文,直接渲染即可 |
+| `coords: [lat, lng]` | 地图直接画点,不用再靠地名去网上现查 |
+| HTTP `409` | 提示"这个时段已经有一轮投票了,去投票或等它结束" |
 
 ---
 

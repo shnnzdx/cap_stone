@@ -2,7 +2,11 @@
 
 AI 协调的多人旅行规划工具的前端原型。核心理念:**没有 Final 发布或 Lock 流程**,系统维护一份持续更新的 Current Plan。
 
-**技术栈**:Vite + React 18 + React Router 6(HashRouter,无 UI 框架,无后端;数据为前端 mock + localStorage)
+**技术栈**:前端 Vite + React 18 + React Router 6(HashRouter,无 UI 框架);
+后端 Python + FastAPI + PostgreSQL,在 [`backend/`](backend/)。
+
+> **前端还没接后端。** 前端数据仍是 mock + localStorage;后端已独立跑通(判定、三条路径、
+> 投票结算、流水账,13 个接口)。接法见 [BACKEND.md](BACKEND.md) 第五节和 [HANDOFF.md](HANDOFF.md)。
 
 ## 快速开始
 
@@ -27,7 +31,10 @@ npm run dev
 **问题二:有人跟它抢吗?**(同一时段最近已经有别人表达过不同意愿)
 有 → 路径 B。没有 → 路径 A。
 
-判定实现在 `TripAppState.jsx` 的 `classifyChange()`。接后端后应由 Constraint Engine 实现,前端只消费结果。
+判定的权威实现在后端 `backend/app/domain/constraints/engine.py`,前端那份 `classifyChange()` 是等着被删掉的 mock。
+
+**实际有四条路,不是三条**:`settled`(已经投票定过)的时段会走一条门槛更高的重开轮 ——
+要写理由,而且要过半数明确支持才能推翻。判定顺序和四档"结实程度"见 [BACKEND.md](BACKEND.md) 第一节。
 
 ### 路径 A · 直接生效 + 匿名通知(约 80%)
 
@@ -110,16 +117,22 @@ legacy/                     旧版原型(v4 五阶段版)与旧交接文档,仅�
 
 ## 接后端
 
-完整契约见 **[BACKEND.md](BACKEND.md)**。三条红线:
+完整契约见 **[BACKEND.md](BACKEND.md)** 第五节,交接说明见 **[HANDOFF.md](HANDOFF.md)**。
 
-- `classifyChange()` 必须搬到服务端——**判定和确认状态放前端 = 任何人都能替别人确认**。
-- 邀请链接要换成不可猜的 token,现在的 `trip-{timestamp}` 可被枚举。
-- `visibility: planning_only` 的偏好原文和冲突对话里的成员姓名**永不下发到客户端**,在 API 层就过滤,不要指望前端。
+三条红线里,前两条后端已经做掉了:
+
+- ✅ `classifyChange()` 已在服务端。前端那份删掉,改调 `POST /api/plans/items/{id}/changes`。
+- ✅ 私密原文和成员姓名**结构上就下发不出去**:原文单独一张表,判定结果的类型里没有姓名字段。
+- ⬜ 邀请链接的不可猜 token —— 表已经存哈希了,加入接口还没做。
+
+前端最大的一处简化:**不用再自己分路了。** 统一提交,后端回一个 `path` 告诉你走了哪条。
 
 ## 已知未实现
 
-组织者角色、成员名单、AI Explanation 与可信度标签、预算视图、初始行程生成与 Blocked 状态、
-Suggestion/Needs adjustment 区分、多个并发决策回合。详见 BACKEND.md 第六节。
+**后端**:AI 五个活、偏好接口、景点库、登录/邀请、组织者功能。详见 [HANDOFF.md](HANDOFF.md) 第五节。
+
+**前端**:组织者角色、成员名单、AI Explanation 与可信度标签、预算视图、初始行程生成与 Blocked 状态、
+Suggestion/Needs adjustment 区分。
 
 ## 部署到 GitHub Pages
 
