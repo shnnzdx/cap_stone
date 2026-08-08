@@ -668,9 +668,9 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .people-problem .audience-strip.is-visible .audience-card .voice-received{transform:scaleX(1)}
 
 /* Give each process state about three deliberate wheel beats. */
-.feature-story{height:216vh}
+.feature-story{height:280vh}
 
-@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:200vh}}
+@media(max-width:900px){.responsibility-grid.compact{grid-template-columns:1fr}.feature-story{height:250vh}}
 @media(max-width:760px){.how-page-main .subhero,.privacy-page-main .subhero{min-height:auto}.feature-story{height:auto}.responsibility-grid.compact article{min-height:190px}}
 @media(prefers-reduced-motion:reduce){.responsibility-grid.compact article,.responsibility-grid.compact article>span,.audience-content-mask>div,.people-problem .audience-strip .audience-card,.people-problem .audience-strip .audience-card>span{transform:none;transition:none}}
 
@@ -949,11 +949,67 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-page .principle-heading h2{white-space:nowrap;margin-bottom:0}
 .product-page .principle-heading>p:last-child:not(.eyebrow){display:none}
 
-/* Only the process navigation bar is deep blue; the working area stays light. */
-.product-page .feature-story{background:transparent}
-.product-page .story-frame{background:#173754;color:#17314d;box-shadow:0 22px 64px rgba(52,82,114,.1)}
-.product-page .story-topbar{background:#173754;color:#bfd1e2}
-.product-page .story-window{background:linear-gradient(145deg,#f4f8fc,#eaf2f9 54%,#eef3f7)}
+/* The navy stage now sits behind the light process frame and opens outward with scroll. */
+.product-page .feature-story{
+  --story-progress:0;
+  --intro-progress:0;
+  --intro-ease:0;
+  --stage-topbar-shift:54px;
+  --stage-frame-shift:92px;
+  --navy-clip-top:108px;
+  --navy-clip-right:184px;
+  --navy-clip-bottom:108px;
+  --navy-clip-left:184px;
+  --navy-clip-round:32px;
+  background:transparent;
+  padding:0 !important;
+  padding-inline:0 !important;
+  overflow:visible;
+}
+.product-page .story-stage{
+  position:sticky;
+  top:0;
+  left:50%;
+  width:100dvw;
+  height:100svh;
+  min-height:640px;
+  margin-left:-50dvw;
+  isolation:isolate;
+  overflow:visible;
+}
+.product-page .process-navy-backdrop{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  background:#173754;
+  clip-path:inset(var(--navy-clip-top) var(--navy-clip-right) var(--navy-clip-bottom) var(--navy-clip-left) round var(--navy-clip-round));
+  box-shadow:0 22px 64px rgba(10,31,51,.24);
+  will-change:clip-path;
+}
+.product-page .story-frame{
+  position:absolute;
+  top:96px;
+  left:50%;
+  width:min(1160px,calc(100vw - 76px));
+  z-index:3;
+  background:transparent;
+  color:#17314d;
+  box-shadow:0 22px 64px rgba(52,82,114,.1);
+  transform:translate3d(-50%,var(--stage-frame-shift),0);
+  will-change:transform;
+}
+.product-page .story-topbar{
+  position:absolute;
+  top:36px;
+  left:50%;
+  width:min(1160px,calc(100vw - 76px));
+  z-index:2;
+  background:transparent;
+  color:#bfd1e2;
+  transform:translate3d(-50%,var(--stage-topbar-shift),0);
+  will-change:transform;
+}
+.product-page .story-window{height:100%;background:linear-gradient(145deg,#f4f8fc,#eaf2f9 54%,#eef3f7)}
 .product-page .story-intro,.product-page .process-viewport,.product-page .stacked-features{color:#17314d}
 .product-page .story-intro>p,.product-page .stacked-copy p{color:#405b74}
 .product-page .stacked-detail small{color:#718397}
@@ -972,7 +1028,8 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   justify-content:flex-start;
   min-width:0;
   height:100%;
-  padding:0 clamp(34px,4vw,56px);
+  max-height:100%;
+  padding:clamp(44px,7vh,86px) clamp(34px,4vw,56px) 0;
   overflow:clip;
 }
 .product-page .stacked-feature{
@@ -1007,6 +1064,8 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-page .stacked-feature:last-child{
   border-bottom:1px solid rgba(23,49,77,.22);
 }
+.product-page .story-frame.product-reveal{translate:0 0}
+.product-page .story-frame.product-reveal.product-in-view{translate:0 0}
 .product-page .stacked-heading{
   min-height:var(--step-collapsed);
   height:var(--step-collapsed);
@@ -1067,6 +1126,29 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .stacked-signal>div:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;z-index:2;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#edf4fa;color:#5f91c7;font-size:10px;transform:translateY(-50%)}
 .stacked-signal span{display:block;margin-bottom:7px;color:#6a9acf;font-family:var(--font-label);font-size:8px;letter-spacing:.08em}
 .stacked-signal strong{display:block;color:#17314d;font-size:10px;font-weight:400;line-height:1.24}
+
+@media(max-width:900px){
+  .product-page .feature-story{height:250vh;padding-inline:20px}
+  .product-page .story-stage{top:0;height:100svh;min-height:580px}
+  .product-page .story-frame{top:88px;width:min(1160px,calc(100vw - 40px))}
+  .product-page .story-topbar{top:32px;width:min(1160px,calc(100vw - 40px))}
+}
+
+@media(max-width:760px){
+  .product-page .feature-story{height:auto;padding:18px 10px}
+  .product-page .story-stage{position:relative;top:auto;left:auto;width:auto;height:auto;min-height:0;margin-left:0}
+  .product-page .process-navy-backdrop{clip-path:none;border-radius:26px}
+  .product-page .story-topbar,
+  .product-page .story-frame{position:relative;top:auto;left:auto;width:auto;transform:none}
+  .product-page .story-frame{margin-top:12px}
+  .product-page .story-window{height:auto}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .product-page .process-navy-backdrop{clip-path:none}
+  .product-page .story-topbar,
+  .product-page .story-frame{transform:none}
+}
 
 .responsibility-section>h2{max-width:none;margin-bottom:34px;font-size:clamp(40px,3.7vw,60px);line-height:.96;letter-spacing:-.05em;white-space:nowrap}
 
