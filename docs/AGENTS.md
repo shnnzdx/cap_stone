@@ -9,7 +9,7 @@
 
 | | 状态 | 怎么弄 |
 |---|---|---|
-| Python 环境 | ✅ | `trip/backend/.venv` |
+| Python 环境 | ✅ | `backend/.venv` |
 | PostgreSQL + 数据 | ✅ | `.venv/bin/python -m app.db.seed` |
 | 判定引擎 | ✅ | `app/domain/constraints/engine.py`,0.03 秒,不花钱 |
 | 三条路径的执行 | ✅ | `app/domain/decisions/orchestrator.py` |
@@ -232,7 +232,7 @@ OpenAI 报错时，classify / changes / votes 三个接口行为不变
 跑测试:
 
 ```bash
-cd trip/backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
+cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
 ```
 
 现在是 73 passed。**加 agent 之后只能变多,不能变少。**

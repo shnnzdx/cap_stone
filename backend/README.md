@@ -2,8 +2,8 @@
 
 Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、决策流水账。
 
-产品逻辑以 [`../README.md`](../README.md) 和 [`../BACKEND.md`](../BACKEND.md) 为准。
-今天做了什么、接下来怎么接着做,见 [`../HANDOFF.md`](../HANDOFF.md)。
+产品逻辑以 [`../README.md`](../README.md) 和 [`../trip/BACKEND.md`](../trip/BACKEND.md) 为准。
+今天做了什么、接下来怎么接着做,见 [`../trip/交接.md`](../trip/交接.md)。
 
 ---
 
@@ -12,7 +12,7 @@ Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、
 需要 PostgreSQL(本机已装 `postgresql@15`)和 Python 3.13。
 
 ```bash
-cd trip/backend
+cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env          # 填 DATABASE_URL 和 OPENAI_API_KEY

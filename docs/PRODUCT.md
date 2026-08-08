@@ -11,7 +11,7 @@
 | **产品怎么运转** | **本文** |
 | 每个按钮点了会怎样 | [`../trip/FRONTEND.md`](../trip/FRONTEND.md) |
 | 数据结构、接口、规则的技术表述 | [`../trip/BACKEND.md`](../trip/BACKEND.md) |
-| 现在做到哪了 | [`../trip/HANDOFF.md`](../trip/HANDOFF.md) |
+| 现在做到哪了 | [`../trip/交接.md`](../trip/交接.md) |
 
 ⬜ = 设计已定但还没做。**本文是设计的权威版,不是进度表。**
 

@@ -2,8 +2,8 @@
 
 产品规则的权威文档。**打 ✅ 的已经实现并有测试守着,打 ⬜ 的还没做。**
 
-代码在 [`backend/`](backend/),怎么跑见 [`backend/README.md`](backend/README.md)。
-今天做了什么、为什么这么定,见 [`HANDOFF.md`](HANDOFF.md)。
+代码在 [`../backend/`](../backend/),怎么跑见 [`../backend/README.md`](../backend/README.md)。
+今天做了什么、为什么这么定,见 [`交接.md`](交接.md)。
 
 前端仍是有状态的 mock UI,数据在 `src/final/tripContent.js` 和 `TripAppState.jsx` 两个文件里,
 还没接后端。接的时候看第五节。
@@ -13,7 +13,7 @@
 ## 一、路径判定 ✅
 
 **判定必须在服务端。** 放前端 = 任何人改改浏览器里的代码就能替别人确认。
-实现在 `backend/app/domain/constraints/engine.py`,一个纯函数,不碰数据库、不调 AI。
+实现在 `../backend/app/domain/constraints/engine.py`,一个纯函数,不碰数据库、不调 AI。
 
 ### 每个时段的四档结实程度
 
@@ -370,7 +370,7 @@ POST   /api/plans/items/{id}/comments
 按重要性:
 
 1. **AI 五个活** ⬜ —— 翻译约束 / 生成行程 / 解释与可信度标签 / 出候选项 / 私聊。
-   接入方式见 [`HANDOFF.md`](HANDOFF.md)。
+   接入方式见 [`交接.md`](交接.md)。
 2. **偏好接口 + 六种约束的增删改** ⬜ —— 表有了,没有接口能填。也是 AI 翻译那一步的落点。
 3. **AI Explanation + 可信度标签** ⬜ —— Why this works / Trade-offs / Verified·AI estimate·Mock。
    **这是"AI 提议、人来决定"唯一能被看见的地方,目前一条都没有。**

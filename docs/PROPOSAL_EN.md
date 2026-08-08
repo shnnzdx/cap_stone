@@ -10,7 +10,7 @@
 
 This document is the single authoritative source for **product rationale and business case**.
 The technical contract lives in [`../trip/BACKEND.md`](../trip/BACKEND.md); current implementation
-status in [`../trip/HANDOFF.md`](../trip/HANDOFF.md). The three do not overlap: this one says
+status in [`../trip/交接.md`](../trip/交接.md). The three do not overlap: this one says
 *why* and *what*, the other two say *how*.
 
 ---
