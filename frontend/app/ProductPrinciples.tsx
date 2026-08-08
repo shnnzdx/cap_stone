@@ -14,7 +14,6 @@ const getReveal = (progress: number, start: number, end: number) => clamp((progr
 const easeOutQuad = (value: number) => 1 - Math.pow(1 - value, 2);
 const headingOffset = 108;
 const itemOffsets = [202, 156, 118, 84] as const;
-const transitionOffset = 64;
 
 export default function ProductPrinciples() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -62,33 +61,33 @@ export default function ProductPrinciples() {
     };
   };
 
-  const lineReveal = easeOutQuad(getReveal(progress, 0.93, 1));
-
   return (
     <div className="principle-scroll" ref={sectionRef} aria-label="TripSync core product principles">
       <div className="principle-stage">
-        <div className="principle-map" aria-hidden="true" style={getMotionStyle(0.0, 0.26, headingOffset)}>
-          <div className="principle-map-land" />
-          <svg className="principle-route" viewBox="0 0 1200 660" preserveAspectRatio="xMidYMid meet">
-            <path className="principle-route-guide" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
-            <path className="principle-route-line" pathLength="1" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
-            <g className="principle-route-points">
-              {[
-                [154, 174], [232, 166], [310, 206], [390, 230], [474, 242], [554, 274], [630, 324],
-                [694, 378], [770, 412], [862, 420], [940, 442], [1004, 474], [1052, 510],
-              ].map(([x, y], index) => (
-                <circle className="principle-route-point" cx={x} cy={y} r="5" key={`${x}-${y}`}>
-                  <animate
-                    attributeName="opacity"
-                    dur="8s"
-                    repeatCount="indefinite"
-                    values="0;0;.62;.62;0"
-                    keyTimes={`0;${(0.1 + index * 0.056).toFixed(3)};${(0.12 + index * 0.056).toFixed(3)};.88;1`}
-                  />
-                </circle>
-              ))}
-            </g>
-          </svg>
+        <div className="principle-map" aria-hidden="true">
+          <div className="principle-map-motion" style={getMotionStyle(0.0, 0.26, headingOffset)}>
+            <div className="principle-map-land" />
+            <svg className="principle-route" viewBox="0 0 1200 660" preserveAspectRatio="xMidYMid meet">
+              <path className="principle-route-guide" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
+              <path className="principle-route-line" pathLength="1" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
+              <g className="principle-route-points">
+                {[
+                  [154, 174], [232, 166], [310, 206], [390, 230], [474, 242], [554, 274], [630, 324],
+                  [694, 378], [770, 412], [862, 420], [940, 442], [1004, 474], [1052, 510],
+                ].map(([x, y], index) => (
+                  <circle className="principle-route-point" cx={x} cy={y} r="5" key={`${x}-${y}`}>
+                    <animate
+                      attributeName="opacity"
+                      dur="8s"
+                      repeatCount="indefinite"
+                      values="0;0;.62;.62;0"
+                      keyTimes={`0;${(0.1 + index * 0.056).toFixed(3)};${(0.12 + index * 0.056).toFixed(3)};.88;1`}
+                    />
+                  </circle>
+                ))}
+              </g>
+            </svg>
+          </div>
         </div>
         <header className="principle-heading">
           <div className="principle-heading-position">
@@ -115,18 +114,6 @@ export default function ProductPrinciples() {
           </div>
         ))}
 
-        <footer className="principle-transition">
-          <div className="principle-transition-position">
-            <div className="principle-transition-motion" style={getMotionStyle(0.86, 1.0, transitionOffset)}>
-              <p>AI generates. Rules validate. People decide.</p>
-              <i aria-hidden="true" style={{ height: `${18 + lineReveal * 48}px` }} />
-              <a href="#process">
-                <span>HOW TRIPSYNC WORKS</span>
-                <strong>Five steps. One decision.</strong>
-              </a>
-            </div>
-          </div>
-        </footer>
       </div>
     </div>
   );
