@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 真实的 key 和数据库地址放这里,永远不提交
+.env

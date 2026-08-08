@@ -1,0 +1,169 @@
+"""把 demo 里那趟「Mia's 30th in Chicago」灌进数据库。
+
+跑一次就有真数据可看,不用对着空表干瞪眼。
+内容和前端 tripContent.js 对得上,方便两边比对。
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy import delete
+
+from .models import (
+    Base,
+    MemberConstraint,
+    MemberConstraintPrivate,
+    Plan,
+    PlanItem,
+    Preference,
+    Trip,
+    TripMembership,
+    User,
+)
+from .session import SessionLocal, engine
+
+MEMBERS = [
+    ("Mia Chen", "mia@example.com", "organizer"),
+    ("Elena Cruz", "elena@example.com", "participant"),
+    ("Sam Osei", "sam@example.com", "participant"),
+    ("Priya Raman", "priya@example.com", "participant"),
+    ("Tom Baker", "tom@example.com", "participant"),
+    ("Yuki Sato", "yuki@example.com", "participant"),
+]
+
+# (第几天, 日期, 几点, 时长, 标题, 地点, 每人多少钱, 是不是吃饭, 结实程度, 纬度, 经度)
+ITEMS = [
+    (1, date(2026, 8, 14), 16.0, 60, "Hotel check-in", "River North hotel", 0, False, "loose", 41.8925, -87.6345),
+    (1, date(2026, 8, 14), 18.0, 90, "Riverwalk sunset", "Chicago Riverwalk", 0, False, "loose", 41.8879, -87.6270),
+    (1, date(2026, 8, 14), 19.5, 120, "Welcome dinner", "River North", 45, True, "booked", 41.8930, -87.6330),
+    (2, date(2026, 8, 15), 10.0, 90, "Architecture cruise", "Chicago River dock", 52, False, "booked", 41.8880, -87.6244),
+    (2, date(2026, 8, 15), 14.0, 150, "Art Institute of Chicago", "Michigan Avenue", 32, False, "loose", 41.8796, -87.6237),
+    (2, date(2026, 8, 15), 19.0, 150, "Birthday dinner", "River North", 78, True, "booked", 41.8935, -87.6320),
+    (3, date(2026, 8, 16), 10.5, 90, "Late brunch", "Near the hotel", 28, True, "loose", 41.8920, -87.6350),
+    (3, date(2026, 8, 16), 13.0, 180, "Wicker Park food walk", "Wicker Park", 40, True, "loose", 41.9088, -87.6796),
+    (3, date(2026, 8, 16), 18.5, 120, "Group meetup", "West Loop", 35, True, "loose", 41.8836, -87.6500),
+]
+
+
+def reset_schema() -> None:
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+
+def seed() -> dict:
+    with SessionLocal() as db:
+        for model in (MemberConstraintPrivate, MemberConstraint, Preference, PlanItem,
+                      Plan, TripMembership, Trip, User):
+            db.execute(delete(model))
+
+        users = [User(name=n, email=e) for n, e, _ in MEMBERS]
+        db.add_all(users)
+        db.flush()
+
+        trip = Trip(
+            name="Mia's 30th in Chicago",
+            destination="Chicago",
+            preferred_start_date=date(2026, 8, 14),
+            preferred_end_date=date(2026, 8, 17),
+            expected_group_size=6,
+            status="traveling",
+            created_by_user_id=users[0].id,
+            preferences_deadline=datetime.now(timezone.utc) + timedelta(days=2),
+        )
+        db.add(trip)
+        db.flush()
+
+        memberships = [
+            TripMembership(
+                trip_id=trip.id,
+                user_id=user.id,
+                role=role,
+                join_method="creator" if role == "organizer" else "invite_login",
+                status="preferences_submitted",
+            )
+            for user, (_, _, role) in zip(users, MEMBERS)
+        ]
+        db.add_all(memberships)
+        db.flush()
+
+        # Mia 的私密约束:不早于 9 点。原文和可见性存在另一张表里。
+        constraint = MemberConstraint(
+            trip_membership_id=memberships[0].id,
+            kind="time_window",
+            importance="required",
+            params={"earliest_hour": 9.0},
+        )
+        db.add(constraint)
+        db.flush()
+        db.add(
+            MemberConstraintPrivate(
+                constraint_id=constraint.id,
+                original_text="No activities before 9:00 AM",
+                visibility="planning_only",
+            )
+        )
+
+        # 另外两个人的硬底线:预算上限、走路距离
+        for membership, kind, params in (
+            (memberships[2], "budget_ceiling", {"max_total_per_person": 650.0}),
+            (memberships[4], "walk_limit", {"max_km_per_day": 3.0}),
+        ):
+            c = MemberConstraint(
+                trip_membership_id=membership.id,
+                kind=kind,
+                importance="required",
+                params=params,
+            )
+            db.add(c)
+
+        db.add_all(
+            Preference(
+                trip_membership_id=m.id,
+                preferred_start_date=date(2026, 8, 14),
+                preferred_end_date=date(2026, 8, 17),
+                available_start_date=date(2026, 8, 13),
+                available_end_date=date(2026, 8, 18),
+                ideal_budget=500.0,
+                maximum_budget=650.0,
+                top_interests=["Food", "Culture", "Relaxed"],
+                submitted_at=datetime.now(timezone.utc),
+            )
+            for m in memberships
+        )
+
+        plan = Plan(trip_id=trip.id, estimated_total_per_person=310.0)
+        db.add(plan)
+        db.flush()
+
+        db.add_all(
+            PlanItem(
+                plan_id=plan.id,
+                day_index=day,
+                day_date=when,
+                start_hour=hour,
+                duration_min=mins,
+                title=title,
+                place=place,
+                price_per_person=price,
+                is_meal=is_meal,
+                settledness=settledness,
+                lat=lat,
+                lng=lng,
+                source="mock",
+            )
+            for day, when, hour, mins, title, place, price, is_meal, settledness, lat, lng in ITEMS
+        )
+
+        db.commit()
+        return {
+            "trip_id": trip.id,
+            "plan_id": plan.id,
+            "members": len(memberships),
+            "items": len(ITEMS),
+        }
+
+
+if __name__ == "__main__":
+    reset_schema()
+    print("建表完成:", seed())
