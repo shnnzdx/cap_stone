@@ -1,26 +1,17 @@
 "use client";
 
 import { useState } from "react";
-
-const ideaParticles = Array.from({ length: 28 }, (_, index) => ({
-  left: 18 + ((index * 37) % 64), top: 14 + ((index * 53) % 70),
-  size: 3 + (index % 4), delay: -((index % 9) * .37),
-}));
+import IdeaSphereCanvas from "./IdeaSphereCanvas";
 
 export function BrandConstellation() {
-  return <div className="constellation pipeline-hero" aria-label="Different traveler ideas are organized into one clear, verifiable plan">
-    <div className="placeholder-label"><span>FROM MANY VOICES TO ONE PLAN</span><small>Private input → coordinated decisions</small></div>
-    <div className="pipeline-zone idea-zone" aria-hidden="true">
-      <div className="idea-orb">{ideaParticles.map((particle, index) => <i key={index} style={{left:`${particle.left}%`,top:`${particle.top}%`,width:particle.size,height:particle.size,animationDelay:`${particle.delay}s`}} />)}</div>
-      <span className="idea-tag tag-budget">Budget</span><span className="idea-tag tag-dates">Dates</span><span className="idea-tag tag-pace">Pace</span>
-      <strong>Group input</strong>
+  return (
+    <div
+      className="constellation idea-sphere-stage"
+      aria-label="Different traveler ideas gather into one shared planning space"
+    >
+      <IdeaSphereCanvas />
     </div>
-    <div className="pipeline-route route-in" aria-hidden="true"><i/><i/><i/></div>
-    <div className="pipeline-processor" aria-hidden="true"><span className="brand-mark large">T</span><b>Understand</b><b>Validate</b></div>
-    <div className="pipeline-route route-out" aria-hidden="true"><i/><i/><i/></div>
-    <div className="plan-zone" aria-hidden="true"><strong>Shared plan</strong><ol><li>Create</li><li>Share</li><li>Review</li><li>Confirm</li></ol></div>
-    <p className="pipeline-caption">Every voice stays distinct.<br/>The plan becomes clear.</p>
-  </div>;
+  );
 }
 
 export function DemoPanel() {

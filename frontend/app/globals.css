@@ -806,25 +806,16 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 /* Homepage v4: one continuous canvas and a clear top-to-bottom hero reading order. */
 .product-page{background:radial-gradient(circle at 12% 18%,rgba(180,214,244,.3),transparent 32%),radial-gradient(circle at 86% 42%,rgba(189,193,225,.24),transparent 34%),radial-gradient(circle at 24% 76%,rgba(181,215,207,.18),transparent 31%),linear-gradient(180deg,#eaf3fb 0%,#e6eef8 48%,#edf4f8 100%)}
 .product-page .site-header{background:rgba(234,243,251,.82)}
-.product-page .hero{min-height:auto;display:grid;grid-template-columns:1fr;padding-block:clamp(76px,10vh,112px);gap:34px;align-items:start}
-.product-page .hero-copy{width:min(880px,100%);transform:none;text-align:left}
-.product-page .hero h1{max-width:900px;margin-bottom:22px;font-size:clamp(3.8rem,7.2vw,7rem)}
 .product-page .hero .lede{max-width:760px}
-.product-page .constellation{width:100%;height:clamp(500px,66vh,650px)}
-.product-page .hero-actions{display:flex;flex-direction:column;align-items:flex-start;margin-top:0}
-.product-page .hero-actions .actions{margin-top:0}.product-page .hero-actions .fineprint{margin-bottom:0}
 .product-page .product-overview{margin:0;padding-inline:0;border-radius:0;background:transparent;box-shadow:none}
 .product-page .product-overview:after{opacity:.35}
 .product-page .people-problem,.product-page .feature-story,.product-page .demo-section{background:transparent}
 .product-page .story-frame{background:rgba(239,246,252,.74);box-shadow:0 22px 64px rgba(52,82,114,.08)}
 .product-page .final-cta{background:#173754}
 .login-heading h2{font-size:clamp(2.2rem,3vw,3.25rem);white-space:nowrap}
-@media(max-width:760px){.product-page .hero{padding-block:68px}.product-page .hero h1{font-size:clamp(3.25rem,14vw,5rem)}.product-page .constellation{height:auto;min-height:680px}.product-page .hero-actions .actions{flex-wrap:wrap}.login-heading h2{white-space:normal}}
+@media(max-width:760px){.login-heading h2{white-space:normal}}
 
 /* Homepage v5: cumulative core reveal and a compact, continuous People chapter. */
-.product-page .hero-actions{align-items:center;width:100%;text-align:center}
-.product-page .hero-actions .actions{width:min(660px,100%);justify-content:center;gap:24px}
-.product-page .hero-actions .button{width:min(285px,44vw);min-height:64px}
 .product-page .principle-mask{overflow:hidden}
 .product-page .principle-word{color:currentColor;will-change:transform,clip-path}
 .product-page .principle-line.validate{color:#4f88c7}.product-page .principle-line.protect{color:#7779bd}.product-page .principle-line.explain{color:#3f9689}.product-page .principle-line.confirm{color:#5d73bd}
@@ -848,15 +839,11 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-page .people-problem .shared-problem .quote-card:nth-child(3){margin-right:10px!important}
 .product-page .people-problem .shared-problem .quote-card p{margin-top:14px;font-size:clamp(.95rem,1.05vw,1.06rem);line-height:1.22}
 @media(max-width:900px){.product-page .people-problem .people-scroll{height:206vh}.product-page .people-problem .people-stage{min-height:760px}.product-page .people-problem .shared-problem{grid-template-columns:1fr}.product-page .people-problem .problem-subsection{padding-top:0}.product-page .people-problem .problem-subsection h3{font-size:clamp(2.2rem,6.5vw,3rem);max-width:10ch}.product-page .people-problem .shared-problem .quote-grid{margin-top:8px}.mobile-menu-actions{padding-bottom:6px}}
-@media(max-width:620px){.product-page .hero-actions .actions{gap:10px}.product-page .hero-actions .button{width:100%;min-height:54px}.product-page .people-problem .people-scroll{height:auto}.product-page .people-problem .people-stage{position:relative;top:auto;height:auto;min-height:0}.product-page .people-problem .shared-problem{position:relative;top:auto;height:auto;min-height:0}.product-page .people-problem .problem-subsection h3{font-size:clamp(2rem,11vw,2.55rem);max-width:8.5ch}.product-page .people-problem .shared-problem .quote-card{width:100%;min-height:110px;margin-right:0!important}}
+@media(max-width:620px){.product-page .people-problem .people-scroll{height:auto}.product-page .people-problem .people-stage{position:relative;top:auto;height:auto;min-height:0}.product-page .people-problem .shared-problem{position:relative;top:auto;height:auto;min-height:0}.product-page .people-problem .problem-subsection h3{font-size:clamp(2rem,11vw,2.55rem);max-width:8.5ch}.product-page .people-problem .shared-problem .quote-card{width:100%;min-height:110px;margin-right:0!important}}
 
 /* Homepage v6: stable editorial headings and viewport-safe scroll chapters. */
 .product-page{max-width:100%;overflow-x:clip}
 .product-page *{max-width:100%;min-width:0;box-sizing:border-box}
-.product-page .hero{padding-top:clamp(86px,11vh,132px);padding-bottom:clamp(72px,9vh,108px)}
-.product-page .hero-copy{width:min(900px,100%)}
-.product-page .hero h1{font-size:clamp(3.35rem,6.2vw,6.15rem);line-height:.95}
-
 .product-page .product-overview>.shell{position:relative}
 .product-page .principle-scroll{height:190svh;margin-top:0}
 .product-page .principle-stage{position:sticky;top:72px;height:calc(100svh - 72px);min-height:650px;padding:clamp(205px,27vh,270px) 0 clamp(72px,9vh,100px);overflow:visible}
@@ -896,7 +883,6 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .signup-kicker{color:#9fc5f7}
 
 @media(max-width:1100px),(max-height:760px){
-  .product-page .hero{padding-top:clamp(64px,8vh,88px)}
   .product-page .principle-stage{padding-top:clamp(180px,25vh,210px)}
   .product-page .principle-heading h2{font-size:clamp(2.25rem,4vw,3.5rem)}
   .product-page .principle-word strong{font-size:clamp(2.9rem,4.2vw,4.15rem)}
@@ -937,8 +923,6 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 
 /* Homepage v7: shared opening rhythm and precise editorial hierarchy. */
 .shell{width:min(1200px,calc(100% - 64px))}
-.product-page .hero{padding-top:104px;padding-bottom:clamp(72px,9vh,108px)}
-.product-page .hero h1{max-width:900px;font-size:clamp(72px,6.2vw,104px);line-height:.94;letter-spacing:-.055em}
 .subhero{min-height:0;padding-top:112px;padding-bottom:96px}
 .subhero h1{max-width:760px;font-size:clamp(64px,5.4vw,88px);line-height:.96;letter-spacing:-.05em}
 
@@ -1178,7 +1162,6 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 
 @media(max-width:900px){
   .shell{width:min(100% - 40px,1200px)}
-  .product-page .hero{padding-top:88px}
   .subhero{padding-top:96px}
   .signup-layout{width:min(100% - 40px,720px);grid-template-columns:1fr;padding-top:108px}
 }
@@ -1197,7 +1180,6 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 }
 
 @media(max-width:620px){
-  .product-page .hero h1{font-size:clamp(52px,14vw,68px)}
   .subhero h1{font-size:clamp(48px,13vw,64px)}
   .signup-page{background-attachment:scroll}
   .signup-layout{width:min(100% - 24px,560px);padding-top:92px}
@@ -1428,4 +1410,209 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   10%{opacity:1}
   78%,88%{stroke-dashoffset:0;opacity:1}
   100%{stroke-dashoffset:0;opacity:0}
+}
+
+/* Current homepage hero and idea sphere layout. */
+.product-page .hero{
+  min-height:auto;
+  display:grid;
+  grid-template-columns:1fr;
+  align-items:start;
+  gap:0;
+  padding-top:clamp(64px,8vh,84px);
+  padding-bottom:clamp(72px,9vh,110px);
+}
+
+.product-page .hero-copy{
+  width:min(900px,100%);
+  margin-bottom:clamp(56px,7vh,72px);
+  transform:none;
+  text-align:left;
+}
+
+.product-page .hero-copy>.eyebrow{
+  margin:0 0 16px;
+}
+
+.product-page .hero h1{
+  max-width:900px;
+  margin:0;
+  font-size:clamp(68px,5.8vw,98px);
+  line-height:.94;
+  letter-spacing:-.055em;
+}
+
+.product-page .hero-actions{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  width:100%;
+  margin-top:0;
+  text-align:center;
+}
+
+.product-page .hero-actions .actions{
+  width:min(660px,100%);
+  justify-content:center;
+  gap:24px;
+  margin-top:0;
+}
+
+.product-page .hero-actions .button{
+  width:min(285px,44vw);
+  min-height:64px;
+}
+
+.product-page .hero-actions .fineprint{
+  margin:clamp(14px,2vh,20px) 0 0;
+}
+
+.product-page .constellation{
+  width:100%;
+}
+
+.product-page .idea-sphere-stage{
+  position:relative;
+  width:min(1120px,100dvw);
+  height:clamp(430px,46vh,500px);
+  margin:0 0 clamp(56px,7vh,70px) 50%;
+  transform:translateX(-50%);
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  overflow:visible;
+  isolation:isolate;
+}
+
+.product-page .idea-sphere-stage:before{
+  content:"";
+  position:absolute;
+  inset:-40vh -45vw -36vh -45vw;
+  z-index:-1;
+  border-radius:0;
+  background:
+    linear-gradient(115deg,rgba(232,241,252,.34),rgba(238,245,253,.15) 46%,rgba(237,244,251,0) 82%),
+    radial-gradient(ellipse at 54% 48%,rgba(213,228,246,.26),rgba(232,241,252,.07) 48%,rgba(237,244,251,0) 82%);
+  filter:none;
+  pointer-events:none;
+}
+
+.idea-sphere-canvas{
+  position:absolute;
+  inset:-8% -7%;
+  min-height:100%;
+  cursor:crosshair;
+  touch-action:none;
+}
+
+.idea-sphere-canvas canvas{
+  display:block;
+  width:100%;
+  height:100%;
+}
+
+.idea-sphere-vignette{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:none;
+}
+
+.idea-sphere-label{
+  position:absolute;
+  left:0;
+  top:0;
+  z-index:4;
+  width:144px;
+  padding:7px 10px 8px;
+  border:1px solid rgba(142,170,201,.24);
+  border-radius:12px;
+  background:rgba(255,255,255,.58);
+  box-shadow:0 10px 24px rgba(47,105,185,.07);
+  backdrop-filter:blur(8px);
+  color:#17314d;
+  pointer-events:none;
+  transition:opacity .16s ease;
+}
+
+.idea-sphere-label span,
+.idea-sphere-label small{
+  display:block;
+}
+
+.idea-sphere-label span{
+  font-size:12px;
+  line-height:1.25;
+  font-weight:600;
+}
+
+.idea-sphere-label small{
+  margin-top:3px;
+  color:#66809a;
+  font-size:10px;
+  line-height:1.2;
+}
+
+@media(max-width:900px){
+  .product-page .hero{
+    padding-top:88px;
+    gap:0;
+  }
+
+  .product-page .hero-copy{
+    margin-bottom:clamp(52px,7vw,68px);
+  }
+
+  .product-page .idea-sphere-stage{
+    width:100%;
+    height:clamp(470px,58vh,590px);
+    margin:0 0 clamp(52px,7vw,66px);
+    transform:none;
+  }
+
+  .idea-sphere-canvas{
+    inset:-5% -8%;
+  }
+}
+
+@media(max-width:620px){
+  .product-page .hero{
+    padding-block:68px 88px;
+  }
+
+  .product-page .hero-copy{
+    margin-bottom:44px;
+  }
+
+  .product-page .hero h1{
+    font-size:clamp(52px,14vw,68px);
+  }
+
+  .product-page .hero-actions .actions{
+    flex-wrap:wrap;
+    gap:10px;
+  }
+
+  .product-page .hero-actions .button{
+    width:100%;
+    min-height:54px;
+  }
+
+  .product-page .idea-sphere-stage{
+    min-height:0;
+    height:440px;
+    margin-bottom:44px;
+  }
+
+  .idea-sphere-canvas{
+    inset:-6% -14%;
+    cursor:default;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .idea-sphere-label{
+    transition:none;
+  }
 }
