@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
+
+export type IdeaSphereStoryMotion = {
+  expansion: number;
+  absorption: number;
+  rotationDamp: number;
+  shatter: number;
+  mapProgress: number;
+};
 
 type IdeaParticle = {
   index: number;
@@ -41,29 +49,67 @@ const vertexShader = `
   attribute float aAmp;
   attribute float aFreq;
   attribute float aBrightness;
+  attribute vec3 aShatterVector;
+  attribute float aShatterDelay;
+  attribute float aShatterStrength;
+  attribute float aShatterSeed;
+  attribute vec3 aMapPosition;
+  attribute float aMapDelay;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vBrightness;
   uniform float uTime;
   uniform float uPixelRatio;
   uniform float uReduceMotion;
+  uniform float uAbsorption;
+  uniform float uShatter;
+  uniform float uShatterScale;
+  uniform float uMapProgress;
 
   void main() {
     vec3 displaced = position;
-    float drift = sin(uTime * aFreq + aPhase) * aAmp * (1.0 - uReduceMotion);
+    float radius = length(position);
+    float mapProgress = uMapProgress;
+    float mapEaseGlobal = smoothstep(0.02, 0.94, mapProgress);
+    float driftAmount = (1.0 - uReduceMotion) * mix(1.0, 0.14, mapEaseGlobal);
+    float drift = sin(uTime * aFreq + aPhase) * aAmp * driftAmount;
     displaced += normalize(position + vec3(0.12, -0.08, 0.18)) * drift;
-    displaced.x += cos(uTime * (aFreq * 0.73) + aPhase * 1.7) * aAmp * 0.38 * (1.0 - uReduceMotion);
-    displaced.y += sin(uTime * (aFreq * 0.61) + aPhase * 0.9) * aAmp * 0.28 * (1.0 - uReduceMotion);
+    displaced.x += cos(uTime * (aFreq * 0.73) + aPhase * 1.7) * aAmp * 0.38 * driftAmount;
+    displaced.y += sin(uTime * (aFreq * 0.61) + aPhase * 0.9) * aAmp * 0.28 * driftAmount;
+
+    float shatter = uShatter * (1.0 - uReduceMotion);
+    float shellWeight = smoothstep(0.56, 1.08, radius);
+    float instability = smoothstep(0.02, 0.28, shatter) * (1.0 - smoothstep(0.48, 0.9, shatter));
+    float regional = sin(position.x * 4.1 + aShatterSeed * 6.2831) * cos(position.y * 3.3 - aShatterSeed * 3.6);
+    float boundaryLift = regional * shellWeight * instability * 0.055;
+    displaced += normalize(position + vec3(0.04, -0.02, 0.03)) * boundaryLift;
+    displaced.x += regional * shellWeight * instability * 0.028;
+    displaced.y += sin(position.z * 4.8 + aShatterSeed * 5.1) * shellWeight * instability * 0.018;
+
+    float release = smoothstep(aShatterDelay, aShatterDelay + 0.28, shatter);
+    float releaseEase = release * release * (3.0 - 2.0 * release);
+    float localLoosen = smoothstep(aShatterDelay - 0.06, aShatterDelay + 0.1, shatter) * (1.0 - releaseEase);
+    displaced += normalize(position + aShatterVector * 0.18) * localLoosen * shellWeight * 0.09;
+    displaced += aShatterVector * releaseEase * aShatterStrength * uShatterScale;
+
+    float mapLocal = smoothstep(aMapDelay, aMapDelay + 0.32, mapProgress);
+    float mapEase = mapLocal * mapLocal * (3.0 - 2.0 * mapLocal);
+    vec3 curve = vec3(
+      sin(aShatterSeed * 6.2831) * 0.07,
+      cos(aShatterSeed * 5.17) * 0.04,
+      sin(aShatterSeed * 8.11) * 0.05
+    ) * sin(mapEase * 3.14159) * (1.0 - mapEase * 0.18);
+    displaced = mix(displaced, aMapPosition, mapEase) + curve;
 
     vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
     float depthScale = clamp(2.32 / -mvPosition.z, 0.42, 2.05);
-    gl_PointSize = aSize * uPixelRatio * depthScale;
+    gl_PointSize = aSize * uPixelRatio * depthScale * mix(1.0, 1.05, uAbsorption) * mix(1.0, 0.88, releaseEase) * mix(1.0, 1.02, mapEaseGlobal);
 
     vColor = color;
-    vAlpha = aAlpha;
-    vBrightness = aBrightness * clamp(depthScale, 0.82, 1.24);
+    vAlpha = aAlpha * mix(1.0, 1.14, uAbsorption) * mix(1.0, 0.92, releaseEase) * mix(1.0, 1.08, mapEaseGlobal);
+    vBrightness = aBrightness * clamp(depthScale, 0.82, 1.24) * mix(1.0, 1.07, uAbsorption) * mix(1.0, 0.96, releaseEase) * mix(1.0, 1.04, mapEaseGlobal);
   }
 `;
 
@@ -91,10 +137,10 @@ function createRandom(seed: number) {
   };
 }
 
-function pickCount(width: number) {
-  if (width < 640) return { visual: 720, interactive: 44 };
-  if (width < 980) return { visual: 1600, interactive: 86 };
-  return { visual: 3800, interactive: 148 };
+function pickCount(viewportWidth: number) {
+  if (viewportWidth < 640) return { visual: 1200, interactive: 48 };
+  if (viewportWidth < 980) return { visual: 3200, interactive: 92 };
+  return { visual: 7600, interactive: 164 };
 }
 
 function sphericalPoint(rand: () => number) {
@@ -111,9 +157,9 @@ function sphericalPoint(rand: () => number) {
 
 function layerRadius(rand: () => number) {
   const layer = rand();
-  if (layer < 0.68) return 0.82 + rand() * 0.25;
-  if (layer < 0.93) return 0.6 + rand() * 0.33;
-  return 0.38 + rand() * 0.28;
+  if (layer < 0.57) return 0.82 + rand() * 0.25;
+  if (layer < 0.89) return 0.58 + rand() * 0.35;
+  return 0.32 + rand() * 0.34;
 }
 
 function projectedLabelPlacement(x: number, y: number, width: number, height: number) {
@@ -125,7 +171,150 @@ function projectedLabelPlacement(x: number, y: number, width: number, height: nu
   };
 }
 
-export default function IdeaSphereCanvas() {
+type IdeaSphereCanvasProps = {
+  storyMotionRef?: MutableRefObject<IdeaSphereStoryMotion>;
+};
+
+function shatterScaleForViewport(width: number) {
+  if (width < 640) return 0.46;
+  if (width < 980) return 0.62;
+  return 0.78;
+}
+
+type MapCandidate = {
+  x: number;
+  y: number;
+};
+
+type MapTargetData = {
+  positions: Float32Array;
+  delays: Float32Array;
+  candidateCount: number;
+  source: "mask" | "fallback";
+};
+
+const WORLD_MAP_MASK_SRC = "/images/world-map-overlay.png";
+
+function mapScaleForViewport(width: number) {
+  if (width < 640) return { x: 2.62, y: 1.22, yOffset: -0.02 };
+  if (width < 980) return { x: 3.34, y: 1.42, yOffset: -0.03 };
+  return { x: 4.46, y: 1.86, yOffset: -0.05 };
+}
+
+function isInsideFallbackLand(x: number, y: number) {
+  const ellipse = (cx: number, cy: number, rx: number, ry: number, tilt = 0) => {
+    const cos = Math.cos(tilt);
+    const sin = Math.sin(tilt);
+    const dx = x - cx;
+    const dy = y - cy;
+    const px = dx * cos + dy * sin;
+    const py = -dx * sin + dy * cos;
+    return (px * px) / (rx * rx) + (py * py) / (ry * ry) <= 1;
+  };
+
+  return (
+    ellipse(-0.34, 0.16, 0.16, 0.11, -0.18) ||
+    ellipse(-0.29, -0.03, 0.08, 0.16, 0.2) ||
+    ellipse(-0.21, -0.27, 0.06, 0.18, -0.16) ||
+    ellipse(0.03, 0.11, 0.09, 0.1, -0.22) ||
+    ellipse(0.09, -0.12, 0.1, 0.18, 0.08) ||
+    ellipse(0.26, 0.12, 0.23, 0.13, 0.02) ||
+    ellipse(0.37, -0.08, 0.1, 0.08, -0.25) ||
+    ellipse(0.33, -0.29, 0.08, 0.05, 0.04)
+  );
+}
+
+function createFallbackMapCandidates() {
+  const candidates: MapCandidate[] = [];
+  for (let y = 0; y < 150; y += 1) {
+    for (let x = 0; x < 280; x += 1) {
+      const nx = x / 279 - 0.5;
+      const ny = 0.5 - y / 149;
+      if (isInsideFallbackLand(nx, ny)) candidates.push({ x: nx, y: ny });
+    }
+  }
+  return candidates;
+}
+
+function assignMapTargets(candidates: MapCandidate[], count: number, viewportWidth: number, source: MapTargetData["source"]): MapTargetData {
+  const scale = mapScaleForViewport(viewportWidth);
+  const rand = createRandom(source === "mask" ? 82117 : 64291);
+  const pool = candidates.length ? [...candidates] : createFallbackMapCandidates();
+
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    const item = pool[i];
+    pool[i] = pool[j];
+    pool[j] = item;
+  }
+
+  const positions = new Float32Array(count * 3);
+  const delays = new Float32Array(count);
+  for (let i = 0; i < count; i += 1) {
+    const candidate = pool[i % pool.length];
+    const repeat = Math.floor(i / pool.length);
+    const jitter = (repeat > 0 ? 0.012 : 0.006) + rand() * 0.006;
+    const x = candidate.x + (rand() - 0.5) * jitter;
+    const y = candidate.y + (rand() - 0.5) * jitter;
+    positions[i * 3] = x * scale.x;
+    positions[i * 3 + 1] = y * scale.y + scale.yOffset;
+    positions[i * 3 + 2] = (rand() - 0.5) * 0.08;
+
+    const centralCoherence = Math.abs(candidate.x) * 0.12 + Math.abs(candidate.y) * 0.035;
+    const hemisphereOffset = candidate.x < -0.18 ? 0.03 : candidate.x > 0.18 ? 0.015 : 0;
+    delays[i] = THREE.MathUtils.clamp(0.035, 0.36, centralCoherence + hemisphereOffset + rand() * 0.14);
+  }
+
+  return {
+    positions,
+    delays,
+    candidateCount: pool.length,
+    source,
+  };
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Unable to load ${src}`));
+    image.src = src;
+  });
+}
+
+async function sampleWorldMapMask(count: number, viewportWidth: number): Promise<MapTargetData> {
+  const image = await loadImage(WORLD_MAP_MASK_SRC);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return assignMapTargets(createFallbackMapCandidates(), count, viewportWidth, "fallback");
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+  const candidates: MapCandidate[] = [];
+  const step = viewportWidth < 640 ? 7 : viewportWidth < 980 ? 6 : 5;
+  for (let y = 0; y < canvas.height; y += step) {
+    for (let x = 0; x < canvas.width; x += step) {
+      const index = (y * canvas.width + x) * 4;
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      const alpha = data[index + 3];
+      if (alpha > 28 && red > 135 && green > 135 && blue > 135 && red + green + blue > 560) {
+        candidates.push({
+          x: x / canvas.width - 0.5,
+          y: 0.5 - y / canvas.height,
+        });
+      }
+    }
+  }
+
+  return assignMapTargets(candidates, count, viewportWidth, candidates.length ? "mask" : "fallback");
+}
+
+export default function IdeaSphereCanvas({ storyMotionRef }: IdeaSphereCanvasProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const labelRef = useRef<HTMLDivElement | null>(null);
   const labelTextNodeRef = useRef<HTMLSpanElement | null>(null);
@@ -142,7 +331,7 @@ export default function IdeaSphereCanvas() {
     const reduceMotion = () => reducedMotion.matches;
     const bounds = () => mount.getBoundingClientRect();
     const initial = bounds();
-    const counts = pickCount(initial.width);
+    const counts = pickCount(window.innerWidth);
     const rand = createRandom(39421);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, initial.width / initial.height, 0.1, 100);
@@ -174,7 +363,16 @@ export default function IdeaSphereCanvas() {
     const amps = new Float32Array(counts.visual);
     const freqs = new Float32Array(counts.visual);
     const brightness = new Float32Array(counts.visual);
+    const shatterVectors = new Float32Array(counts.visual * 3);
+    const shatterDelays = new Float32Array(counts.visual);
+    const shatterStrengths = new Float32Array(counts.visual);
+    const shatterSeeds = new Float32Array(counts.visual);
+    const fallbackMapData = assignMapTargets(createFallbackMapCandidates(), counts.visual, window.innerWidth, "fallback");
+    const mapPositions = fallbackMapData.positions;
+    const mapDelays = fallbackMapData.delays;
     const interactive: IdeaParticle[] = [];
+    const shatterDirection = new THREE.Vector3();
+    let disposed = false;
 
     const rear = new THREE.Color("#b5c7df");
     const soft = new THREE.Color("#d0e2fb");
@@ -220,6 +418,30 @@ export default function IdeaSphereCanvas() {
       amps[i] = 0.006 + rand() * 0.022;
       freqs[i] = 0.34 + rand() * 0.55;
       brightness[i] = 0.64 + rand() * 0.28 + depth * 0.54 + radial * 0.12;
+
+      const seed = rand();
+      const varianceX = (rand() - 0.5) * 0.72;
+      const varianceY = (rand() - 0.5) * 0.58;
+      const varianceZ = (rand() - 0.5) * 0.48;
+      const horizontalSide = base.x >= 0 ? 1 : -1;
+      const shellReleaseBias = THREE.MathUtils.smoothstep(radial, 0.45, 0.92);
+      const horizontalBias = (0.08 + rand() * 0.28) * shellReleaseBias;
+      shatterDirection.set(
+        base.x * 1.38 + horizontalSide * horizontalBias + varianceX,
+        base.y * 0.7 + varianceY,
+        base.z * 0.42 + varianceZ,
+      ).normalize();
+      shatterVectors[i * 3] = shatterDirection.x;
+      shatterVectors[i * 3 + 1] = shatterDirection.y;
+      shatterVectors[i * 3 + 2] = shatterDirection.z;
+
+      const regionalRelease =
+        Math.sin(base.x * 3.1 + seed * Math.PI * 2) * 0.035 +
+        Math.cos(base.y * 4.2 - seed * Math.PI) * 0.024;
+      const radialDelay = THREE.MathUtils.lerp(0.62, 0.2, radial);
+      shatterDelays[i] = THREE.MathUtils.clamp(0.16, 0.66, radialDelay + regionalRelease + (rand() - 0.5) * 0.085);
+      shatterStrengths[i] = 0.2 + radial * 0.55 + rand() * 0.18;
+      shatterSeeds[i] = seed;
     }
 
     const chosen = new Set<number>();
@@ -267,9 +489,17 @@ export default function IdeaSphereCanvas() {
     geometry.setAttribute("aAmp", new THREE.BufferAttribute(amps, 1));
     geometry.setAttribute("aFreq", new THREE.BufferAttribute(freqs, 1));
     geometry.setAttribute("aBrightness", new THREE.BufferAttribute(brightness, 1));
+    geometry.setAttribute("aShatterVector", new THREE.BufferAttribute(shatterVectors, 3));
+    geometry.setAttribute("aShatterDelay", new THREE.BufferAttribute(shatterDelays, 1));
+    geometry.setAttribute("aShatterStrength", new THREE.BufferAttribute(shatterStrengths, 1));
+    geometry.setAttribute("aShatterSeed", new THREE.BufferAttribute(shatterSeeds, 1));
+    geometry.setAttribute("aMapPosition", new THREE.BufferAttribute(mapPositions, 3));
+    geometry.setAttribute("aMapDelay", new THREE.BufferAttribute(mapDelays, 1));
     const sizeAttr = geometry.getAttribute("aSize") as THREE.BufferAttribute;
     const alphaAttr = geometry.getAttribute("aAlpha") as THREE.BufferAttribute;
     const colorAttr = geometry.getAttribute("color") as THREE.BufferAttribute;
+    const mapPositionAttr = geometry.getAttribute("aMapPosition") as THREE.BufferAttribute;
+    const mapDelayAttr = geometry.getAttribute("aMapDelay") as THREE.BufferAttribute;
 
     const material = new THREE.ShaderMaterial({
       vertexShader,
@@ -283,6 +513,10 @@ export default function IdeaSphereCanvas() {
         uTime: { value: 0 },
         uPixelRatio: { value: pixelRatio },
         uReduceMotion: { value: reduceMotion() ? 1 : 0 },
+        uAbsorption: { value: 0 },
+        uShatter: { value: 0 },
+        uShatterScale: { value: shatterScaleForViewport(window.innerWidth) },
+        uMapProgress: { value: 0 },
       },
     });
 
@@ -303,6 +537,7 @@ export default function IdeaSphereCanvas() {
 
     const screen = new THREE.Vector3();
     const world = new THREE.Vector3();
+    const driftDirection = new THREE.Vector3();
     let animationId = 0;
     let visible = true;
     let width = initial.width;
@@ -312,6 +547,16 @@ export default function IdeaSphereCanvas() {
     let pendingHoverIndex: number | null = null;
     let pendingHoverStarted = 0;
     let activeHoverIndex: number | null = null;
+
+    sampleWorldMapMask(counts.visual, window.innerWidth)
+      .then((mapData) => {
+        if (disposed) return;
+        mapPositionAttr.array.set(mapData.positions);
+        mapDelayAttr.array.set(mapData.delays);
+        mapPositionAttr.needsUpdate = true;
+        mapDelayAttr.needsUpdate = true;
+      })
+      .catch(() => undefined);
 
     const restoreParticleVisual = (index: number | null) => {
       if (index === null) return;
@@ -364,7 +609,8 @@ export default function IdeaSphereCanvas() {
     const projectIdea = (idea: IdeaParticle, elapsed: number) => {
       const drift = Math.sin(elapsed * idea.freq + idea.phase) * idea.amp;
       world.copy(idea.base);
-      world.addScaledVector(idea.base.clone().normalize(), drift);
+      driftDirection.copy(idea.base).normalize();
+      world.addScaledVector(driftDirection, drift);
       group.localToWorld(world);
       screen.copy(world).project(camera);
       if (
@@ -392,7 +638,18 @@ export default function IdeaSphereCanvas() {
     };
 
     const updateHover = (elapsed: number) => {
-      if (!pointerRef.current.inside || reduceMotion()) {
+      const storyMotion = storyMotionRef?.current;
+      if (!pointerRef.current.inside || reduceMotion() || (storyMotion?.shatter ?? 0) > 0.02 || (storyMotion?.mapProgress ?? 0) > 0.02) {
+        if (hoverIndexRef.current !== null) setLabelHidden();
+        return;
+      }
+
+      const sphereCenterX = width / 2;
+      const sphereCenterY = height / 2;
+      const dxFromSphere = pointerRef.current.x - sphereCenterX;
+      const dyFromSphere = pointerRef.current.y - sphereCenterY;
+      const interactionRadius = Math.min(width, height) * 0.46;
+      if (Math.sqrt(dxFromSphere * dxFromSphere + dyFromSphere * dyFromSphere) > interactionRadius) {
         if (hoverIndexRef.current !== null) setLabelHidden();
         return;
       }
@@ -475,18 +732,31 @@ export default function IdeaSphereCanvas() {
       material.uniforms.uTime.value = elapsed;
       material.uniforms.uReduceMotion.value = reduced ? 1 : 0;
 
+      const storyMotion = storyMotionRef?.current;
+      const absorption = storyMotion?.absorption ?? 0;
+      const expansion = storyMotion?.expansion ?? 1;
+      const rotationDamp = storyMotion?.rotationDamp ?? 1;
+      const shatter = storyMotion?.shatter ?? 0;
+      const mapProgress = storyMotion?.mapProgress ?? 0;
+      material.uniforms.uAbsorption.value = reduced ? 0 : absorption;
+      material.uniforms.uShatter.value = reduced ? 0 : shatter;
+      material.uniforms.uMapProgress.value = mapProgress;
       const breath = reduced ? 1 : 1 + Math.sin(elapsed * 0.42) * 0.004;
+      const mapRotationEase = THREE.MathUtils.smoothstep(mapProgress, 0.08, 0.86);
       const targetYaw = pointerRef.current.x && pointerRef.current.inside
-        ? ((pointerRef.current.x / width) - 0.5) * 0.14
+        ? ((pointerRef.current.x / width) - 0.5) * 0.14 * (1 - mapRotationEase)
         : 0;
       const targetPitch = pointerRef.current.y && pointerRef.current.inside
-        ? -((pointerRef.current.y / height) - 0.5) * 0.08
+        ? -((pointerRef.current.y / height) - 0.5) * 0.08 * (1 - mapRotationEase)
         : 0;
 
-      group.rotation.y += reduced ? 0 : 0.00115 + Math.sin(elapsed * 0.18) * 0.00024;
-      group.rotation.x += (targetPitch - group.rotation.x) * 0.045;
-      group.rotation.z += (targetYaw - group.rotation.z) * 0.035;
-      group.scale.setScalar(breath);
+      group.rotation.y += reduced ? 0 : (0.00115 + Math.sin(elapsed * 0.18) * 0.00024) * rotationDamp * (1 - mapRotationEase);
+      group.rotation.x += (targetPitch - group.rotation.x) * (0.045 + mapRotationEase * 0.05);
+      group.rotation.z += (targetYaw - group.rotation.z) * (0.035 + mapRotationEase * 0.045);
+      group.rotation.y += (0 - group.rotation.y) * mapRotationEase * 0.055;
+      group.scale.setScalar(breath * expansion);
+      const auraFade = reduced ? 0 : THREE.MathUtils.smoothstep(shatter, 0.18, 0.82);
+      aura.material.opacity = (0.045 + absorption * 0.026) * (1 - auraFade);
 
       updateHover(elapsed);
       renderer.render(scene, camera);
@@ -499,6 +769,7 @@ export default function IdeaSphereCanvas() {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
+      material.uniforms.uShatterScale.value = shatterScaleForViewport(window.innerWidth);
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -517,7 +788,10 @@ export default function IdeaSphereCanvas() {
       visible = Boolean(entry?.isIntersecting);
     }, { threshold: 0.01 });
 
+    const resizeObserver = new ResizeObserver(() => resize());
+
     observer.observe(mount);
+    resizeObserver.observe(mount);
     window.addEventListener("resize", resize);
     mount.addEventListener("pointermove", onPointerMove);
     mount.addEventListener("pointerleave", onPointerLeave);
@@ -525,8 +799,10 @@ export default function IdeaSphereCanvas() {
     render();
 
     return () => {
+      disposed = true;
       cancelAnimationFrame(animationId);
       observer.disconnect();
+      resizeObserver.disconnect();
       window.removeEventListener("resize", resize);
       mount.removeEventListener("pointermove", onPointerMove);
       mount.removeEventListener("pointerleave", onPointerLeave);
@@ -541,7 +817,7 @@ export default function IdeaSphereCanvas() {
   }, [ideas]);
 
   return (
-    <div className="idea-sphere-canvas" ref={mountRef} aria-label="A living sphere of independent travel ideas forming one shared planning space">
+    <div className="idea-sphere-canvas" ref={mountRef} aria-label="A field of traveler ideas transforming into a dotted world map">
       <div className="idea-sphere-vignette" aria-hidden="true" />
       <div
         ref={labelRef}

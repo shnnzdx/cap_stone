@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { BrandConstellation, DemoPanel } from "./ui";
+import { DemoPanel } from "./ui";
 import FeatureStory from "./FeatureStory";
+import HeroStory from "./HeroStory";
 import PeopleProblem from "./PeopleProblem";
 import ProductPrinciples from "./ProductPrinciples";
 import ProductScrollFlow from "./ProductScrollFlow";
@@ -11,17 +12,7 @@ export default function Home() {
     <main className="product-page">
       <Header />
       <ProductScrollFlow />
-      <section className="hero shell">
-        <div className="hero-copy">
-          <p className="eyebrow">Group travel, planned together</p>
-          <h1>Plan a trip everyone can agree on.</h1>
-        </div>
-        <BrandConstellation />
-        <div className="hero-actions">
-          <div className="actions"><Link className="button dark" href="/signup?next=/trips/new">Create a trip</Link><Link className="button ghost" href="/how-it-works">See how it works</Link></div>
-          <p className="fineprint">Free to use · No credit card required</p>
-        </div>
-      </section>
+      <HeroStory />
 
       <section className="section product-overview" id="product-overview">
         <div className="shell">
@@ -34,7 +25,7 @@ export default function Home() {
       <FeatureStory />
 
       <section className="section shell demo-section">
-        <SectionIntro marker="04 · PREVIEW" title="See TripSync in action." />
+        <SectionIntro marker="04 路 PREVIEW" title="See TripSync in action." />
         <DemoPanel />
       </section>
 
@@ -43,7 +34,7 @@ export default function Home() {
           <p className="eyebrow">READY WHEN YOUR GROUP IS</p>
           <h2>Many opinions. One plan.</h2>
           <Link className="button light" href="/signup?next=/trips/new">Create your trip</Link>
-          <p className="fineprint">Free to use · No credit card required</p>
+          <p className="fineprint">Free to use 路 No credit card required</p>
         </div>
       </section>
       <Footer />
@@ -56,7 +47,7 @@ export function Header() {
 }
 
 export function Footer() {
-  return <footer className="footer"><div className="shell footer-grid"><div><Link className="brand" href="/"><span className="brand-mark">T</span>TripSync</Link><p>Plan a trip everyone can agree on.</p></div><div><strong>Product</strong><Link href="/#product-overview">Overview</Link><Link href="/how-it-works">How It Works</Link><Link href="/privacy">Privacy</Link><Link href="/faq">FAQ</Link></div><div><strong>Account</strong><Link href="/login">Log in</Link><Link href="/signup?next=/trips/new">Create a trip</Link></div></div><div className="shell copyright">© 2026 TripSync</div></footer>;
+  return <footer className="footer"><div className="shell footer-grid"><div><Link className="brand" href="/"><span className="brand-mark">T</span>TripSync</Link><p>Plan a trip everyone can agree on.</p></div><div><strong>Product</strong><Link href="/#product-overview">Overview</Link><Link href="/how-it-works">How It Works</Link><Link href="/privacy">Privacy</Link><Link href="/faq">FAQ</Link></div><div><strong>Account</strong><Link href="/login">Log in</Link><Link href="/signup?next=/trips/new">Create a trip</Link></div></div><div className="shell copyright">漏 2026 TripSync</div></footer>;
 }
 
 function SectionIntro({marker, title}:{marker:string;title:string}) {
