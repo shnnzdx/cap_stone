@@ -110,12 +110,30 @@ class AnonymizedFinding:
 
 
 @dataclass(frozen=True)
+class Check:
+    """一条判据,以及它有没有命中。
+
+    四条判据**每次都全部返回**,不是只返回命中的那条 ——
+    用户要看见的是"哪些检查过了、哪一条把我拦下来了",
+    而不是只看到一个结论。这是"看得见为什么"的载体。
+
+    private_note 是一句**固定文案**,永远不含任何用户填的内容。
+    """
+
+    id: str
+    label: str
+    hit: bool
+    private_note: str = ""
+
+
+@dataclass(frozen=True)
 class Classification:
     """判定结果。这是引擎唯一的对外产物。"""
 
     path: Path
     headline: str
     detail: str
+    checks: tuple[Check, ...] = ()
     findings: tuple[AnonymizedFinding, ...] = ()
 
     @property

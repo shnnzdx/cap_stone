@@ -23,6 +23,12 @@ from .models import (
 )
 from .session import SessionLocal, engine
 
+# 这几张是前端 final.css 里已经在用的图（确认能加载），先拿来当占位。
+# 真正的配图应该跟着景点库走 —— 每个景点自带一张，AI 生成时直接抄过来。
+U = "https://images.unsplash.com/photo-{}?auto=format&fit=crop&w=900&q=75"
+PHOTOS = [U.format("1494522358652-f30e61a60313"), U.format("1500530855697-b586d89ba3ee"),
+          U.format("1486911278844-a81c5267e227"), U.format("1514893011-72dfa15c5ab3")]
+
 MEMBERS = [
     ("Mia Chen", "mia@example.com", "organizer"),
     ("Elena Cruz", "elena@example.com", "participant"),
@@ -150,9 +156,10 @@ def seed() -> dict:
                 settledness=settledness,
                 lat=lat,
                 lng=lng,
+                photo_url=PHOTOS[index % len(PHOTOS)],
                 source="mock",
             )
-            for day, when, hour, mins, title, place, price, is_meal, settledness, lat, lng in ITEMS
+            for index, (day, when, hour, mins, title, place, price, is_meal, settledness, lat, lng) in enumerate(ITEMS)
         )
 
         db.commit()

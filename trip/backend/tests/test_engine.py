@@ -211,3 +211,48 @@ def test_same_input_always_gives_same_answer():
     payload = change(item(settledness=Settledness.TOUCHED), item(start_hour=15.5))
     answers = {classify(payload, []).path for _ in range(100)}
     assert answers == {Path.ROUND}
+
+
+# ---------- 判据清单:"看得见为什么" ----------
+
+
+def test_every_verdict_returns_all_four_checks():
+    """四条判据每次都全给,不管走哪条路 —— 用户要看见哪些过了、哪条拦了他。"""
+    result = classify(change(item(), item(start_hour=15.5)), [])
+    assert [c.id for c in result.checks] == ["booking", "required", "settled", "contested"]
+    assert all(c.hit is False for c in result.checks)
+
+
+def test_the_hit_check_matches_the_path_taken():
+    result = classify(
+        change(item(), item(start_hour=8.0)),
+        [required(ConstraintKind.TIME_WINDOW, {"earliest_hour": 9.0})],
+    )
+    hit = [c for c in result.checks if c.hit]
+    assert [c.id for c in hit] == ["required"]
+    assert result.path is Path.CONFIRM
+
+
+def test_checks_are_returned_in_judgement_order():
+    """已订的东西同时也可能违反 required,但顺序决定 booking 排前面。"""
+    result = classify(
+        change(item(settledness=Settledness.BOOKED), item(start_hour=8.0)),
+        [required(ConstraintKind.TIME_WINDOW, {"earliest_hour": 9.0})],
+    )
+    ids = [c.id for c in result.checks]
+    assert ids.index("booking") < ids.index("required")
+    assert result.path is Path.CONFIRM
+    assert result.headline == "This touches a confirmed booking"
+
+
+def test_a_private_note_appears_only_on_a_hit_and_never_carries_content():
+    constraint = required(
+        ConstraintKind.TIME_WINDOW, {"earliest_hour": 9.0}, membership_id="m-mia"
+    )
+    result = classify(change(item(), item(start_hour=8.0)), [constraint])
+
+    notes = {c.id: c.private_note for c in result.checks}
+    assert notes["required"]                      # 命中的那条有提示语
+    assert notes["contested"] == ""               # 没命中的没有
+    assert "m-mia" not in notes["required"]
+    assert constraint.private_note not in notes["required"]

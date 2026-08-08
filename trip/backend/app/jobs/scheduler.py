@@ -15,21 +15,24 @@ import logging
 import os
 
 from ..db.session import SessionLocal
-from ..domain.decisions.orchestrator import settle_due_rounds
+from ..domain.decisions.orchestrator import expire_due_proposals, settle_due_rounds
 
 log = logging.getLogger("tripsync.scheduler")
 
 TICK_SECONDS = int(os.getenv("SETTLE_TICK_SECONDS", "60"))
 
 
-def run_once() -> list[str]:
-    """结算所有到期的轮。跑多少次都安全 —— 已经结算过的不会再动。"""
+def run_once() -> dict[str, list[str]]:
+    """结算到期的投票 + 作废到期的确认。跑多少次都安全。"""
     with SessionLocal() as db:
         settled = settle_due_rounds(db)
+        expired = expire_due_proposals(db)
         db.commit()
     if settled:
         log.info("结算了 %d 轮投票: %s", len(settled), settled)
-    return settled
+    if expired:
+        log.info("作废了 %d 个过期提案: %s", len(expired), expired)
+    return {"settled": settled, "expired": expired}
 
 
 async def _loop() -> None:
@@ -52,4 +55,4 @@ def start(app) -> asyncio.Task:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("结算了:", run_once() or "没有到期的投票")
+    print("这一轮:", run_once())

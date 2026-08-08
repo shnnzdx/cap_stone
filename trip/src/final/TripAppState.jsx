@@ -1,148 +1,241 @@
-import { createContext, useContext, useMemo, useState } from 'react'
-import { currentUser } from './tripContent.js'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { baseUpdates as fallbackBaseUpdates, initialDays as fallbackDays, personalUpdates as fallbackPersonalUpdates, trip as fallbackTrip } from './tripContent.js'
 
 const TripAppContext = createContext(null)
 
 export const useTripApp = () => useContext(TripAppContext)
 
-const makeDefaultDate = (month, day) => new Date(2026, month, day)
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+const TRIP_ID = import.meta.env.VITE_TRIP_ID
+const MEMBERSHIP_ID = import.meta.env.VITE_MEMBERSHIP_ID
+const INVITE_SESSION_PREFIX = 'tripsync:invite:'
 
-const TRIPS_KEY = 'tripsync:createdTrips'
-const loadCreatedTrips = () => {
+const readLocal = key => {
   try {
-    return JSON.parse(window.localStorage.getItem(TRIPS_KEY)) || []
+    return window.localStorage.getItem(key)
   } catch {
-    return []
+    return null
   }
 }
 
-/* ————————————————————————————————————————————————
-   三条路径的判定。先问「碰硬东西了吗」,再问「有人抢吗」。
-     A 直接生效 + 匿名通知   没碰硬约束,也没人抢
-     B 决策回合             没碰硬约束,但这个时段已经有人提过
-     C 冲突对话             碰了硬约束(已预订 / Required / 预算上限 / 日期范围)
-   后端接管后,这个函数应由 Constraint Engine 实现,前端只消费结果。
-———————————————————————————————————————————————— */
+const writeLocal = (key, value) => {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // Private browsing can reject storage. The current in-memory session still works.
+  }
+}
 
-const REQUIRED_EARLIEST_HOUR = 9 // 组内某成员的 Required:不安排早于 9:00 的活动
+const makeDefaultDate = (month, day) => new Date(2026, month, day)
 
 const parseHour = text => {
   const match = /(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i.exec(text || '')
   if (!match) return null
   const hour = Number(match[1]) % 12
-  return /p/i.test(match[3]) ? hour + 12 : hour
+  const minutes = Number(match[2] || 0) / 60
+  return (/p/i.test(match[3]) ? hour + 12 : hour) + minutes
 }
 
-export const classifyChange = ({ item, actionType, request, contestedSlots = [] }) => {
-  const hour = parseHour(request)
-  // 每一条判据都单独返回,让用户看得见"为什么是这条路径",而不是只看到结论。
-  // 顺序 = 判定顺序:任何一条 hard 命中就是路径 C,否则看 contested,否则路径 A。
-  const checks = [
-    {
-      id: 'booking',
-      label: 'Confirmed booking on this item',
-      hit: Boolean(item.locked || item.status === 'Booked'),
-      kind: 'hard',
-    },
-    {
-      id: 'required',
-      label: 'Required constraint of a member',
-      hit: hour !== null && hour < REQUIRED_EARLIEST_HOUR,
-      kind: 'hard',
-      privateNote: 'One member has a required constraint here. Who they are and why stays private.',
-    },
-    {
-      id: 'contested',
-      label: 'Someone else already asked about this slot',
-      hit: contestedSlots.includes(item.id),
-      kind: 'contested',
-    },
-  ]
-  const hardHit = checks.find(check => check.kind === 'hard' && check.hit)
-  if (hardHit) {
-    return {
-      path: 'C', checks,
-      headline: hardHit.id === 'booking' ? 'This touches a confirmed booking' : 'This breaks a required constraint',
-      detail: hardHit.id === 'booking'
-        ? 'A shared reservation is attached to this item, so every affected member has to confirm before the Current Plan changes.'
-        : 'One member has a required constraint that this time would violate. The reason and the member stay private.',
-    }
-  }
-  if (checks.find(check => check.id === 'contested').hit) {
-    return {
-      path: 'B', checks,
-      headline: 'Someone already has a different idea for this slot',
-      detail: 'Rather than negotiating one-on-one, everyone weighs in at once and the slot is settled in a single round.',
-    }
-  }
-  return {
-    path: 'A', checks,
-    headline: 'No conflict — this can apply now',
-    detail: 'Nothing hard is affected and nobody else has asked about this slot. It applies immediately and the group just gets a notice.',
-  }
+const formatHour = value => {
+  if (value === null || value === undefined) return '—'
+  const whole = Math.floor(Number(value))
+  const minutes = Math.round((Number(value) - whole) * 60)
+  const suffix = whole >= 12 ? 'PM' : 'AM'
+  const displayHour = whole % 12 || 12
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${suffix}`
 }
 
-/* —— 路径 A:直接改 —— */
-const patchFor = (actionType, item, request) => {
-  switch (actionType) {
-    case 'editTime':
-      return { time: '3:30 PM', note: request || 'Later start, same place and same day.' }
-    case 'moveDay':
-      return { time: '1:00 PM', dayNote: 'Moved to Day 3', note: request || 'Same activity, moved to a lighter day.' }
-    case 'replacePlace':
-      return { title: 'Park + café break', place: 'Near Millennium Park', time: '2:30 PM', note: request || 'Lower-walking option nearby.' }
-    case 'removePlan':
-      return { title: 'Free time', place: 'No booking held', time: '—', note: request || 'This stop was dropped; the rest of the day is unchanged.' }
-    default:
-      return { note: request || '' }
-  }
+const formatDayDate = value => {
+  if (!value) return ''
+  const date = new Date(`${value}T00:00:00`)
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-/* —— 路径 B:决策回合的候选项。必须包含「分头行动」—— */
-const roundOptionsFor = (item, request) => [
-  { id: 'keep', label: 'Keep current', title: item.title, body: `Stay with ${item.place} exactly as planned.` },
-  { id: 'requested', label: 'New idea', title: request?.slice(0, 60) || 'The newly suggested plan', body: 'Switch this block to the option raised most recently.' },
-  { id: 'split', label: 'Split up', title: 'Split for this block', body: 'Both options run in parallel and the group regroups afterwards.' },
-]
-
-/* —— 路径 C:提案。发起人默认已同意;其他成员一律匿名 —— */
-const anonLabels = ['Member A', 'Member B', 'Member C']
-
-const afterStateFor = (actionType, item, request) => {
-  const patch = patchFor(actionType, item, request)
-  return { title: patch.title || item.title, time: patch.time || item.time, place: patch.place || item.place, dayLabel: patch.dayNote || item.dayLabel, note: patch.note }
+const titleForDay = items => {
+  if (!items.length) return 'Open day'
+  if (items.length === 1) return items[0].title
+  return `${items[0].title} and ${items[items.length - 1].title}`
 }
 
-const createProposal = ({ item, actionType, request, classification }) => ({
-  id: `proposal-${Date.now()}`,
-  sourceItemId: item.id,
-  actionType,
-  status: 'waiting_affected_members',
-  createdAt: '10:44 AM',
-  headline: classification.headline,
-  detail: classification.detail,
-  before: { title: item.title, time: item.time, place: item.place, dayLabel: item.dayLabel, note: item.note },
-  after: afterStateFor(actionType, item, request),
-  // requester 是当前用户,显示为 You;其余成员匿名,连姓名都不进前端
-  affectedMembers: [
-    { id: 'self', label: 'You', status: 'accepted', proposer: true },
-    { id: 'other-1', label: anonLabels[0], status: 'pending' },
-  ],
-  privacyNote: 'Everyone in this conversation is anonymous. Names and private reasons are never shown.',
+const normalizeTrip = raw => ({
+  ...fallbackTrip,
+  id: raw.id,
+  name: raw.name,
+  destination: raw.destination,
+  status: raw.status?.replace(/^\w/, c => c.toUpperCase()) || fallbackTrip.status,
+  people: raw.member_count || fallbackTrip.people,
 })
 
+const normalizeItem = item => ({
+  id: item.id,
+  kind: item.source || 'plan',
+  time: formatHour(item.start_hour),
+  title: item.title,
+  place: item.place,
+  status: item.settledness === 'booked' ? 'Booked' : '',
+  locked: item.settledness === 'booked',
+  // 行程上不显示价格。后端的 price_per_person 照常返回、照常参与预算上限的判定，
+  // 只是不摊在每条安排上 —— 钱的影响挂在「这次改动」上说更有用。
+  note: '',
+  coords: item.coords,
+  dayDate: item.day_date,
+  startHour: item.start_hour,
+  durationMin: item.duration_min,
+  pricePerPerson: item.price_per_person,
+  settledness: item.settledness,
+})
+
+const normalizePlan = raw => {
+  const days = raw.days || []
+  return days.map(day => {
+    const items = (day.items || []).map(normalizeItem)
+    return {
+      id: `day${day.day_index}`,
+      label: `Day ${day.day_index}`,
+      date: formatDayDate(items[0]?.dayDate),
+      title: titleForDay(items),
+      summary: `${items.length} activities`,
+      items,
+    }
+  })
+}
+
+const normalizeUpdate = update => ({
+  id: update.id,
+  kind: update.kind || 'plan',
+  icon: update.kind === 'round' ? '◇' : update.kind === 'proposal' ? '!' : '↻',
+  title: update.title,
+  body: update.body,
+  canObject: Boolean(update.can_object),
+  itemId: update.plan_item_id,
+  time: 'Just now',
+})
+
+const normalizeCurrentUser = user => ({
+  membershipId: user.membership_id,
+  id: user.id || user.membership_id,
+  name: user.name || 'Guest',
+  initials: user.initials || '??',
+  email: user.email || null,
+  role: user.role,
+  tripId: user.trip_id,
+  isGuest: Boolean(user.is_guest),
+})
+
+const normalizeRound = (round, myVotes = {}, fallback = {}) => {
+  const deadline = round.deadline ? new Date(round.deadline).getTime() : Date.now()
+  const windowMs = Math.max(1, deadline - Date.now())
+  return {
+    id: round.id,
+    kind: round.kind || 'normal',
+    itemId: round.plan_item_id || fallback.itemId,
+    itemTitle: round.item_title || fallback.itemTitle,
+    options: round.options || [],
+    reason: round.reason,
+    status: round.status,
+    winningOptionId: round.winning_option_id,
+    totalMembers: round.total_members || 0,
+    responded: round.responded || 0,
+    tally: round.tally || {},
+    myVote: myVotes[round.id] || round.my_vote || fallback.myVote || null,
+    closesAt: deadline,
+    windowMs,
+  }
+}
+
+const normalizeProposal = (proposal, fallback = {}) => {
+  const before = proposal.before || {}
+  const after = { ...before, ...(proposal.after || {}) }
+  return {
+    id: proposal.id,
+    status: proposal.status,
+    sourceItemId: fallback.sourceItemId,
+    headline: fallback.headline || 'Needs confirmation',
+    detail: fallback.detail || 'The Current Plan stays unchanged until every affected member confirms.',
+    createdAt: 'Just now',
+    before: {
+      title: before.title || fallback.itemTitle || 'Current plan',
+      time: formatHour(before.start_hour),
+      place: before.place || '',
+      dayLabel: before.day_date || '',
+    },
+    after: {
+      title: after.title || before.title || fallback.itemTitle || 'Proposed change',
+      time: formatHour(after.start_hour),
+      place: after.place || before.place || '',
+      dayLabel: after.day_date || before.day_date || '',
+    },
+    affectedMembers: (proposal.members || []).map((member, index) => ({
+      id: `${proposal.id}-${index}`,
+      label: member.label,
+      status: member.status,
+    })),
+    privacyNote: proposal.privacy_note,
+  }
+}
+
+const requestPatch = (actionType, item, request) => {
+  const hour = parseHour(request)
+  switch (actionType) {
+    case 'editTime':
+      return hour === null ? {} : { start_hour: hour }
+    case 'moveDay':
+      return { request }
+    case 'replacePlace':
+      return { title: request?.slice(0, 60) || item.title, request }
+    case 'removePlan':
+      return { title: 'Free time', place: 'No booking held', request }
+    default:
+      return {}
+  }
+}
+
+const friendlyError = err => {
+  if (err?.status === 409) return 'A vote is already open for this time block.'
+  if (err?.status === 422) return 'Reopening this block needs a written reason.'
+  if (!err?.status || err.status >= 500) return 'Could not reach the backend.'
+  return err.message || 'Something went wrong.'
+}
+
+const mergeRounds = (incoming, current) => {
+  const incomingIds = new Set(incoming.map(round => round.id))
+  return [
+    ...incoming.map(round => {
+      const existing = current.find(item => item.id === round.id)
+      return { ...round, myVote: existing?.myVote || round.myVote }
+    }),
+    ...current.filter(round => !incomingIds.has(round.id) && round.status !== 'open'),
+  ]
+}
+
+const mergeProposals = (incoming, current) => {
+  const incomingIds = new Set(incoming.map(proposal => proposal.id))
+  return [
+    ...incoming.map(proposal => ({ ...current.find(item => item.id === proposal.id), ...proposal })),
+    ...current.filter(proposal => !incomingIds.has(proposal.id) && proposal.status !== 'waiting_affected_members'),
+  ]
+}
+
 export function TripAppProvider({ children }) {
-  const [appliedPatches, setAppliedPatches] = useState({})
-  const [contestedSlots, setContestedSlots] = useState([])
+  const [membershipId, setMembershipId] = useState(() => readLocal('tripsync:membershipId') || MEMBERSHIP_ID || '')
+  const [activeTripId, setActiveTripId] = useState(() => readLocal('tripsync:tripId') || TRIP_ID || '')
+  const [trip, setTrip] = useState(fallbackTrip)
+  const [currentUser, setCurrentUser] = useState(null)
+  const [days, setDays] = useState(fallbackDays)
+  const [planId, setPlanId] = useState(null)
   const [notices, setNotices] = useState([])
-  const [activeRound, setActiveRound] = useState(null)
-  const [activeProposal, setActiveProposal] = useState(null)
+  const [baseUpdates, setBaseUpdates] = useState(fallbackBaseUpdates)
+  const [personalUpdates] = useState(fallbackPersonalUpdates)
+  const [activeRounds, setActiveRounds] = useState([])
+  const [activeProposals, setActiveProposals] = useState([])
+  const [myVotes, setMyVotes] = useState({})
   const [decisionResolved, setDecisionResolved] = useState(false)
   const [updateFilter, setUpdateFilter] = useState('actions')
   const [toast, setToast] = useState('')
-  const [trips, setTrips] = useState(loadCreatedTrips)
+  const [loading, setLoading] = useState({ initial: true, action: false })
+  const [error, setError] = useState('')
+  const [trips, setTrips] = useState([])
   const [inviteCopied, setInviteCopied] = useState(false)
-  // 哪些 trip 已经收到当前用户的偏好。真实场景由 GET /api/trips/:id/members 给出全组进度。
   const [preferencesSubmittedFor, setPreferencesSubmittedFor] = useState([])
   const [preferences, setPreferences] = useState({
     preferredRange: { start: makeDefaultDate(7, 14), end: makeDefaultDate(7, 17) },
@@ -157,144 +250,500 @@ export function TripAppProvider({ children }) {
     ],
     avoid: 'Very crowded nightlife venues',
   })
+  const pollTimerRef = useRef(null)
+  const pollFailuresRef = useRef(0)
+  const pollDelayRef = useRef(5000)
 
-  const notify = message => {
+  const notify = useCallback(message => {
     setToast(message)
     window.setTimeout(() => setToast(''), 2400)
-  }
+  }, [])
 
-  const persistTrips = next => {
-    window.localStorage.setItem(TRIPS_KEY, JSON.stringify(next))
-    return next
-  }
-
-  const addTrip = data => {
-    const created = { id: `trip-${Date.now()}`, isCreated: true, status: 'Planning', ...data }
-    setTrips(current => persistTrips([created, ...current]))
-    return created
-  }
-
-  const addNotice = notice => setNotices(current => [{ id: `notice-${Date.now()}`, time: 'Just now', ...notice }, ...current])
-
-  // 路径 A:立即写入 Current Plan,只发匿名通知,不要求任何人操作
-  const applyDirectChange = ({ item, actionType, request }) => {
-    const patch = patchFor(actionType, item, request)
-    setAppliedPatches(current => ({ ...current, [item.id]: patch }))
-    setContestedSlots(current => current.includes(item.id) ? current : [...current, item.id])
-    addNotice({
-      kind: 'plan',
-      icon: '↻',
-      title: `${item.title} was updated`,
-      body: 'Applied directly — nothing hard was affected and nobody else had asked about this slot. Say something if it does not work for you.',
-      itemId: item.id,
-      canObject: true,
+  const publicRequestJson = useCallback(async (path, options = {}) => {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
     })
-    return patch
-  }
-
-  // 路径 B:开一轮全员并行表态,有截止时间,沉默不阻塞
-  const openDecisionRound = ({ item, request, totalMembers = 6 }) => {
-    const windowMs = 2 * 60 * 60 * 1000 // Traveling 状态 2 小时;Planning 状态应为 24 小时
-    const round = {
-      id: `round-${Date.now()}`,
-      itemId: item.id,
-      itemTitle: item.title,
-      options: roundOptionsFor(item, request),
-      votes: {},
-      totalMembers,
-      openedAt: Date.now(),
-      closesAt: Date.now() + windowMs,
-      windowMs,
-      status: 'open',
-      winningOptionId: null,
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
+      const error = new Error(message)
+      error.status = response.status
+      throw error
     }
-    setActiveRound(round)
-    setContestedSlots(current => current.includes(item.id) ? current : [...current, item.id])
-    return round
-  }
+    return response.json()
+  }, [])
 
-  // 当前用户投票,其余成员的票随后陆续到达(demo 模拟),到齐即落地
-  const castVote = optionId => {
-    setActiveRound(current => {
-      if (!current || current.status !== 'open') return current
-      return { ...current, votes: { ...current.votes, [currentUser.id]: optionId } }
+  const requestJson = useCallback(async (path, options = {}) => {
+    if (!membershipId) throw new Error('Missing membership session')
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-Membership-Id': membershipId,
+        ...(options.headers || {}),
+      },
     })
-    // demo:模拟其他成员陆续投票。真实场景由各自客户端提交,到截止时间由服务端结算。
-    window.setTimeout(() => {
-      setActiveRound(current => {
-        if (!current || current.status !== 'open') return current
-        const votes = { ...current.votes, 'm2': optionId, 'm3': 'split', 'm4': optionId }
-        const tally = Object.values(votes).reduce((acc, id) => ({ ...acc, [id]: (acc[id] || 0) + 1 }), {})
-        const winningOptionId = Object.keys(tally).sort((a, b) => tally[b] - tally[a])[0]
-        const winner = current.options.find(option => option.id === winningOptionId)
-        setAppliedPatches(patches => ({ ...patches, [current.itemId]: { title: winner.title, note: `Settled by a group round — ${Object.keys(votes).length} of ${current.totalMembers} took part.` } }))
-        addNotice({
-          kind: 'plan',
-          icon: '✓',
-          title: `${current.itemTitle} was settled by a group round`,
-          body: `“${winner.title}” had the most support. Members who did not respond are recorded as no preference, not as agreement.`,
-        })
-        return { ...current, votes, status: 'closed', winningOptionId }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
+      const error = new Error(message)
+      error.status = response.status
+      throw error
+    }
+    return response.json()
+  }, [membershipId])
+
+  const refreshTrip = useCallback(async () => {
+    if (!activeTripId) throw new Error('Missing trip session')
+    const raw = await requestJson(`/api/trips/${activeTripId}`)
+    setTrip(normalizeTrip(raw))
+    return raw
+  }, [activeTripId, requestJson])
+
+  const refreshCurrentUser = useCallback(async () => {
+    const raw = await requestJson('/api/me')
+    setCurrentUser(normalizeCurrentUser(raw))
+    return raw
+  }, [requestJson])
+
+  const refreshPlan = useCallback(async () => {
+    if (!activeTripId) throw new Error('Missing trip session')
+    const raw = await requestJson(`/api/trips/${activeTripId}/plans/current`)
+    setPlanId(raw.plan_id)
+    setDays(normalizePlan(raw))
+    return raw
+  }, [activeTripId, requestJson])
+
+  const refreshUpdates = useCallback(async () => {
+    if (!activeTripId) throw new Error('Missing trip session')
+    const raw = await requestJson(`/api/trips/${activeTripId}/updates`)
+    const normalized = raw.map(normalizeUpdate)
+    setNotices(normalized)
+    setBaseUpdates(normalized)
+    return raw
+  }, [activeTripId, requestJson])
+
+  const refreshActions = useCallback(async () => {
+    if (!activeTripId) throw new Error('Missing trip session')
+    const raw = await requestJson(`/api/trips/${activeTripId}/actions`)
+    const rounds = (raw.rounds || []).map(round => normalizeRound(round, myVotes))
+    const proposals = (raw.proposals || []).map(proposal => normalizeProposal(proposal))
+    setActiveRounds(current => mergeRounds(rounds, current))
+    setActiveProposals(current => mergeProposals(proposals, current))
+    return raw
+  }, [activeTripId, myVotes, requestJson])
+
+  const refreshAll = useCallback(async ({ background = false } = {}) => {
+    if (!membershipId || !activeTripId) {
+      if (!background) setLoading(current => ({ ...current, initial: false }))
+      return false
+    }
+    if (!background) setLoading(current => ({ ...current, initial: true }))
+    try {
+      await Promise.all([refreshCurrentUser(), refreshTrip(), refreshPlan(), refreshUpdates(), refreshActions()])
+      setError('')
+      return true
+    } catch (err) {
+      // 用户主动操作失败 → 立刻告诉他。
+      // 后台轮询失败 → 忍两次再说：网络抖一下就弹横幅，用户会看到它反复闪。
+      if (!background || pollFailuresRef.current >= 2) {
+        setError(err.message || 'Failed to load trip data')
+      }
+      return false
+    } finally {
+      if (!background) setLoading(current => ({ ...current, initial: false }))
+    }
+  }, [activeTripId, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshUpdates])
+
+  useEffect(() => {
+    refreshAll()
+  }, [refreshAll])
+
+  useEffect(() => {
+    if (!membershipId || !activeTripId) return undefined
+    let cancelled = false
+
+    const clearTimer = () => {
+      if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+    const schedule = delay => {
+      clearTimer()
+      if (!cancelled && document.visibilityState === 'visible') {
+        pollTimerRef.current = window.setTimeout(poll, delay)
+      }
+    }
+    const poll = async () => {
+      if (cancelled || document.visibilityState !== 'visible') return
+      const ok = await refreshAll({ background: true })
+      if (ok) {
+        pollFailuresRef.current = 0
+        pollDelayRef.current = 5000
+      } else {
+        pollFailuresRef.current += 1
+        pollDelayRef.current = pollFailuresRef.current === 1 ? 10000 : 30000
+      }
+      schedule(pollDelayRef.current)
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        poll()
+      } else {
+        clearTimer()
+      }
+    }
+
+    schedule(pollDelayRef.current)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      cancelled = true
+      clearTimer()
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [activeTripId, membershipId, refreshAll])
+
+  const adoptMembership = useCallback(({ membershipId: nextMembershipId, tripId: nextTripId, inviteToken }) => {
+    setMembershipId(nextMembershipId)
+    setActiveTripId(nextTripId)
+    writeLocal('tripsync:membershipId', nextMembershipId)
+    writeLocal('tripsync:tripId', nextTripId)
+    if (inviteToken) {
+      writeLocal(`${INVITE_SESSION_PREFIX}${inviteToken}`, JSON.stringify({
+        membershipId: nextMembershipId,
+        tripId: nextTripId,
+      }))
+    }
+  }, [])
+
+  const createInvite = useCallback(async tripId => {
+    return requestJson(`/api/trips/${tripId}/invite`, { method: 'POST' })
+  }, [requestJson])
+
+  const revokeInvite = useCallback(async inviteId => {
+    return requestJson(`/api/invites/${inviteId}/revoke`, { method: 'POST' })
+  }, [requestJson])
+
+  const getInvite = useCallback(async token => {
+    return publicRequestJson(`/api/invites/${token}`)
+  }, [publicRequestJson])
+
+  const joinInvite = useCallback(async (token, body) => {
+    return publicRequestJson(`/api/invites/${token}/join`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  }, [publicRequestJson])
+
+  const fetchRound = useCallback(async (roundId, fallback = {}) => {
+    const raw = await requestJson(`/api/rounds/${roundId}`)
+    const normalized = normalizeRound(raw, myVotes, fallback)
+    setActiveRounds(current => [normalized, ...current.filter(round => round.id !== normalized.id)])
+    return normalized
+  }, [myVotes, requestJson])
+
+  const fetchProposal = useCallback(async (proposalId, fallback) => {
+    const raw = await requestJson(`/api/proposals/${proposalId}`)
+    const normalized = normalizeProposal(raw, fallback)
+    setActiveProposals(current => [normalized, ...current.filter(proposal => proposal.id !== normalized.id)])
+    return normalized
+  }, [requestJson])
+
+  const classify = useCallback(async ({ item, actionType, request }) => {
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      const body = { ...requestPatch(actionType, item, request), request }
+      return await requestJson(`/api/plans/items/${item.id}/classify`, {
+        method: 'POST',
+        body: JSON.stringify(body),
       })
-      notify('Round closed — Current Plan updated')
-    }, 2600)
-  }
+    } catch (err) {
+      const message = friendlyError(err)
+      if (err.status === 409 || err.status === 422) notify(message)
+      else setError(message)
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [notify, requestJson])
 
-  // 路径 C:提案,受影响成员逐个确认,确认齐了才写入 Current Plan
-  const createChangeProposal = ({ item, actionType, request, classification }) => {
-    const proposal = createProposal({ item, actionType, request, classification })
-    setActiveProposal(proposal)
-    setDecisionResolved(false)
-    setUpdateFilter('actions')
-    return proposal
-  }
+  // ————————————————————— 偏好与六种约束 —————————————————————
+  // 路径里没有"别人"这个位置 —— 后端也一样，想读别人的得先改 URL 设计。
 
-  const resolveProposal = () => {
-    setActiveProposal(current => {
-      if (!current) return current
-      setAppliedPatches(patches => ({ ...patches, [current.sourceItemId]: { title: current.after.title, time: current.after.time, place: current.after.place, note: current.after.note } }))
-      return { ...current, status: 'applied_to_current_plan', affectedMembers: current.affectedMembers.map(member => ({ ...member, status: 'accepted' })) }
+  const loadMyPreferences = useCallback(async () => {
+    const tripId = activeTripId || trip.id
+    return requestJson(`/api/trips/${tripId}/preferences/me`)
+  }, [activeTripId, requestJson, trip.id])
+
+  const saveMyPreferences = useCallback(async payload => {
+    const tripId = activeTripId || trip.id
+    setLoading(current => ({ ...current, action: true }))
+    try {
+      const saved = await requestJson(`/api/trips/${tripId}/preferences/me`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      })
+      await refreshCurrentUser()
+      return saved
+    } catch (err) {
+      setError(friendlyError(err))
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [activeTripId, refreshCurrentUser, requestJson, trip.id])
+
+  // 加一条约束会返回 conflicts —— 它撞到了哪几项安排。
+  // 后端只报告，不自动改行程：用户可能宁愿放宽自己的要求，那是他的选择。
+  const addConstraint = useCallback(async payload => {
+    const tripId = activeTripId || trip.id
+    return requestJson(`/api/trips/${tripId}/constraints`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     })
-    setDecisionResolved(true)
-  }
+  }, [activeTripId, requestJson, trip.id])
 
-  const withdrawProposal = () => {
-    setActiveProposal(null)
+  const updateConstraint = useCallback(async (constraintId, payload) =>
+    requestJson(`/api/constraints/${constraintId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }), [requestJson])
+
+  const deleteConstraint = useCallback(async constraintId =>
+    requestJson(`/api/constraints/${constraintId}`, { method: 'DELETE' }),
+    [requestJson])
+
+  const loadMembers = useCallback(async () => {
+    const tripId = activeTripId || trip.id
+    return requestJson(`/api/trips/${tripId}/members`)
+  }, [activeTripId, requestJson, trip.id])
+
+  const chatWithTrip = useCallback(async ({ message, itemId }) => {
+    const tripId = activeTripId || trip.id
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      return await requestJson(`/api/trips/${tripId}/chat`, {
+        method: 'POST',
+        body: JSON.stringify({
+          message,
+          ...(itemId ? { item_id: itemId } : {}),
+        }),
+      })
+    } catch (err) {
+      const message = friendlyError(err)
+      if (err.status === 409 || err.status === 422) notify(message)
+      else setError(message)
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [activeTripId, notify, requestJson, trip.id])
+
+  const handleOutcome = useCallback(async (outcome, item) => {
+    if (outcome.round_id) {
+      await fetchRound(outcome.round_id, { itemId: item?.id, itemTitle: item?.title })
+      setUpdateFilter('actions')
+    }
+    if (outcome.proposal_id) {
+      await fetchProposal(outcome.proposal_id, {
+        headline: outcome.headline,
+        detail: outcome.detail,
+        sourceItemId: item?.id,
+        itemTitle: item?.title,
+      })
+      setDecisionResolved(false)
+      setUpdateFilter('actions')
+    }
+    await Promise.all([refreshPlan(), refreshUpdates()])
+    return outcome
+  }, [fetchProposal, fetchRound, refreshPlan, refreshUpdates])
+
+  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch }) => {
+    let reason = null
+    if (verdict?.needs_reason) {
+      reason = window.prompt('Please write a reason for reopening this settled block:')
+      if (!reason?.trim()) {
+        notify('Reopening this block needs a written reason.')
+        return null
+      }
+    }
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      const body = { ...(patch || requestPatch(actionType, item, request)), request, reason }
+      const outcome = await requestJson(`/api/plans/items/${item.id}/changes`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+      await handleOutcome(outcome, item)
+      return outcome
+    } catch (err) {
+      const message = friendlyError(err)
+      if (err.status === 409 || err.status === 422) notify(message)
+      else setError(message)
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [handleOutcome, notify, requestJson])
+
+  const objectToNotice = useCallback(async notice => {
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      const outcome = await requestJson(`/api/updates/${notice.id}/object`, { method: 'POST' })
+      await handleOutcome(outcome, { id: notice.itemId, title: notice.title })
+      return outcome
+    } catch (err) {
+      const message = friendlyError(err)
+      if (err.status === 409 || err.status === 422) notify(message)
+      else setError(message)
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [handleOutcome, notify, requestJson])
+
+  const castVote = useCallback(async (roundId, optionId) => {
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      const raw = await requestJson(`/api/rounds/${roundId}/votes`, {
+        method: 'POST',
+        body: JSON.stringify({ option_id: optionId }),
+      })
+      setMyVotes(current => ({ ...current, [roundId]: optionId }))
+      const existing = activeRounds.find(round => round.id === roundId)
+      const normalized = normalizeRound(raw, { ...myVotes, [roundId]: optionId }, existing)
+      setActiveRounds(current => [normalized, ...current.filter(round => round.id !== normalized.id)])
+      return normalized
+    } catch (err) {
+      setError(err.message || 'Could not vote')
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [activeRounds, myVotes, requestJson])
+
+  const resolveProposal = useCallback(async (proposalId, status = 'accepted') => {
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      const result = await requestJson(`/api/proposals/${proposalId}/decisions`, {
+        method: 'POST',
+        body: JSON.stringify({ status }),
+      })
+      await refreshPlan()
+      await refreshUpdates()
+      if (result.applied) setDecisionResolved(true)
+      else await fetchProposal(proposalId)
+      return result
+    } catch (err) {
+      setError(err.message || 'Could not update confirmation')
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [fetchProposal, refreshPlan, refreshUpdates, requestJson])
+
+  const withdrawProposal = useCallback(proposalId => {
+    setActiveProposals(current => proposalId ? current.filter(proposal => proposal.id !== proposalId) : current.slice(1))
     setDecisionResolved(false)
-  }
+  }, [])
 
-  // 路径 A 的通知上点「我有别的想法」→ 升级为路径 B
-  const objectToNotice = notice => {
-    const item = { id: notice.itemId, title: notice.title.replace(' was updated', ''), place: 'the current spot' }
-    setNotices(current => current.map(n => n.id === notice.id ? { ...n, canObject: false, body: 'Escalated to a group round after an objection.' } : n))
-    return openDecisionRound({ item, request: 'A different idea for this block' })
-  }
-
-  const resetDemo = () => {
-    setAppliedPatches({})
-    setContestedSlots([])
-    setNotices([])
-    setActiveRound(null)
-    setActiveProposal(null)
+  const resetDemo = useCallback(() => {
+    setActiveRounds([])
+    setActiveProposals([])
     setDecisionResolved(false)
-  }
+    refreshAll()
+  }, [refreshAll])
+
+  const activeRound = activeRounds.find(round => round.status === 'open') || activeRounds[0] || null
+  const activeProposal = activeProposals.find(proposal => proposal.status === 'waiting_affected_members') || activeProposals[0] || null
 
   const value = useMemo(() => ({
-    appliedPatches, contestedSlots, notices,
-    activeRound, activeProposal, decisionResolved,
-    conflictCreated: !!activeProposal,
-    classify: payload => classifyChange({ ...payload, contestedSlots }),
-    applyDirectChange, openDecisionRound, castVote,
-    createChangeProposal, resolveProposal, withdrawProposal,
-    objectToNotice, resetDemo,
-    updateFilter, setUpdateFilter,
-    trips, addTrip,
-    inviteCopied, setInviteCopied,
-    preferences, setPreferences,
+    trip, currentUser, days, planId,
+    membershipId,
+    activeTripId,
+    appliedPatches: {},
+    contestedSlots: [],
+    notices,
+    baseUpdates,
+    personalUpdates,
+    activeRounds,
+    activeProposals,
+    activeRound,
+    activeProposal,
+    decisionResolved,
+    conflictCreated: activeProposals.some(proposal => proposal.status === 'waiting_affected_members'),
+    classify,
+    chatWithTrip,
+    submitChange,
+    castVote,
+    resolveProposal,
+    withdrawProposal,
+    objectToNotice,
+    resetDemo,
+    refreshAll,
+    adoptMembership,
+    createInvite,
+    revokeInvite,
+    getInvite,
+    joinInvite,
+    loading,
+    error,
+    clearError: () => setError(''),
+    updateFilter,
+    setUpdateFilter,
+    trips,
+    addTrip: data => {
+      const created = { id: `draft-${Date.now()}`, isCreated: true, status: 'Planning', ...data }
+      setTrips(current => [created, ...current])
+      return created
+    },
+    inviteCopied,
+    setInviteCopied,
+    preferences,
+    setPreferences,
+    loadMyPreferences,
+    saveMyPreferences,
+    addConstraint,
+    updateConstraint,
+    deleteConstraint,
+    loadMembers,
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [appliedPatches, contestedSlots, notices, activeRound, activeProposal, decisionResolved, updateFilter, trips, inviteCopied, preferences, preferencesSubmittedFor])
+  }), [activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptMembership, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, inviteCopied, joinInvite, loading, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, updateFilter, withdrawProposal])
+
+  if (!currentUser) {
+    const isJoinRoute = window.location.hash.startsWith('#/join/')
+    if (isJoinRoute) {
+      return <TripAppContext.Provider value={value}>{children}{toast && <div className="toast">{toast}</div>}</TripAppContext.Provider>
+    }
+    const missingSession = !membershipId || !activeTripId
+    const loadError = error || (missingSession ? 'Join from an invite link or configure a membership session.' : '')
+    return <TripAppContext.Provider value={value}>
+      <main className="homePage">
+        <section className="homeContent">
+          <div className="emptyState quietEmptyState">
+            <span></span>
+            <h2>{loadError ? 'Could not load your profile' : 'Loading Cadensy'}</h2>
+            <p>{loadError || 'Fetching your membership and trip data from the backend.'}</p>
+            {loadError && !missingSession && <button className="btn btnSecondary" type="button" onClick={refreshAll}>Retry</button>}
+          </div>
+        </section>
+      </main>
+      {toast && <div className="toast">{toast}</div>}
+    </TripAppContext.Provider>
+  }
 
   return <TripAppContext.Provider value={value}>{children}{toast && <div className="toast">{toast}</div>}</TripAppContext.Provider>
 }

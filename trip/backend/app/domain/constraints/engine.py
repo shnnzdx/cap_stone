@@ -16,9 +16,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from .types import (
     AnonymizedFinding,
+    Check,
     Classification,
     Constraint,
     ConstraintKind,
@@ -40,7 +42,71 @@ SAFE_TEXT = {
 }
 
 
-def _violates(constraint: Constraint, change: ProposedChange) -> bool:
+class _CheckSpec(NamedTuple):
+    """一条判据的全部固定文案。顺序即判定顺序。"""
+
+    id: str
+    label: str
+    private_note: str
+    path: Path
+    headline: str
+    detail: str
+
+
+# 判定顺序:命中的第一条决定走哪条路。硬底线永远排最前。
+CHECK_SPECS = (
+    _CheckSpec(
+        id="booking",
+        label="Confirmed booking on this item",
+        private_note="",
+        path=Path.CONFIRM,
+        headline="This touches a confirmed booking",
+        detail=(
+            "A real reservation is attached to this item. Every affected member has "
+            "to confirm before the Current Plan changes, and someone will need to "
+            "cancel the existing booking."
+        ),
+    ),
+    _CheckSpec(
+        id="required",
+        label="Required constraint of a member",
+        private_note=(
+            "One member has a required constraint here. Who they are and why stays "
+            "private."
+        ),
+        path=Path.CONFIRM,
+        headline="This breaks a required constraint",
+        detail=(
+            "At least one member has a required constraint that this change would "
+            "violate. Who they are and why stays private."
+        ),
+    ),
+    _CheckSpec(
+        id="settled",
+        label="This block was already settled by a group round",
+        private_note="",
+        path=Path.REOPEN_ROUND,
+        headline="This block was already settled",
+        detail=(
+            "Reopening a settled block needs a written reason, and members who do "
+            "not respond count as keeping the current decision."
+        ),
+    ),
+    _CheckSpec(
+        id="contested",
+        label="Someone else already asked about this slot",
+        private_note="",
+        path=Path.ROUND,
+        headline="Someone already has a different idea for this slot",
+        detail=(
+            "Rather than negotiating one-on-one, everyone weighs in at once and the "
+            "slot is settled in a single round."
+        ),
+    ),
+)
+
+
+def violates(constraint: Constraint, change: ProposedChange) -> bool:
     """这条约束被这次改动违反了吗。纯粹比大小,没有任何模糊判断。"""
     after: ItemView = change.after
     params = constraint.params
@@ -91,7 +157,7 @@ def _collect_findings(
     for constraint in constraints:
         if constraint.importance is not Importance.REQUIRED:
             continue
-        if _violates(constraint, change):
+        if violates(constraint, change):
             hit_by_kind.setdefault(constraint.kind, set()).add(constraint.membership_id)
 
     return tuple(
@@ -104,53 +170,60 @@ def _collect_findings(
     )
 
 
+def affected_membership_ids(
+    change: ProposedChange, constraints: Sequence[Constraint]
+) -> frozenset[str]:
+    """哪些成员的硬底线被这次改动碰到了。
+
+    **返回值绝不能进 API 响应。** 它只给 orchestrator 用来决定"拉谁进确认对话" ——
+    只有真的被碰到的人需要点头,不是全组。
+
+    这个信息故意**不放进 Classification**:那个类型是要发给前端的,
+    装不下身份才是隐私保证。要身份的人得专门调这个函数,而 api 层从来不调。
+    """
+    return frozenset(
+        c.membership_id
+        for c in constraints
+        if c.importance is Importance.REQUIRED and violates(c, change)
+    )
+
+
 def classify(
     change: ProposedChange, constraints: Sequence[Constraint]
 ) -> Classification:
     """判定一次改动走哪条路。这是这个模块唯一对外的入口。"""
 
-    if change.before.settledness is Settledness.BOOKED:
-        return Classification(
-            path=Path.CONFIRM,
-            headline="This touches a confirmed booking",
-            detail=(
-                "A real reservation is attached to this item. Every affected member "
-                "has to confirm before the Current Plan changes, and someone will "
-                "need to cancel the existing booking."
-            ),
-        )
-
+    settledness = change.before.settledness
     findings = _collect_findings(constraints, change)
-    if findings:
-        return Classification(
-            path=Path.CONFIRM,
-            headline="This breaks a required constraint",
-            detail=(
-                "At least one member has a required constraint that this change would "
-                "violate. Who they are and why stays private."
-            ),
-            findings=findings,
-        )
 
-    if change.before.settledness is Settledness.SETTLED:
-        return Classification(
-            path=Path.REOPEN_ROUND,
-            headline="This block was already settled",
-            detail=(
-                "Reopening a settled block needs a written reason, and members who do "
-                "not respond count as keeping the current decision."
-            ),
-        )
+    hits = {
+        "booking": settledness is Settledness.BOOKED,
+        "required": bool(findings),
+        "settled": settledness is Settledness.SETTLED,
+        "contested": settledness is Settledness.TOUCHED,
+    }
 
-    if change.before.settledness is Settledness.TOUCHED:
-        return Classification(
-            path=Path.ROUND,
-            headline="Someone already has a different idea for this slot",
-            detail=(
-                "Rather than negotiating one-on-one, everyone weighs in at once and "
-                "the slot is settled in a single round."
-            ),
+    # 四条判据每次都全部返回,不只返回命中的那条 ——
+    # 用户要看见的是"哪些检查过了、哪一条把我拦下来",不是只看到一个结论。
+    checks = tuple(
+        Check(
+            id=spec.id,
+            label=spec.label,
+            hit=hits[spec.id],
+            private_note=spec.private_note if hits[spec.id] else "",
         )
+        for spec in CHECK_SPECS
+    )
+
+    for spec in CHECK_SPECS:
+        if hits[spec.id]:
+            return Classification(
+                path=spec.path,
+                headline=spec.headline,
+                detail=spec.detail,
+                checks=checks,
+                findings=findings if spec.id == "required" else (),
+            )
 
     return Classification(
         path=Path.NOTICE,
@@ -159,4 +232,5 @@ def classify(
             "Nothing hard is affected and nobody else has asked about this slot. It "
             "applies immediately and the group just gets a notice."
         ),
+        checks=checks,
     )

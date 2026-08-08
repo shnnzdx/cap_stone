@@ -169,11 +169,15 @@ Confirm 谈不拢时升级给组织者。**组织者唯一能做的是"不做决
 
 `user_id` 非空时,`(trip_id, user_id)` 唯一。
 
-### InviteLink ✅(表)/ ⬜(接口)
+### InviteLink ✅
 `id` `trip_id` `token_hash` `is_primary` `expires_at` `revoked_at`
 
 **存哈希不存明文** —— 数据库被看到也没法拿去冒充别人加入。
 打开链接只读取 trip 信息,**不得自动创建 membership**;必须等用户提交昵称并选择 guest / login。
+
+访客没有账户级唯一约束,所以重复点击同一个链接会产生重复访客成员。前端必须把
+`POST /api/invites/{token}/join` 返回的 `membership_id` 存在本地;同一浏览器下次打开同一个
+token 时直接进入旅行,不要再次调用 join。真登录完成后这段本地身份会被账户 token 替换。
 
 ### Preference ✅(表)/ ⬜(接口)
 `id` `trip_membership_id`(唯一)
@@ -273,23 +277,32 @@ Decision: `id` `proposal_id` `trip_membership_id` `status`(`accepted` | `decline
 
 ## 四、接口
 
-已实现 13 个,全部可在 http://localhost:8000/docs 直接点着试。
+已实现 22 个,全部可在 http://localhost:8000/docs 直接点着试。
 
 ```text
 GET    /api/health
+GET    /api/me
+GET    /api/trips                              My Trips
 GET    /api/trips/{trip_id}
 GET    /api/trips/{trip_id}/plans/current
 GET    /api/trips/{trip_id}/updates
+GET    /api/trips/{trip_id}/actions            当前打开的 Round / Confirm,给前端轮询用
 GET    /api/rounds/{round_id}
 GET    /api/proposals/{proposal_id}
 GET    /api/plans/{plan_id}/changes          ← 流水账
+GET    /api/invites/{token}                   ← 只返回 trip 框架信息,不入会
 
+POST   /api/trips                              创建旅行 + organizer membership + 空 Plan
+POST   /api/trips/{trip_id}/invite             organizer 生成不可猜 token,库里只存 sha256
+POST   /api/trips/{trip_id}/chat              自然语言理解 + 只读判定,不执行
 POST   /api/plans/items/{item_id}/classify   ← 只试算，不执行
 POST   /api/plans/items/{item_id}/changes    ← 判定 + 执行，一步到位
 POST   /api/updates/{notice_id}/object       ← Notice 上的异议，升级为 Round
 POST   /api/rounds/{round_id}/votes
 POST   /api/rounds/{round_id}/settle         ← 演示用，真实场景由定时任务
 POST   /api/proposals/{proposal_id}/decisions
+POST   /api/invites/{token}/join              display_name 必填,email 可选
+POST   /api/invites/{invite_id}/revoke         organizer 撤销链接
 ```
 
 **`/classify` 和 `/changes` 收同一个 body,走同一套判定。** 区别只是前者跑完回滚。
@@ -300,13 +313,8 @@ POST   /api/proposals/{proposal_id}/decisions
 ### 还没做的接口 ⬜
 
 ```text
-GET    /api/me
-GET    /api/trips                              My Trips
-POST   /api/trips
 GET    /api/trips/{id}/members
 GET/PUT /api/trips/{id}/preferences/me         ← 偏好 + 六种约束的增删改
-POST   /api/trips/{id}/invite
-GET/POST /api/invites/{token}
 POST   /api/trips/{id}/plans/generate          ← AI 生成
 GET    /api/plans/{id}/validation
 POST   /api/proposals/{id}/withdraw            ← 逻辑已实现，只差接口
@@ -324,8 +332,9 @@ POST   /api/plans/items/{id}/comments
 | `trip` | `GET /api/trips/{id}` | ✅ 可用 |
 | `initialDays` | `GET /api/trips/{id}/plans/current` | ✅ 可用,已含 `coords` |
 | `baseUpdates` `personalUpdates` | `GET /api/trips/{id}/updates` | ✅ 可用 |
-| `currentUser` | `GET /api/me` | ⬜ |
-| `otherTrips` | `GET /api/trips` | ⬜ |
+| `currentUser` | `GET /api/me` | ✅ 可用 |
+| `otherTrips` | `GET /api/trips` | ✅ 可用 |
+| 创建流程 | `POST /api/trips` | ✅ 可用,返回空 Plan |
 | `routeSegments` | 路段接口 | ⬜ 先 mock |
 | `guestDraft` | 删掉 | — |
 
@@ -338,6 +347,7 @@ POST   /api/plans/items/{id}/comments
 | `castVote` | `POST /api/rounds/{id}/votes` | ✅ |
 | `resolveProposal` | `POST /api/proposals/{id}/decisions` | ✅ |
 | `objectToNotice` | `POST /api/updates/{id}/object` | ✅ |
+| 私聊自然语言改行程 | `POST /api/trips/{id}/chat` → 拿 `proposed_change` 后再调 `/changes` | ✅ 只读 |
 | `castVote` 里模拟别人投票的 `setTimeout` | **删掉** —— 服务端定时任务结算 | — |
 | `TradeoffThread` 里模拟对方确认的 `setTimeout` | **删掉** —— 对方在自己客户端点 | — |
 | `activeRound` / `activeProposal` 是单数 | 改成数组 | — |

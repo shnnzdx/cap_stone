@@ -211,6 +211,9 @@ class PlanItem(Base, TimestampMixin):
     # 地图坐标。换地点时跟着换,前端地图自动重画。
     lat: Mapped[float | None] = mapped_column(Float)
     lng: Mapped[float | None] = mapped_column(Float)
+    # 条目配图。AI 从景点库生成时,直接抄景点自带的那张;
+    # 手动加的条目可以是空的,前端有占位框兜着。
+    photo_url: Mapped[str | None] = mapped_column(String(500))
     # 数据可信度:verified | ai_estimate | mock | not_verified —— 由代码打,不由 AI 自称
     source: Mapped[str] = mapped_column(String(20), default="mock")
 
@@ -274,6 +277,8 @@ class DecisionRound(Base):
     status: Mapped[str] = mapped_column(String(20), default="open")  # open | closed
     winning_option_id: Mapped[str | None] = mapped_column(String(40))
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A round can be extended once. More time is fine; never settling is not.
+    extended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Vote(Base, TimestampMixin):
@@ -309,11 +314,16 @@ class ChangeProposal(Base, TimestampMixin):
     action_type: Mapped[str] = mapped_column(String(30))
     before_json: Mapped[dict] = mapped_column(JSON, default=dict)
     after_json: Mapped[dict] = mapped_column(JSON, default=dict)
-    # waiting_affected_members | applied | withdrawn | declined
+    # waiting_affected_members | applied | withdrawn | declined | expired
     status: Mapped[str] = mapped_column(String(30), default="waiting_affected_members")
     requested_by_membership_id: Mapped[str] = mapped_column(
         ForeignKey("trip_membership.id")
     )
+    # 到点没凑齐就**作废**，不是通过。
+    # 到期通过等于把沉默当同意，那是这个产品最不能破的一条。
+    # 作废是安全的：行程一个字不变，想改的人重新提一次就行。
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProposalDecision(Base, TimestampMixin):
@@ -343,7 +353,12 @@ class UpdateNotice(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     trip_id: Mapped[str] = mapped_column(ForeignKey("trip.id"))
     plan_item_id: Mapped[str | None] = mapped_column(ForeignKey("plan_item.id"))
-    kind: Mapped[str] = mapped_column(String(30))  # plan | preference | round | proposal
+    # plan | preference | round | proposal | reminder
+    kind: Mapped[str] = mapped_column(String(30))
+    # A notice addressed to one person (a reminder). NULL = the whole group.
+    # Note this is "who it is for", not "who sent it" -- the latter is
+    # deliberately not stored, because stored means eventually leaked.
+    recipient_membership_id: Mapped[str | None] = mapped_column(String(32))
     title: Mapped[str] = mapped_column(String(200))
     body: Mapped[str] = mapped_column(Text)
     can_object: Mapped[bool] = mapped_column(Boolean, default=False)

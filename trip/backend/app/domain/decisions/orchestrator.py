@@ -32,7 +32,7 @@ from ...db.models import (
     UpdateNotice,
     Vote,
 )
-from ..constraints.engine import classify
+from ..constraints.engine import affected_membership_ids, classify
 from ..constraints.types import (
     Classification,
     Constraint,
@@ -49,6 +49,11 @@ SPLIT_UP = "split"
 
 PLANNING_WINDOW = timedelta(hours=24)
 TRAVELING_WINDOW = timedelta(hours=2)
+
+# 确认也要有截止时间，否则一个人不点头就能把一个时段无限期占住。
+# 比投票短，因为确认只涉及受影响的那几个人，不是全组。
+PROPOSAL_PLANNING_WINDOW = timedelta(hours=8)
+PROPOSAL_TRAVELING_WINDOW = timedelta(hours=4)
 
 
 class ReasonRequired(Exception):
@@ -119,6 +124,16 @@ def _member_count(db: Session, trip_id: str) -> int:
 def _deadline_for(trip: Trip) -> datetime:
     """人在街上的时候不跑 24 小时的异步投票。"""
     window = TRAVELING_WINDOW if trip.status == "traveling" else PLANNING_WINDOW
+    return _now() + window
+
+
+def _proposal_deadline_for(trip: Trip) -> datetime:
+    """确认的截止时间。旅行一开始，等待时间减半 —— 和投票同一条规矩。"""
+    window = (
+        PROPOSAL_TRAVELING_WINDOW
+        if trip.status == "traveling"
+        else PROPOSAL_PLANNING_WINDOW
+    )
     return _now() + window
 
 
@@ -201,7 +216,8 @@ def propose_change(
         ),
         requested_by_membership_id=actor_membership_id,
     )
-    verdict = classify(change, _load_constraints(db, trip.id))
+    constraints = _load_constraints(db, trip.id)
+    verdict = classify(change, constraints)
 
     if verdict.path is Path.NOTICE:
         return _do_notice(db, item, patch, actor_membership_id, verdict)
@@ -213,7 +229,40 @@ def propose_change(
                 "Reopening a settled block needs a written reason."
             )
         return _do_round(db, item, trip, request, verdict, kind="reopen", reason=reason)
-    return _do_confirm(db, item, patch, actor_membership_id, trip, verdict)
+    return _do_confirm(
+        db, item, patch, actor_membership_id, trip, verdict,
+        affected=affected_membership_ids(change, constraints),
+    )
+
+
+def classify_change(
+    db: Session,
+    item: PlanItem,
+    patch: dict,
+    actor_membership_id: str,
+    trip_total_after: float | None = None,
+    day_walk_km_after: float = 0.0,
+) -> Classification:
+    """Only classify a proposed patch.
+
+    This is the read-only path for AI chat. It deliberately does not call
+    propose_change(), so it cannot create notices, rounds, proposals, votes, or
+    plan changes.
+    """
+    plan = item.plan
+    trip = db.get(Trip, plan.trip_id)
+    change = ProposedChange(
+        before=_view(item),
+        after=_view(item, **{k: v for k, v in patch.items() if k in _VIEW_FIELDS}),
+        day_walk_km_after=day_walk_km_after,
+        trip_total_after=(
+            trip_total_after
+            if trip_total_after is not None
+            else plan.estimated_total_per_person
+        ),
+        requested_by_membership_id=actor_membership_id,
+    )
+    return classify(change, _load_constraints(db, trip.id))
 
 
 _VIEW_FIELDS = {
@@ -359,6 +408,40 @@ def settle_round(db: Session, round_: DecisionRound) -> str:
     return winner
 
 
+def expire_due_proposals(db: Session, now: datetime | None = None) -> list[str]:
+    """到点还没凑齐同意的提案，**作废**。
+
+    作废不是拒绝，也不是通过 —— 行程一个字不变，想改的人重新提一次。
+    到期自动通过是绝对不行的：那等于把没回复算成同意。
+    """
+    now = now or _now()
+    due = db.scalars(
+        select(ChangeProposal).where(
+            ChangeProposal.status.in_(("waiting_affected_members", "escalated")),
+            ChangeProposal.deadline.is_not(None),
+            ChangeProposal.deadline <= now,
+        )
+    ).all()
+    for proposal in due:
+        proposal.status = "expired"
+        proposal.expired_at = now
+        item = db.get(PlanItem, proposal.plan_item_id)
+        db.add(
+            UpdateNotice(
+                trip_id=item.plan.trip_id,
+                plan_item_id=item.id,
+                kind="proposal",
+                title=f"A proposed change to {item.title} expired",
+                body=(
+                    "Not everyone affected confirmed in time, so the Current Plan is "
+                    "unchanged. Anyone can propose it again."
+                ),
+            )
+        )
+    db.flush()
+    return [p.id for p in due]
+
+
 def settle_due_rounds(db: Session, now: datetime | None = None) -> list[str]:
     """定时任务的唯一入口:把所有到期的轮结算掉。跑多少次都安全。"""
     now = now or _now()
@@ -375,7 +458,9 @@ def settle_due_rounds(db: Session, now: datetime | None = None) -> list[str]:
 # ————————————————————— 路径 C:确认 —————————————————————
 
 
-def _do_confirm(db, item, patch, actor_membership_id, trip, verdict) -> Outcome:
+def _do_confirm(
+    db, item, patch, actor_membership_id, trip, verdict, affected=frozenset()
+) -> Outcome:
     proposal = ChangeProposal(
         plan_item_id=item.id,
         action_type="edit",
@@ -387,14 +472,26 @@ def _do_confirm(db, item, patch, actor_membership_id, trip, verdict) -> Outcome:
                     for k, v in patch.items()},
         requested_by_membership_id=actor_membership_id,
         status="waiting_affected_members",
+        deadline=_proposal_deadline_for(trip),
     )
     db.add(proposal)
     db.flush()
 
-    # 发起人创建时直接算已同意;其余成员各自确认。
-    for membership in db.scalars(
-        select(TripMembership).where(TripMembership.trip_id == trip.id)
-    ):
+    # 谁需要点头 —— 只拉真的被影响的人,不是全组。
+    #   已订的东西:钱是大家出的,全组都要点头
+    #   碰到某人的硬底线:只有那几个人 + 发起人
+    # 拉太宽的后果是提案永远凑不齐,那个时段就被无限期占住。
+    everyone = list(
+        db.scalars(select(TripMembership).where(TripMembership.trip_id == trip.id))
+    )
+    if item.settledness == Settledness.BOOKED.value:
+        involved = everyone
+    else:
+        involved = [
+            m for m in everyone if m.id in affected or m.id == actor_membership_id
+        ]
+
+    for membership in involved:
         db.add(
             ProposalDecision(
                 proposal_id=proposal.id,

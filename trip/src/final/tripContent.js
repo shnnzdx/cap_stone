@@ -3,20 +3,6 @@
    每一段都标了将来对应的接口。
    ═══════════════════════════════════════════════════════════════════ */
 
-/* 当前登录用户。← GET /api/me
-   全站不允许再出现写死的 "EC" / "Emma Carter"。
-   真做了 auth 之后,不同人登录自然看到不同视角,不需要任何演示用的切换器。 */
-export const currentUser = {
-  id: 'u-emma',
-  name: 'Emma Carter',
-  initials: 'EC',
-  email: 'emma@example.com',
-  // 角色属于 TripMembership,不属于账户。同一个人可以在 A 旅行是组织者、B 旅行是参与者。
-  // 'organizer' | 'participant' | 'guest'
-  // ← 想看另一种角色的界面,改这一行即可(真做了 auth 之后由登录态决定)
-  role: 'organizer',
-}
-
 /* 成员名单。← GET /api/trips/:id/members
    名字是公开的(你当然知道同行的是谁),但**偏好内容永远不在这里**。
    这一页只回答"加没加入""交没交偏好",不回答"他要求了什么"。 */
@@ -31,7 +17,7 @@ export const tripMembers = [
 
 /* 演示用的主 trip。← GET /api/trips/:id */
 export const trip = {
-  id: 'chicago-birthday',
+  id: import.meta.env.VITE_TRIP_ID || 'chicago-birthday',
   name: "Mia's 30th in Chicago",
   destination: 'Chicago, Illinois',
   dates: 'Aug 14–17, 2026',
@@ -74,7 +60,7 @@ export const initialDays = [
     items: [
       { id: 'brunch', kind: 'food', time: '10:30 AM', title: 'Late brunch', place: 'Near the hotel', status: '', note: 'Keep the morning relaxed.', coords: [41.8909, -87.6324], photoUrl: 'https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=600&q=72' },
       { id: 'neighborhood', kind: 'walk', time: '1:00 PM', title: 'Wicker Park food walk', place: 'Wicker Park', status: '', note: 'Food and neighborhood stops.', coords: [41.9088, -87.6796], photoUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=600&q=72' },
-      { id: 'meetup', kind: 'meet', time: '6:30 PM', title: 'Group meetup', place: 'West Loop', status: '', note: 'Everyone regroups before dinner.', coords: [41.8840, -87.6470], photoUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=600&q=72' },
+      { id: 'meetup', kind: 'meet', time: '6:30 PM', title: 'Group meetup', place: 'West Loop', status: '', note: 'The group regroups before dinner.', coords: [41.8840, -87.6470], photoUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=600&q=72' },
     ],
   },
 ]
@@ -87,7 +73,7 @@ export const tripStyles = ['Food', 'Nature', 'Relaxed', 'Culture', 'Adventure']
 /* Updates > All 的既有条目。← GET /api/trips/:id/updates
    偏好类事件永远匿名:不出现成员姓名,只说 "A member"。 */
 export const baseUpdates = [
-  { id: 'base-1', kind: 'preference', icon: '◎', title: 'A member preference was updated', body: 'TripSync re-checked the Current Plan. No activities were affected. Member identity stays private.', time: '9:50 AM' },
+  { id: 'base-1', kind: 'preference', icon: '◎', title: 'A member preference was updated', body: 'Cadensy re-checked the Current Plan. No activities were affected. Member identity stays hidden.', time: '9:50 AM' },
   { id: 'base-2', kind: 'plan', icon: '+', title: 'Birthday dinner reservation added', body: 'The 7:00 PM reservation is now marked as Booked.', time: 'Yesterday' },
 ]
 

@@ -329,3 +329,131 @@ def test_once_the_round_closes_the_block_is_free_again(db, full_trip):
         db, full_trip["art"], {"title": "看电影"}, full_trip["me"].id, reason="换个想法"
     )
     assert again.round_id is not None
+
+
+# ————————————————————— 确认也有截止时间 —————————————————————
+
+
+def test_a_proposal_gets_a_deadline(db, full_trip):
+    outcome = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
+    )
+    proposal = db.get(ChangeProposal, outcome.proposal_id)
+    hours = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
+    assert 7.5 < hours < 8.5          # 规划中 8 小时
+
+
+def test_the_proposal_deadline_halves_once_the_trip_starts(db, full_trip):
+    full_trip["trip"].status = "traveling"
+    db.flush()
+    outcome = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
+    )
+    proposal = db.get(ChangeProposal, outcome.proposal_id)
+    hours = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
+    assert 3.5 < hours < 4.5          # 旅行中 4 小时
+
+
+def test_an_expired_proposal_is_voided_not_approved(db, full_trip):
+    """这条守的是最不能破的一条:到期作废，绝不到期通过。
+
+    到期通过 = 把没回复算成同意。
+    """
+    outcome = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
+    )
+    proposal = db.get(ChangeProposal, outcome.proposal_id)
+    # 只有发起人点了头，其他 5 个人没动
+    proposal.deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.flush()
+
+    assert orch.expire_due_proposals(db) == [proposal.id]
+    assert proposal.status == "expired"
+    assert full_trip["dinner"].start_hour == 19.0      # 行程一个字没变
+
+
+def test_expiring_frees_the_block_for_someone_else(db, full_trip):
+    """作废之后这个时段要能重新被人提 —— 否则等于被永久占住。"""
+    outcome = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
+    )
+    proposal = db.get(ChangeProposal, outcome.proposal_id)
+    proposal.deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.flush()
+    orch.expire_due_proposals(db)
+
+    again = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 21.0}, full_trip["members"][1].id
+    )
+    assert again.proposal_id is not None
+
+
+def test_an_already_accepted_proposal_is_not_expired(db, full_trip):
+    """已经全员点头落地的，定时任务不许再动它。"""
+    outcome = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
+    )
+    proposal = db.get(ChangeProposal, outcome.proposal_id)
+    for member in full_trip["members"]:
+        orch.decide_proposal(db, proposal, member.id, "accepted")
+    proposal.deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.flush()
+
+    assert orch.expire_due_proposals(db) == []
+    assert proposal.status == "applied"
+
+
+# ————————————————————— 只拉真的被影响的人 —————————————————————
+
+
+def test_only_the_blocked_member_is_pulled_into_the_conversation(db, full_trip):
+    """碰到一个人的硬底线，就只该问那一个人 —— 不是全组 6 个。
+
+    拉太宽的后果是提案永远凑不齐，那个时段被无限期占住。
+    """
+    outcome = orch.propose_change(
+        db, full_trip["art"], {"start_hour": 8.0}, full_trip["members"][1].id
+    )
+    decisions = (
+        db.query(ProposalDecision).filter_by(proposal_id=outcome.proposal_id).all()
+    )
+    involved = {d.trip_membership_id for d in decisions}
+
+    # Mia（members[0]）填了"不早于9点"，发起人是 members[1]
+    assert involved == {full_trip["members"][0].id, full_trip["members"][1].id}
+    assert len(involved) == 2
+
+
+def test_a_booking_still_needs_the_whole_group(db, full_trip):
+    """已订的东西钱是大家出的，取消费用大家担 —— 这个要全组点头。"""
+    outcome = orch.propose_change(
+        db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
+    )
+    decisions = (
+        db.query(ProposalDecision).filter_by(proposal_id=outcome.proposal_id).all()
+    )
+    assert len(decisions) == len(full_trip["members"])
+
+
+def test_two_people_agreeing_is_enough_when_only_two_are_involved(db, full_trip):
+    """被影响的人点完头就落地，不用等其他 4 个不相干的人。"""
+    outcome = orch.propose_change(
+        db, full_trip["art"], {"start_hour": 8.0}, full_trip["members"][1].id
+    )
+    proposal = db.get(ChangeProposal, outcome.proposal_id)
+
+    applied = orch.decide_proposal(db, proposal, full_trip["members"][0].id, "accepted")
+
+    assert applied is True
+    assert proposal.status == "applied"
+    assert full_trip["art"].start_hour == 8.0
+
+
+def test_who_was_affected_never_reaches_the_verdict(db, full_trip):
+    """判定结果里仍然没有身份 —— 拉谁进对话是另一条通道，不走 Classification。"""
+    outcome = orch.propose_change(
+        db, full_trip["art"], {"start_hour": 8.0}, full_trip["members"][1].id
+    )
+    blob = repr(outcome.classification)
+    for member in full_trip["members"]:
+        assert member.id not in blob
