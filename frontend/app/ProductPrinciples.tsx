@@ -67,6 +67,29 @@ export default function ProductPrinciples() {
   return (
     <div className="principle-scroll" ref={sectionRef} aria-label="TripSync core product principles">
       <div className="principle-stage">
+        <div className="principle-map" aria-hidden="true" style={getMotionStyle(0.0, 0.26, headingOffset)}>
+          <div className="principle-map-land" />
+          <svg className="principle-route" viewBox="0 0 1200 660" preserveAspectRatio="xMidYMid meet">
+            <path className="principle-route-guide" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
+            <path className="principle-route-line" pathLength="1" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
+            <g className="principle-route-points">
+              {[
+                [154, 174], [232, 166], [310, 206], [390, 230], [474, 242], [554, 274], [630, 324],
+                [694, 378], [770, 412], [862, 420], [940, 442], [1004, 474], [1052, 510],
+              ].map(([x, y], index) => (
+                <circle className="principle-route-point" cx={x} cy={y} r="5" key={`${x}-${y}`}>
+                  <animate
+                    attributeName="opacity"
+                    dur="8s"
+                    repeatCount="indefinite"
+                    values="0;0;.62;.62;0"
+                    keyTimes={`0;${(0.1 + index * 0.056).toFixed(3)};${(0.12 + index * 0.056).toFixed(3)};.88;1`}
+                  />
+                </circle>
+              ))}
+            </g>
+          </svg>
+        </div>
         <header className="principle-heading">
           <div className="principle-heading-position">
             <div className="principle-heading-motion" style={getMotionStyle(0.0, 0.26, headingOffset)}>
