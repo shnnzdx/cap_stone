@@ -9,8 +9,39 @@ jobs:
   verify-aws:
     name: Verify AWS Authentication
     runs-on: ubuntu-latest
+    environment: Main
 
     steps:
+      - name: Check required AWS configuration
+        shell: bash
+        env:
+          HAS_AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID != '' && 'true' || 'false' }}
+          HAS_AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY != '' && 'true' || 'false' }}
+          HAS_AWS_REGION: ${{ vars.AWS_REGION != '' && 'true' || 'false' }}
+        run: |
+          missing=0
+
+          if [ "${HAS_AWS_ACCESS_KEY_ID}" != "true" ]; then
+            echo "::error::AWS_ACCESS_KEY_ID is not available to this workflow. Check the Main environment or repository secrets."
+            missing=1
+          fi
+
+          if [ "${HAS_AWS_SECRET_ACCESS_KEY}" != "true" ]; then
+            echo "::error::AWS_SECRET_ACCESS_KEY is not available to this workflow. Check the Main environment or repository secrets."
+            missing=1
+          fi
+
+          if [ "${HAS_AWS_REGION}" != "true" ]; then
+            echo "::error::AWS_REGION is not available to this workflow. Check the Main environment or repository variables."
+            missing=1
+          fi
+
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Required AWS configuration is available."
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
