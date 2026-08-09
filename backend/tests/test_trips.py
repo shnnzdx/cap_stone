@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from uuid import uuid4
 
 import pytest
@@ -125,12 +125,13 @@ def test_list_trips_returns_only_current_users_trips(
     plan = Plan(trip_id=first_trip.id)
     api_session.add(plan)
     api_session.flush()
+    today = date.today()
     api_session.add_all(
         [
             PlanItem(
                 plan_id=plan.id,
                 day_index=2,
-                day_date=date(2026, 8, 9),
+                day_date=today + timedelta(days=1),
                 start_hour=14.0,
                 title="Later museum",
                 place="Museum",
@@ -138,7 +139,7 @@ def test_list_trips_returns_only_current_users_trips(
             PlanItem(
                 plan_id=plan.id,
                 day_index=1,
-                day_date=date(2026, 8, 8),
+                day_date=today,
                 start_hour=9.0,
                 title="Morning coffee",
                 place="Cafe",

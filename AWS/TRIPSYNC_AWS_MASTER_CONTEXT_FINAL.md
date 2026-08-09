@@ -999,6 +999,9 @@ For CI and container validation:
 DISABLE_SCHEDULER=1
 ```
 
+This must be injected by the runtime environment, CI job, or ECS task definition.
+It should not be baked into the Docker image because the image should not decide scheduler policy.
+
 A future scale-out architecture should separate API tasks and scheduled work.
 
 ---
@@ -1347,8 +1350,10 @@ Backend:
 environment-driven CORS added through CORS_ORIGINS with localhost defaults
 .env.example expanded with DISABLE_SCHEDULER, FRONTEND_BASE_URL, and CORS_ORIGINS
 backend Dockerfile added for local/ECS candidate container validation
+backend Docker image does not bake DISABLE_SCHEDULER; CI/ECS must inject scheduler policy explicitly
 backend .dockerignore added so local secrets and virtual environments are not copied into images
 Docker local build/run/health validation is still pending because Docker CLI is not installed on the current machine
+this does not block Phase 2 because GitHub Actions ubuntu-latest runners can run docker build/run/health checks
 ```
 
 Database:
@@ -1374,10 +1379,10 @@ Backend Phase 1 validation notes:
 ```text
 targeted backend configuration test passed: backend/tests/test_api_config.py
 Python compile check passed: python -m compileall app
-full backend pytest currently depends on local PostgreSQL test database access
-observed blocker: postgresql+psycopg://localhost/tripsync_test requires local database authentication
-observed blocker: Docker CLI is not installed locally, so container build/run/health validation cannot be executed yet
-this is a local test-environment issue, not an AWS deployment signal
+local PostgreSQL setup documented separately in C:\Users\ROG\Desktop\PostgreSQL_Database_Setup.md
+full backend pytest can run locally by injecting TEST_DATABASE_URL with the local PostgreSQL password
+full backend pytest passed locally after using tripsync_test through the documented local PostgreSQL setup
+Docker CLI is not installed locally, so container build/run/health validation should be moved into Phase 2 GitHub Actions
 ```
 
 ## Phase 2 — Build Validation CI
