@@ -218,7 +218,7 @@ Current expected result:
 ## Related Docs
 
 - [INTEGRATION-ROADMAP.md](./INTEGRATION-ROADMAP.md)
-- [AWS/TRIPSYNC_AWS_MASTER_CONTEXT.md](./AWS/TRIPSYNC_AWS_MASTER_CONTEXT.md)
+- [AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md](./AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md)
 - [docs/frontend/3d-collaborative-idea-sphere-design.md](./docs/frontend/3d-collaborative-idea-sphere-design.md)
 - [docs/frontend/ai-travel-hero-scroll-storytelling-final.md](./docs/frontend/ai-travel-hero-scroll-storytelling-final.md)
 - [AI.md](./AI.md)

@@ -4,7 +4,7 @@
 **Primary AWS Region:** `us-east-1`  
 **AWS Account ID:** `448678332746`  
 **Project:** TripSync Capstone  
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-09, final v1.1 master-context freeze
 
 ---
 
@@ -18,7 +18,7 @@ This document records the complete working context for the TripSync Capstone AWS
 4. what has already been validated;
 5. what must not be changed accidentally;
 6. the current application architecture;
-7. the approved low-risk AWS deployment architecture;
+7. the preferred candidate AWS deployment architecture and pending proof gates;
 8. cost and AWS Free Plan constraints;
 9. the required deployment sequence;
 10. the security rules for passwords, access keys, GitHub secrets, and application secrets.
@@ -31,19 +31,19 @@ This is intentionally more complete than a deployment checklist. It is meant to 
 
 The TripSync team currently uses one standalone AWS account.
 
-The desired long-term human access model is:
+The required long-term human access target is:
 
 ```text
-Three human project members
-        |
-        v
-same long-term AWS project administration capability
-        |
-        v
+Root
+  -> account-owner / recovery only
+  -> not counted as a daily project identity
+
 Capstone-Admins
-        |
-        v
-AdministratorAccess
+  -> AdministratorAccess
+  |
+  |-- Human Admin 1 / ProjectOwnerAdmin
+  |-- Carina
+  `-- Dixon
 ```
 
 However, an important AWS distinction applies:
@@ -51,7 +51,7 @@ However, an important AWS distinction applies:
 - An AWS **root user can never be made literally equivalent to an IAM administrator**.
 - Root always remains the account-owner identity and has some root-only capabilities.
 - Therefore, if one of the three humans continues to use Root while the other two use IAM users, the three people are **project-resource equivalent for normal administration**, but they are **not identity-level identical**.
-- If the team wants literal day-to-day equality, the clean model is three human IAM users in the same `Capstone-Admins` group, while Root is retained only as the account-owner/emergency identity.
+- The target model for this project is fixed: three daily human IAM administrator users in the same `Capstone-Admins` group, while Root is retained only as the account-owner/emergency identity.
 
 For this project, there is also a separate machine identity:
 
@@ -87,6 +87,23 @@ Arn: arn:aws:iam::448678332746:user/github-actions-deploy
 ```
 
 The AWS identity-check workflow must stay separate from future build/deployment workflows.
+
+Current frontend integration track status:
+
+```text
+Integration Stage A route/embed contract alignment: complete
+Integration Stage B shared product/demo data extraction: complete for first pass
+Integration Stage C deeper runtime merge: paused intentionally
+AWS deployment: not started
+```
+
+Latest integration commit pushed to `main`:
+
+```text
+ea4036e Integrate Trip frontend contracts and shared content
+```
+
+This commit updates local application structure only. It does not create, modify, or deploy AWS resources.
 
 ---
 
@@ -213,13 +230,13 @@ Therefore the correct description of the current model is:
 
 Do not describe Root and IAM administrators as cryptographically or identity-level identical.
 
-## 5.2 Recommended model if literal day-to-day equality is required
+## 5.2 Target model: three daily IAM administrators plus separate Root
 
-If the requirement is:
+The project requirement is:
 
-> “All three humans must use the same type of long-term account and inherit exactly the same IAM policy.”
+> All three humans should use the same type of long-term daily project account and inherit the same IAM policy.
 
-then use:
+Therefore the target model is:
 
 ```text
 Root
@@ -229,15 +246,16 @@ Root
 Capstone-Admins
   -> AdministratorAccess
   |
-  |-- Human IAM user 1
-  |-- Human IAM user 2
-  `-- Human IAM user 3
+  |-- ProjectOwnerAdmin / Human Admin 1
+  |-- Carina
+  `-- Dixon
 ```
 
-The third IAM user can use a neutral name if `Dixon` is already occupied, for example:
+The project owner should create or use a normal IAM administrator user for daily work. Example neutral names:
 
 ```text
 ProjectOwnerAdmin
+Dixin
 ```
 
 All three human IAM users would then have:
@@ -252,6 +270,8 @@ independent MFA
 ```
 
 This is the cleanest way to satisfy literal long-term day-to-day equality while keeping the Root identity separate.
+
+Root remains available for account-owner and recovery operations, but Root should no longer be counted as one of the three daily project working accounts.
 
 ## 5.3 What “long-term” means here
 
@@ -305,11 +325,23 @@ Do not create Root access keys.
 
 GitHub Actions, local CLI use, and application workloads must not use Root programmatic credentials.
 
-## 6.4 Root use under the current project choice
+## 6.4 Root use under the target project model
 
-The project owner may continue to use Root knowingly, but the operational model must still acknowledge that Root is more privileged than the two IAM administrators.
+The project owner may continue using Root temporarily while the `ProjectOwnerAdmin` / Human Admin 1 IAM user is being established.
 
-If strict three-way equality later becomes more important than convenience, create a third IAM administrator and reserve Root for account-owner/emergency work.
+Once `ProjectOwnerAdmin` / Human Admin 1 is confirmed:
+
+```text
+daily project work
+-> ProjectOwnerAdmin / Human Admin 1
+
+Root
+-> account-owner operations
+-> recovery/emergency operations
+-> not counted as one of the three daily project identities
+```
+
+The target human working model is fixed at three normal IAM administrator users in `Capstone-Admins`, with Root kept separate.
 
 ---
 
@@ -403,8 +435,11 @@ The AWS keys must exist only in protected secret storage.
 Current GitHub configuration:
 
 ```text
-GitHub Environment:
+Workflow deployment environment:
 Main
+
+Active AWS secret scope:
+Main environment secrets
 ```
 
 Secrets:
@@ -419,6 +454,39 @@ Variable:
 ```text
 AWS_REGION=us-east-1
 ```
+
+Verified on 2026-08-09:
+
+```text
+Main environment secrets:
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+
+Main environment variable:
+- AWS_REGION=us-east-1
+
+Repository-level entries also exist:
+- AWS_ACCESS_KEY
+- AWS_SECRET_ACCESS_KEY
+- AWS_REGION
+```
+
+The active identity-check workflow uses `environment: Main` and references `secrets.AWS_ACCESS_KEY_ID`, so the `Main` environment secret named `AWS_ACCESS_KEY_ID` is the active access key source. The repository-level `AWS_ACCESS_KEY` name is not used by the current workflow.
+
+### 9.2.1 GitHub credential cleanup task
+
+After confirming the `Main` environment workflow continues to succeed, clean up duplicate repository-level AWS entries so future maintainers do not have to guess which secret scope is active.
+
+```text
+[ ] Re-run AWS Identity Check using environment Main
+[ ] Confirm the run succeeds
+[ ] Remove unused repository secret AWS_ACCESS_KEY
+[ ] Remove duplicate repository AWS_SECRET_ACCESS_KEY if no workflow references it
+[ ] Remove duplicate repository AWS_REGION if no workflow references it
+[ ] Keep Main environment secrets/variable as the authoritative AWS Actions configuration
+```
+
+Do not delete any repository-level entry until repository/workflow search confirms it is unused.
 
 Never store actual values in:
 
@@ -456,6 +524,30 @@ The STS check proves which AWS principal GitHub is authenticating as.
 It does **not**, by itself, prove what IAM policies are attached to that user.
 
 Before deployment begins, explicitly inspect the attached policies for `github-actions-deploy`.
+
+## 9.4 AWS provisioning blocker: machine IAM authorization
+
+Authentication is complete, but authorization is not yet proven.
+
+```text
+aws sts get-caller-identity
+-> authentication confirmed
+
+deployment policy review
+-> still required before AWS resource provisioning
+```
+
+Before any AWS phase creates resources, record:
+
+```text
+[ ] github-actions-deploy attached managed policies
+[ ] github-actions-deploy inline policies
+[ ] whether github-actions-deploy currently has AdministratorAccess
+[ ] exact intended deployment permission boundary
+[ ] access key status = Active
+```
+
+Do not start AWS resource provisioning until this blocker is resolved.
 
 ---
 
@@ -568,13 +660,42 @@ The TripSync repository is a monorepo.
 
 ```text
 /
+|-- .github/workflows/
 |-- frontend/
 |-- trip/
 |-- backend/
 |-- shared/
 |-- docs/
-|-- .github/workflows/
+|-- AWS/
 `-- ...
+```
+
+Current source-of-truth summary:
+
+```text
+frontend/
+  -> main public site
+  -> Vinext/Next-style app routes
+  -> owns /trip iframe shell
+
+trip/
+  -> standalone React + Vite Trip workspace
+  -> HashRouter workspace routes
+  -> builds static assets
+
+shared/
+  -> cross-app contracts
+  -> route helpers
+  -> shared product workflow/principle content
+  -> shared Trip demo fallback data
+
+frontend/public/trip-app/
+  -> generated static copy of trip/dist
+  -> loaded by frontend/app/trip/page.tsx
+
+backend/
+  -> FastAPI API
+  -> PostgreSQL persistence layer
 ```
 
 ## 12.1 frontend/
@@ -593,6 +714,22 @@ npm run build
 
 The frontend should **not** be assumed to be a standard vanilla Next.js build.
 
+Current frontend routes include:
+
+```text
+/
+/login
+/signup
+/how-it-works
+/faq
+/privacy
+/product
+/trip
+/trip-app/
+```
+
+`/trip` is the user-facing shell route. `/trip-app/` is the static embedded workspace output and should be treated as generated frontend asset content.
+
 ## 12.2 trip/
 
 `trip/` is a standalone React + Vite Trip workspace.
@@ -604,6 +741,27 @@ npm run build
 ```
 
 It produces static output.
+
+The active Trip workspace uses hash routing. Current supported Trip hash routes are:
+
+```text
+#/
+#/create
+#/account/profile
+#/account/travel
+#/account/notifications
+#/account/settings
+#/trip/:tripId/plan
+#/trip/:tripId/chat
+#/trip/:tripId/conflict
+#/trip/:tripId/updates
+#/trip/:tripId/preferences
+#/trip/:tripId/members
+#/trip/:tripId/invite
+#/join/:token
+```
+
+Do not use the older `#/organizer`, `#/participant`, or `#/t/:slug` route assumptions for new work.
 
 ## 12.3 Current frontend/trip integration
 
@@ -620,7 +778,72 @@ trip/
 
 The Trip workspace should not become a separate Amplify application unless the architecture is intentionally redesigned.
 
-## 12.4 backend/
+Current embed contract:
+
+```text
+shared/tripsync-preview-contract.js
+  tripPreviewBasePath = /trip-app
+  tripPreviewDefaultHashRoute = #/
+  tripPreviewWorkspaceTitle = TripSync workspace
+
+frontend/app/trip/preview-config.ts
+  imports the shared preview contract
+  builds the iframe src
+  reads frontend/public/trip-app/embed-manifest.json when available
+
+frontend/app/trip/page.tsx
+  renders the iframe shell
+  src = /trip-app/#/
+
+frontend/scripts/sync-trip-preview.mjs
+  optionally builds trip/
+  copies trip/dist into frontend/public/trip-app/
+  writes embed-manifest.json
+```
+
+The sync command is:
+
+```bash
+cd frontend
+npm run build:trip-preview
+```
+
+The script has been updated so this command works on Windows local development as well as Linux CI runners.
+
+## 12.4 shared/
+
+`shared/` is now an intentional integration layer, not a scratch folder.
+
+Current shared modules:
+
+```text
+shared/tripsync-preview-theme.css
+  -> shared visual tokens for the embedded workspace shell
+
+shared/tripsync-preview-contract.js
+  -> /trip-app embed path and default iframe route
+
+shared/tripsync-domain.js
+  -> current route helper functions for workspace, account, trip sections, and invite links
+  -> legacy organizer/participant helper names are retained as compatibility aliases
+
+shared/tripsync-product-content.js
+  -> product workflow steps and product principles used by frontend
+
+shared/tripsync-demo-data.js
+  -> Trip workspace demo/fallback trip, members, days, updates, comments, and guest draft data
+```
+
+The current rule is:
+
+```text
+Put stable cross-app constants and fallback data in shared/.
+Do not move full Trip workspace pages into frontend/app yet.
+```
+
+Integration Stage C deeper runtime merge is paused, so `frontend/` and `trip/` remain separate apps for now.
+
+## 12.5 backend/
 
 `backend/` is:
 
@@ -780,9 +1003,13 @@ A future scale-out architecture should separate API tasks and scheduled work.
 
 ---
 
-# 16. Approved Low-Risk AWS Target Architecture
+# 16. Preferred Candidate AWS Architecture, Pending Frontend Hosting Proof
 
-The target architecture is:
+This is the preferred candidate architecture, not yet the final approved deployment architecture.
+
+The frontend hosting decision is not locked until Vinext / Nitro / Amplify compatibility is validated in AWS Phase 3.
+
+Candidate architecture:
 
 ```text
 GitHub
@@ -794,7 +1021,7 @@ GitHub
 AWS us-east-1
 
 Frontend:
-Amplify Hosting
+Preferred candidate: Amplify Hosting
   -> main frontend
   -> embedded trip static output
 
@@ -818,6 +1045,115 @@ ECS Task
 ```
 
 This is intentionally a student/demo architecture rather than a highly redundant production platform.
+
+## 16.1 Frontend hosting decision status
+
+```text
+Preferred candidate:
+AWS Amplify Hosting
+
+Final hosting decision:
+NOT YET LOCKED
+
+Required before approval:
+Vinext / Nitro / Amplify compatibility validation
+```
+
+Codex must not skip the AWS Phase 3 frontend hosting proof simply because Amplify is listed as the preferred candidate.
+
+## 16.2 Initial no-NAT network candidate
+
+The initial backend network candidate is designed to avoid a NAT Gateway while still allowing the FastAPI container to call external services such as OpenAI.
+
+```text
+VPC
+|
+|-- Public Subnet A
+|   |-- ALB node
+|   `-- ECS Fargate task, Assign Public IP = ENABLED
+|
+|-- Public Subnet B
+|   `-- ALB node
+|
+|-- Private DB Subnet A
+|
+`-- Private DB Subnet B
+    `-- RDS PostgreSQL
+```
+
+Fargate:
+
+```text
+networkMode = awsvpc
+public subnet placement for initial demo
+Assign Public IP = ENABLED
+desiredCount = 1
+```
+
+Security groups:
+
+```text
+ALB Security Group:
+Inbound:
+- HTTP/HTTPS from internet, as approved for the demo
+
+ECS Security Group:
+Inbound:
+- backend container port, for example 8000, only from ALB Security Group
+Outbound:
+- internet allowed for OpenAI and required AWS APIs
+
+RDS Security Group:
+Inbound:
+- PostgreSQL 5432 only from ECS Security Group
+Outbound:
+- default or tightly scoped as required
+```
+
+RDS:
+
+```text
+Publicly Accessible = No
+Single-AZ database instance
+DB subnet group must still contain subnets in at least two Availability Zones
+```
+
+Important AWS networking rules:
+
+```text
+ALB:
+- Select subnets from at least two Availability Zones.
+
+RDS DB subnet group:
+- Include at least one subnet in at least two Availability Zones in the Region.
+
+Fargate without NAT:
+- Public subnet + Assign Public IP allows outbound internet access.
+- Private subnet without NAT or required VPC endpoints will not have ordinary internet egress.
+```
+
+This design intentionally accepts public IPs on initial Fargate tasks to avoid NAT Gateway cost. Inbound access is still restricted by security groups so the ALB remains the only backend ingress path.
+
+### 16.2.1 Direct ECS ingress is forbidden
+
+A public IP on the initial Fargate task exists for **outbound internet connectivity**, not to create a second public API endpoint.
+
+```text
+Allowed:
+
+Internet
+-> ALB
+-> ECS :8000
+
+Forbidden:
+
+Internet
+-> ECS public IP :8000
+```
+
+The ECS security group must **not** allow the application port (for example `8000`) from `0.0.0.0/0` or `::/0`.
+
+The application port should be reachable only from the ALB security group.
 
 ---
 
@@ -846,7 +1182,8 @@ RDS:
 
 Networking:
 - NO NAT Gateway initially unless explicitly approved
-- avoid unnecessary Elastic/Public IPv4 resources
+- Fargate public IPs are allowed only for the initial no-NAT backend candidate
+- avoid any other unnecessary Elastic/Public IPv4 resources
 - no complex multi-AZ enterprise topology for the first demo
 
 Security/edge:
@@ -914,9 +1251,21 @@ Do not pass `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` into the application c
 
 # 20. Deployment Phase Plan
 
+All phases in this section are AWS phases.
+
+Do not confuse these with the frontend integration track:
+
+```text
+Integration Stage A: route/embed contract alignment, complete
+Integration Stage B: shared product/demo data extraction, complete for first pass
+Integration Stage C: deeper runtime merge, paused
+```
+
+When asking Codex to continue this plan, use names such as `AWS Phase 2` or `AWS Build Validation CI`.
+
 ## Phase 0 — Identity and Account Guardrails
 
-Status: mostly complete.
+Status: mostly complete. AWS resource provisioning remains blocked until the machine-IAM authorization checks below are resolved.
 
 ```text
 AWS account created
@@ -936,14 +1285,60 @@ Remaining identity checks:
 - confirm both human IAM users are members
 - confirm MFA for human accounts
 - confirm Root MFA
-- decide whether strict three-IAM-user equality is required
+- create or confirm ProjectOwnerAdmin / Human Admin 1 IAM user for daily project work
+- confirm ProjectOwnerAdmin / Human Admin 1, Carina, and Dixon are all in Capstone-Admins
 - verify github-actions-deploy attached policies
+- verify github-actions-deploy inline policies
+- confirm whether github-actions-deploy currently has AdministratorAccess
+- define intended deployment permission boundary
+- confirm github-actions-deploy access key status is Active
 - activate delegated Billing access if team needs it
 ```
 
 ## Phase 1 — Cloud Readiness
 
 No AWS infrastructure creation.
+
+Current status:
+
+```text
+frontend integration portion: complete
+backend cloud-readiness portion: still pending
+AWS infrastructure creation: not started
+```
+
+Completed frontend/shared work:
+
+```text
+shared preview contract aligned to /trip-app/#/
+shared domain route helpers aligned to active Trip routes
+frontend /trip iframe shell reads shared preview config
+Trip static output regenerated into frontend/public/trip-app/
+shared product workflow/principle content extracted
+shared Trip demo fallback data extracted
+Windows-compatible build:trip-preview script confirmed
+README.md updated for current architecture
+INTEGRATION-ROADMAP.md updated for Integration Stage A/B status
+```
+
+Validated locally:
+
+```bash
+cd frontend
+npm run build:trip-preview
+npm test
+```
+
+Expected result:
+
+```text
+frontend build succeeds
+trip build succeeds through build:trip-preview
+frontend tests pass
+Vite may print a chunk-size warning; that warning is not currently a failure
+```
+
+Remaining backend cloud-readiness work:
 
 Backend:
 
@@ -972,7 +1367,11 @@ validate trip build/sync
 validate frontend build
 ```
 
+The frontend build/sync/test portion is currently validated locally. It still needs GitHub Actions build-validation coverage.
+
 ## Phase 2 — Build Validation CI
+
+Status: next recommended step. Not created yet.
 
 Create:
 
@@ -999,6 +1398,21 @@ run backend container
 curl /api/health
 ```
 
+Frontend-specific CI expectations:
+
+```text
+cd trip
+npm ci
+npm run build
+
+cd frontend
+npm ci
+npm run build:trip-preview
+npm test
+```
+
+The workflow may build generated assets inside CI, but it should not commit them back to the repository.
+
 It must not:
 
 ```text
@@ -1013,7 +1427,7 @@ mutate AWS
 
 ## Phase 3 — Frontend Hosting Proof
 
-Only after Phase 2 is green.
+Status: paused. Only revisit after AWS Phase 2 is green and the team explicitly resumes frontend hosting proof work.
 
 Investigate/validate:
 
@@ -1026,6 +1440,8 @@ Vinext
 Use the main frontend application as the hosting unit.
 
 The Trip static build remains embedded.
+
+Do not attempt to absorb `trip/src/final/*` pages into `frontend/app` during AWS deployment preparation unless Integration Stage C is explicitly restarted.
 
 ## Phase 4 — Database
 
@@ -1134,10 +1550,27 @@ Change human IAM permissions without explicit approval
 
 # 22. Equality Checklist for the Three Human Members
 
-If the project keeps the current Root + 2 IAM model:
+Target human access state:
+
+```text
+Root
+-> account-owner / recovery only
+-> not counted as one of the three daily project identities
+
+Capstone-Admins
+-> AdministratorAccess
+   |-- ProjectOwnerAdmin / Human Admin 1
+   |-- Carina
+   `-- Dixon
+```
+
+Target checklist:
 
 ```text
 [ ] Root MFA enabled
+[ ] Root has no access keys
+[ ] ProjectOwnerAdmin / Human Admin 1 exists as an IAM user
+[ ] ProjectOwnerAdmin / Human Admin 1 is in Capstone-Admins
 [ ] Carina is in Capstone-Admins
 [ ] Dixon is in Capstone-Admins
 [ ] Capstone-Admins has AdministratorAccess
@@ -1150,28 +1583,11 @@ If the project keeps the current Root + 2 IAM model:
 Result:
 
 ```text
-Normal project AWS resource administration:
-approximately equal
-
-Root-only account ownership:
-not equal by design
-```
-
-If the project wants literal daily-account equality:
-
-```text
-[ ] Create third human IAM user
-[ ] Add third user to Capstone-Admins
-[ ] Ensure all 3 human IAM users inherit only the same admin group policy
-[ ] Give all 3 separate passwords/MFA
-[ ] Use Root only for account-owner/emergency tasks
-```
-
-Result:
-
-```text
 Three human daily IAM identities:
 same long-term authorization model
+
+Root-only account ownership:
+separate by design
 ```
 
 ---
@@ -1230,7 +1646,9 @@ When giving this document to Codex:
 
 ---
 
-# 25. Current Identity Diagram
+# 25. Identity Diagrams
+
+## 25.1 Current state — 2026-08-09
 
 ```text
                      AWS Account 448678332746
@@ -1275,25 +1693,81 @@ When giving this document to Codex:
                                                      Account 448678332746
 ```
 
-If literal human equality is adopted:
+This is the **current** state. The project owner still has Root as the human account-owner identity, and the third daily IAM administrator is not yet confirmed.
+
+## 25.2 Target daily human access state
 
 ```text
-Root
--> emergency/account-owner only
+                     AWS Account 448678332746
+                              |
+             +----------------+----------------+
+             |                                 |
+          Root user                            IAM
+ account-owner / recovery only                 |
+ not a daily project identity                  |
+                                               |
+                                +--------------+------------------+
+                                |                                 |
+                         Capstone-Admins                  github-actions-deploy
+                                |                          machine identity
+                         AdministratorAccess                    |
+                                |                               |
+                   +------------+------------+                  |
+                   |            |            |                  |
+          ProjectOwnerAdmin   Carina       Dixon                |
+           / Human Admin 1                                     |
+                   |            |            |                  |
+                   +------------+------------+                  |
+                                |                               |
+                       same daily IAM policy                    |
+                                                              |
+                                                       Access Key Pair
+                                                              |
+                                                              v
+                                                     GitHub Environment
+                                                           Main
+```
 
-Capstone-Admins
--> AdministratorAccess
-   |-- Human 1
-   |-- Human 2
-   `-- Human 3
+Target result:
 
-github-actions-deploy
+```text
+Three human daily IAM identities:
+-> same IAM user type
+-> same Capstone-Admins group
+-> same AdministratorAccess policy
+-> independent password
+-> independent MFA
+
+Root:
+-> separate account-owner/recovery identity
+
+github-actions-deploy:
 -> separate machine identity
 ```
 
 ---
 
-# 26. Official AWS References
+# 26. Public Repository Hygiene
+
+The AWS Account ID and IAM ARN recorded in this master context are operational identifiers, not authentication secrets. They do not by themselves grant access to AWS.
+
+However, if this document is committed to a **public** GitHub repository, prefer redacting those identifiers in the public copy:
+
+```text
+AWS Account ID:
+<CAPSTONE_AWS_ACCOUNT_ID>
+
+IAM ARN:
+arn:aws:iam::<CAPSTONE_AWS_ACCOUNT_ID>:user/github-actions-deploy
+```
+
+Keep the real account ID in a private/local operational note when public disclosure is unnecessary.
+
+This is a hygiene recommendation, not a credential-rotation event.
+
+---
+
+# 27. Official AWS References
 
 AWS Root user best practices:
 https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html
@@ -1322,8 +1796,17 @@ https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier-FAQ.html
 IAM Identity Center enablement / Free Plan warning:
 https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html
 
+Amazon ECS outbound internet networking:
+https://docs.aws.amazon.com/AmazonECS/latest/developerguide/networking-outbound.html
+
+Application Load Balancer creation and subnet/AZ requirements:
+https://docs.aws.amazon.com/elasticloadbalancing/latest/application/create-application-load-balancer.html
+
+RDS DB subnet group creation and AZ coverage requirement:
+https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBSubnetGroup.html
+
 ---
 
-# 27. One-Sentence Policy
+# 28. One-Sentence Policy
 
-> TripSync uses one standalone AWS Free Plan account, three humans should have the same long-term day-to-day administrator policy through `Capstone-Admins` if literal equality is required, Root remains a separate account-owner identity, and GitHub Actions uses the separate long-term `github-actions-deploy` machine credential stored only in GitHub Environment `Main`.
+> TripSync uses one standalone AWS Free Plan account; the fixed target daily human model is three independent IAM administrators in `Capstone-Admins` with the same `AdministratorAccess` policy while Root remains separate for account-owner/recovery use; GitHub Actions uses the separate long-term `github-actions-deploy` machine credential stored in GitHub Environment `Main`; and no AWS resource provisioning begins until build validation, machine-IAM authorization, database-safety, and cost guardrails are satisfied.
