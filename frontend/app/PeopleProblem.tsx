@@ -6,29 +6,29 @@ import type { CSSProperties, ReactNode } from "react";
 const audiences = [
   {
     title: "Friends",
-    text: "Different budgets, interests, and travel rhythms.",
+    text: "Different budgets and travel rhythms, held in one plan.",
     tone: "blue",
     icon: "friends",
   },
   {
     title: "Couples",
-    text: "Shared decisions without one person carrying the plan.",
+    text: "Shared choices without one person carrying the work.",
     tone: "sand",
     icon: "couples",
   },
   {
     title: "Families",
-    text: "Accessibility, energy levels, and personal budget shares.",
+    text: "Hard limits, energy levels, and accessibility protected.",
     tone: "sage",
     icon: "families",
   },
 ] as const;
 
 const quotes = [
-  { label: "Traveler 01", meta: "Budget", text: '"I need to stay under $1,500."' },
-  { label: "Traveler 02", meta: "Pace", text: '"I want to see as much as possible."' },
-  { label: "Traveler 03", meta: "Accessibility", text: '"I cannot walk for long periods."' },
-  { label: "Traveler 04", meta: "Energy", text: '"I need a little time to recharge."' },
+  { label: "Traveler 01", meta: "Private budget", text: '"I need to stay under $1,500."' },
+  { label: "Traveler 02", meta: "Preference", text: '"I want to see as much as possible."' },
+  { label: "Traveler 03", meta: "Hard limit", text: '"I cannot walk for long periods."' },
+  { label: "Traveler 04", meta: "Personal pace", text: '"I need a little time to recharge."' },
 ] as const;
 
 function AudienceIcon({ type }: { type: "friends" | "couples" | "families" }) {
@@ -129,8 +129,8 @@ export default function PeopleProblem() {
     <section className="section shell problem people-problem people-v2" id="why">
       <div className="people-v2__scroll" ref={scrollRef}>
         <div className="people-v2__stage">
-          <p className="eyebrow people-v2__eyebrow">02 · PEOPLE</p>
-          <h2 className="people-v2__title">Every voice matters.</h2>
+          <p className="eyebrow people-v2__eyebrow">02 · SHARED NEEDS</p>
+          <h2 className="people-v2__title">Every voice counts.</h2>
 
           <div className={`people-v2__audiences ${audienceVisible ? "is-visible" : ""}`} ref={audienceRef}>
             {audiences.map((audience, index) => (
@@ -152,9 +152,9 @@ export default function PeopleProblem() {
           <div className={`people-v2__lower ${sharedProgress > 0.01 ? "is-visible" : ""}`}>
             <article className="people-v2__problem-card">
               <p className="eyebrow">THE PROBLEM</p>
-              <h3>Less chat.<br />Clear decisions.</h3>
+              <h3>Less chat.<br />Clear choices.</h3>
               <div className="people-v2__problem-line" aria-hidden="true" />
-              <p className="people-v2__problem-support">More time exploring,<br />less time deciding.</p>
+              <p className="people-v2__problem-support">More time traveling,<br />less time negotiating.</p>
               <svg className="people-v2__mountains" viewBox="0 0 420 118" aria-hidden="true">
                 <path d="M0 108 48 90l30 7 66-61 38 38 33-28 33 32 31-19 50 49" />
                 <path d="m76 96 68-60 18 28 20 10 30-24 24 27 18-11 29 27" />
@@ -876,3 +876,4 @@ export default function PeopleProblem() {
     </section>
   );
 }
+

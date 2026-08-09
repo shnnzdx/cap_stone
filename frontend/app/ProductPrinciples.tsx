@@ -38,7 +38,7 @@ const principles = [
   },
   {
     key: "confirm",
-    word: "Confirm",
+    word: "Route",
     symbol: "v",
     tone: "confirm",
     description: "Turn agreement into a clear next step.",
@@ -235,11 +235,11 @@ export default function ProductPrinciples({ storyMotionRef }: ProductPrinciplesP
   }, { scope: rootRef });
 
   return (
-    <div className="principle-scroll" aria-label="TripSync core product principles" ref={rootRef}>
+    <div className="principle-scroll" aria-label="Decision system for group planning" ref={rootRef}>
       <div className="principle-stage">
         <header className="principle-heading">
-          <p className="eyebrow"><span>01</span><span>PRODUCT CORE</span></p>
-          <h2><span>Built for real</span> <strong>group decisions.</strong></h2>
+          <p className="eyebrow"><span>01</span><span>DECISION SYSTEM</span></p>
+          <h2><span>Better group</span> <strong>decisions.</strong></h2>
         </header>
 
         <div className="principle-anchor-field">

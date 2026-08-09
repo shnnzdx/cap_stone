@@ -19,6 +19,9 @@ const nightsBetween = range => range.start && range.end ? Math.max(0, Math.round
 const formatShortDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'
 const formatDateRange = range => range.start && range.end ? `${formatShortDate(range.start)} – ${formatShortDate(range.end)}, 2026` : 'Select dates'
 
+const logoMarkSrc = `${import.meta.env.BASE_URL}images/cadensy-mark.png`
+const logoWordmarkSrc = `${import.meta.env.BASE_URL}images/cadensy-wordmark.png`
+
 const pathLabels = {
   A: 'Applies now',
   B: 'Goes to a group round',
@@ -75,8 +78,15 @@ function DateRangePicker({ value, onChange }) {
 
 const cx = (...classes) => classes.filter(Boolean).join(' ')
 
+function BrandLogo({ showWordmark = true }) {
+  return <span className="brandLogo">
+    <img className="brandLogoMark" src={logoMarkSrc} alt="CADENSY mark" />
+    {showWordmark && <img className="brandLogoWordmark" src={logoWordmarkSrc} alt="CADENSY" />}
+  </span>
+}
+
 function Logo() {
-  return <Link to="/" className="logo"><span className="logoMark">T</span><span>TripSync</span></Link>
+  return <Link to="/" className="logo" aria-label="CADENSY home"><BrandLogo /></Link>
 }
 
 function Badge({ children, tone = 'neutral' }) {
@@ -211,8 +221,8 @@ function TripShell({ children }) {
       {/* trip 页里 logo 和「My Trips」原本是两个指向同一处的链接,合并成一个返回入口 */}
       <div className="tripUnifiedBrand">
         {isGuest
-          ? <span className="brandBack" aria-label="TripSync"><span className="logoMark">T</span><span>TripSync</span></span>
-          : <Link className="brandBack" to="/"><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
+          ? <span className="brandBack" aria-label="CADENSY"><BrandLogo /></span>
+          : <Link className="brandBack" to="/"><BrandLogo showWordmark={false} /><span className="backArrow">&larr;</span><span>My Trips</span></Link>}
       </div>
       <div className="tripUnifiedCenter">
         <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">

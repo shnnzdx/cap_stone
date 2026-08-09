@@ -7,51 +7,51 @@ const features = [
   {
     number: "01",
     title: "Create",
-    text: "Add a destination and date range, then invite everyone with one link.",
-    note: "Create opens a shared planning space. It does not make decisions for the group.",
+    text: "Add a destination and date range, then bring everyone in with one link.",
+    note: "Everyone enters the plan with equal decision weight.",
     action: "Start a trip",
     icon: "+",
   },
   {
     number: "02",
     title: "Share",
-    text: "Each traveler adds priorities, hard limits, and private concerns in their own space.",
-    note: "People can be honest without turning every preference into a group debate.",
+    text: "Each traveler adds preferences, hard limits, and private needs in their own space.",
+    note: "Private input can shape the plan without being shown to the group.",
     action: "See private input",
     icon: "*",
   },
   {
     number: "03",
-    title: "Generate",
-    text: "AI proposes one plan; the backend checks dates, must-haves, and maximum budgets.",
-    note: "Generation and deterministic validation remain separate responsibilities.",
-    action: "View validation",
+    title: "Build",
+    text: "AI drafts a complete itinerary; fixed rules check dates, budgets, and must-haves.",
+    note: "A plan only goes live after every confirmed hard limit passes.",
+    action: "See plan checks",
     icon: "^",
   },
   {
     number: "04",
-    title: "Review",
-    text: "The organizer verifies facts. Members accept, suggest, or request a change on a specific section.",
-    note: "Feedback stays attached to the part of the plan it affects - no real-time chat required.",
-    action: "Explore review",
+    title: "Decide",
+    text: "CADENSY checks hard limits and decision history before the plan moves.",
+    note: "Open changes apply directly; contested choices open a round; hard-limit changes require confirmation.",
+    action: "Explore decisions",
     icon: "o",
   },
   {
     number: "05",
-    title: "Publish",
-    text: "AI makes targeted revisions; the backend validates the full plan before a new version is published.",
-    note: "Members keep control of their conditions. The organizer cannot bypass validation.",
-    action: "See versioning",
+    title: "Adapt",
+    text: "The Current Plan updates without rebuilding what already works.",
+    note: "Every decision stays traceable, and hard limits stay protected.",
+    action: "See the living plan",
     icon: "v",
   },
 ] as const;
 
 const featureSignals = [
   ["Destination + dates", "Open shared space", "One invitation link"],
-  ["Private preferences", "Organize constraints", "Clear group needs"],
-  ["Group priorities", "Generate + validate", "One viable draft"],
-  ["Section feedback", "Target revisions", "Accepted decisions"],
-  ["Validated version", "Lock final choices", "Publish shared plan"],
+  ["Private preferences", "Structure hard limits", "Protected group needs"],
+  ["Confirmed inputs", "Draft + validate", "One viable plan"],
+  ["Change request", "Route by impact", "Notice, round, or confirm"],
+  ["Resolved changes", "Preserve what works", "Current Plan stays ready"],
 ] as const;
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
@@ -193,19 +193,19 @@ export default function FeatureStory() {
   };
 
   return (
-    <section className="feature-story" id="process" ref={sectionRef} aria-label="How TripSync works">
+    <section className="feature-story" id="process" ref={sectionRef} aria-label="How CADENSY works">
       <div className="story-stage" ref={stageRef}>
         <div className="process-navy-backdrop" aria-hidden="true" />
         <div className="story-topbar" ref={topbarRef}>
-          <span className="story-mini-brand"><i>T</i> TripSync</span>
+          <span className="story-mini-brand"><i>T</i> CADENSY</span>
           <span>03 / PROCESS</span>
         </div>
         <div className="story-frame" ref={frameRef}>
           <div className="story-window" ref={windowRef}>
             <aside className="story-intro">
               <p className="story-label">HOW IT WORKS</p>
-              <h2>Five steps.<br />One decision.</h2>
-              <p>Each stage keeps private input, revision, and final agreement clear.</p>
+              <h2>Five steps.<br />One living plan.</h2>
+              <p>Private needs stay protected. Every change follows a clear path.</p>
               <nav className="story-nav" aria-label="Choose a process step">
                 {features.map((feature, index) => (
                   <button
@@ -246,7 +246,7 @@ export default function FeatureStory() {
                         <div className="stacked-signal" aria-label={`${feature.title} information flow`}>
                           {featureSignals[index].map((signal, signalIndex) => (
                             <div key={signal}>
-                              <span>{["INPUT", "TRIPSYNC", "GROUP RESULT"][signalIndex]}</span>
+                              <span>{["INPUT", "CADENSY", "GROUP RESULT"][signalIndex]}</span>
                               <strong>{signal}</strong>
                             </div>
                           ))}

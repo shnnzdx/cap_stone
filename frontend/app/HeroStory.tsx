@@ -570,7 +570,7 @@ export default function HeroStory({
   return (
     <section className="hero shell" ref={heroRef}>
       <div className="hero-copy">
-        <p className="eyebrow">Group travel, planned together</p>
+        <p className="eyebrow">Group travel, decided together</p>
         <h1>Plan a trip everyone can agree on.</h1>
       </div>
       <div className="hero-scene" aria-label="Many traveler voices gather into one shared plan">

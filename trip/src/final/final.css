@@ -1029,3 +1029,21 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   color:#fff!important;
 }
 .handDrawnRouteLine{stroke:var(--text-primary)!important}
+
+/* CADENSY logo overrides */
+.logo{line-height:0}
+.brandLogo{display:inline-flex;align-items:center;gap:10px;line-height:0}
+.brandLogoMark{display:block;width:34px;height:34px;flex:none;border-radius:10px;object-fit:cover}
+.brandLogoWordmark{display:block;width:108px;height:auto}
+.editorialNav .brandLogoWordmark{width:104px}
+.tripUnifiedBrand .brandLogoWordmark{width:104px}
+.brandBack{gap:12px}
+.brandBack .brandLogoMark{width:32px;height:32px;border-radius:9px}
+.brandBack .brandLogoWordmark{width:100px}
+.brandBack span:last-child{font-size:14px;font-weight:560;color:#6b655c}
+.brandBack:hover span:last-child{color:var(--text-primary)}
+.brandBack .backArrow{color:#a39c90;font-size:13px}
+@media(max-width:760px){
+  .brandLogoWordmark{width:98px}
+  .brandBack .brandLogoWordmark{width:94px}
+}

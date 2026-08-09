@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import BrandLogo from "./BrandLogo";
 
 const navLinks = [
   { href: "/", label: "Product" },
@@ -22,8 +23,7 @@ export default function Header() {
     <header className="site-header">
       <nav className="shell nav" aria-label="Main navigation">
         <Link className="brand" href="/" onClick={() => setOpen(false)}>
-          <span className="brand-mark">T</span>
-          TripSync
+          <BrandLogo />
         </Link>
 
         <div className="nav-links">
@@ -57,8 +57,7 @@ export default function Header() {
         <div className="mobile-nav-card">
           <div className="mobile-nav-top">
             <Link className="brand" href="/" onClick={() => setOpen(false)}>
-              <span className="brand-mark">T</span>
-              TripSync
+              <BrandLogo />
             </Link>
             <button type="button" className="mobile-nav-close" onClick={() => setOpen(false)} aria-label="Close menu">
               X

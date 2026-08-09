@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TripSync — Plan a trip everyone can agree on",
+  title: "CADENSY - Plan a trip everyone can agree on",
   description: "A collaborative AI travel planning concept for groups with different needs.",
   icons: {
     icon: "/favicon.svg",

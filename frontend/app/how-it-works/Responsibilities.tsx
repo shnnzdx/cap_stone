@@ -2,9 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 
 const roles = [
-  ["01", "AI", "Understand & generate", "Organizes vague input, asks up to three essential questions, and creates targeted revisions."],
-  ["02", "Backend", "Validate the plan", "Enforces confirmed must-haves, maximum budgets, and available dates before a version can advance."],
-  ["03", "People", "Review & decide", "Members control their conditions. The organizer verifies facts and moves the process forward."],
+  ["01", "AI", "Understand & draft", "Structures traveler input, drafts the itinerary, explains trade-offs, and suggests alternatives."],
+  ["02", "Rules", "Validate & route", "Protects confirmed hard limits and routes each change by its impact and decision history."],
+  ["03", "People", "Choose & confirm", "Every traveler controls their own needs. No organizer can decide or confirm for someone else."],
 ];
 
 export default function Responsibilities() {
@@ -18,7 +18,7 @@ export default function Responsibilities() {
     return () => observer.disconnect();
   }, []);
   return <section className={`responsibility-section shell ${visible ? "is-visible" : ""}`} ref={ref}>
-    <p className="eyebrow">CLEAR RESPONSIBILITIES</p><h2>Three roles. One reliable plan.</h2>
+    <p className="eyebrow">CLEAR RESPONSIBILITIES</p><h2>Three roles.<br />One reliable plan.</h2>
     <div className="responsibility-grid compact">{roles.map(([number, role, action, copy], index) => <article key={number} style={{ "--role-delay": `${index * 120}ms` } as React.CSSProperties}>
       <i className="voice-received" aria-hidden="true" /><span>{number}</span><h3>{role}</h3><strong>{action}</strong><p>{copy}</p>
     </article>)}</div>

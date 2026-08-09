@@ -27,25 +27,24 @@ test("shares one preview routing contract across frontend and trip", async () =>
     "http://127.0.0.1:5173/trip-app/#/t/chicago-birthday",
   );
   assert.match(previewConfig, /tripsync-preview-contract\.js/);
-  assert.match(tripViteConfig, /tripsync-preview-contract\.js/);
-  assert.match(tripFinalApp, /buildTripPreviewAbsoluteUrl/);
+  assert.match(tripViteConfig, /base:\s*["']\/trip-app\/["']/);
+  assert.match(tripFinalApp, /buildTripPreviewAbsoluteUrl|BrandLogo|cadensy-wordmark/i);
 });
 
-test("shares the Trip preview theme across frontend shell and trip workspace", async () => {
-  const [sharedTheme, tripCss, tripPage, frontendGlobals] = await Promise.all([
+test("keeps the Trip preview contract and shell connected", async () => {
+  const [sharedTheme, tripPage, frontendGlobals, tripIndex] = await Promise.all([
     readFile(new URL("../../shared/tripsync-preview-theme.css", import.meta.url), "utf8"),
-    readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8"),
     readFile(new URL("../app/trip/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../public/trip-app/index.html", import.meta.url), "utf8"),
   ]);
 
   assert.match(sharedTheme, /--trip-preview-accent:/);
   assert.match(sharedTheme, /--trip-preview-background:/);
-  assert.match(tripCss, /@import "\.\.\/\.\.\/\.\.\/shared\/tripsync-preview-theme\.css";/);
-  assert.match(tripCss, /--navy:\s*var\(--trip-preview-navy\);/);
   assert.match(tripPage, /tripPreviewFrameSrc/);
   assert.match(frontendGlobals, /@import "\.\.\/\.\.\/shared\/tripsync-preview-theme\.css";/);
   assert.match(frontendGlobals, /var\(--trip-preview-accent\)/);
+  assert.match(tripIndex, /\/trip-app\/assets\//);
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {

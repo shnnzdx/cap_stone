@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import BrandLogo from "../BrandLogo";
 
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
@@ -41,11 +42,11 @@ export default function LoginPage() {
 
   return (
     <main className="login-page">
-      <Link className="login-brand" href="/" aria-label="TripSync home">
-        <span className="brand-mark">T</span><span>TripSync</span>
+      <Link className="login-brand" href="/" aria-label="CADENSY home">
+        <BrandLogo />
       </Link>
       <section className="login-experience">
-        <div className="travel-scene" aria-label="Three TripSync travelers whose eyes follow the cursor">
+        <div className="travel-scene" aria-label="Three CADENSY travelers whose eyes follow the cursor">
           <div className="route route-one" /><div className="route route-two" />
           <span className="map-label label-one">NRT</span><span className="map-label label-two">CDG</span><span className="map-label label-three">ORD</span>
           <div className="scene-copy">
@@ -71,14 +72,14 @@ export default function LoginPage() {
         </div>
         <div className="login-side">
           <div className="login-card">
-            {accountCreated && <div className="account-created" role="status"><span>✓</span><p><strong>Account created.</strong> Log in to continue to TripSync.</p></div>}
+            {accountCreated && <div className="account-created" role="status"><span>✓</span><p><strong>Account created.</strong> Log in to continue to CADENSY.</p></div>}
             <div className="login-heading">
               <p className="login-kicker">Welcome back</p><h2>Welcome back.</h2>
               <p>Sign in to bring your group&apos;s ideas back into sync.</p>
             </div>
             <form className="login-form" onSubmit={(event) => event.preventDefault()}>
               <label htmlFor="email">Email address</label>
-              <input id="email" name="email" autoComplete="email" defaultValue="organizer@tripsync.demo" type="email" />
+              <input id="email" name="email" autoComplete="email" defaultValue="organizer@cadensy.demo" type="email" />
               <div className="password-row"><label htmlFor="password">Password</label><Link href="#">Forgot password?</Link></div>
               <div className="password-field">
                 <input id="password" name="password" autoComplete="current-password" defaultValue="demo-password" type={showPassword ? "text" : "password"} />
@@ -88,7 +89,7 @@ export default function LoginPage() {
             </form>
             <div className="login-divider"><span>or</span></div>
             <button className="google-button" type="button"><span>G</span> Continue with Google</button>
-            <p className="signup-copy">New to TripSync? <Link href="/signup">Create an account</Link></p>
+            <p className="signup-copy">New to CADENSY? <Link href="/signup">Create an account</Link></p>
           </div>
           <p className="login-legal">By continuing, you agree to our <Link href="/privacy">Privacy Policy</Link>.</p>
         </div>

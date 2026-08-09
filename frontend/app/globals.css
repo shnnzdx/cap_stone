@@ -812,8 +812,20 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-page .people-problem,.product-page .feature-story,.product-page .demo-section{background:transparent}
 .product-page .story-frame{background:rgba(239,246,252,.74);box-shadow:0 22px 64px rgba(52,82,114,.08)}
 .product-page .final-cta{background:#173754}
+.product-page .demo-section{isolation:isolate;padding-bottom:clamp(180px,14vw,220px)}
+.product-page .demo-section::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);background:linear-gradient(to bottom,transparent 68%,rgba(226,237,246,.3) 80%,rgba(226,237,246,.86) 94%,#e2edf5 100%),url("/images/demo-travel-background.png") center/cover no-repeat}
+.product-page .demo-section + .final-cta{position:relative;z-index:2;margin-top:-64px;border-radius:46px 46px 40px 40px}
+.site-header .brand{min-height:34px;line-height:0}
+.brand-logo{display:inline-flex;align-items:center;gap:9px;flex:none;line-height:0}
+.brand-logo img{display:block;max-width:none}
+.brand-logo-mark{width:34px;height:34px;object-fit:contain;flex:none}
+.brand-logo-wordmark{width:112px;height:auto;object-fit:contain;flex:none}
+.brand-logo.is-compact .brand-logo-mark{width:24px;height:24px}
+.copyright{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand-story{opacity:.68;letter-spacing:.16em}
 .login-heading h2{font-size:clamp(2.2rem,3vw,3.25rem);white-space:nowrap}
 @media(max-width:760px){.login-heading h2{white-space:normal}}
+@media(max-width:620px){.brand-logo-wordmark{width:98px}.copyright{align-items:flex-start;flex-direction:column;gap:8px}.brand-story{font-size:11px}.product-page .demo-section{padding-bottom:164px}.product-page .demo-section + .final-cta{margin-top:-54px;border-radius:38px 38px 28px 28px}}
 
 /* Homepage v5: cumulative core reveal and a compact, continuous People chapter. */
 .product-page .principle-mask{overflow:hidden}
