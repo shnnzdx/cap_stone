@@ -449,7 +449,7 @@ function DecisionRoundCard({ round, compact }) {
     </div>}
     {closed && <div className="roundFooter">
       <span>The round has been settled.</span>
-      <Link className="btn btnSecondary" to={planTarget}>回到行程看结果 →</Link>
+      <Link className="btn btnSecondary" to={planTarget}>View result in plan →</Link>
     </div>}
   </article>
 }
@@ -642,14 +642,14 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
     details: 'View details',
   }
   const promptExamples = {
-    global: '',
-    ask: '',
-    editTime: 'Move this to 3:30 PM.',
-    moveDay: 'Move this to Day 3 afternoon.',
-    replacePlace: 'Replace this with shopping nearby.',
-    removePlan: 'Turn this block into free time.',
-    details: '',
-  }
+  global: '',
+  ask: '',
+  editTime: '',
+  moveDay: '',
+  replacePlace: '',
+  removePlan: '',
+  details: '',
+}
   const placeholder = mode === 'global'
     ? 'Tell Cadensy what you want to change...'
     : 'Tell Cadensy what you want to change about this item...'
@@ -891,8 +891,8 @@ function TradeoffThread() {
       <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{applied || member.status === 'accepted' ? `${member.label}: accepted` : unchanged ? `${member.label}: closed` : `${member.label}: needs decision`}{member.proposer ? ' (proposer)' : ''}</span>)}<span>Names hidden</span><span>Personal reasons hidden</span></div>
       {pending && <div className="message ai"><span>✦</span><div><p>The Current Plan does not move until every affected member confirms.</p><div className="messageActions"><Button secondary onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost onClick={async () => { await app.resolveProposal(proposal.id, 'declined'); app.notify('Current plan kept') }}>Decline</Button><Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Withdrawn locally — current plan kept') }}>Withdraw</Button></div></div></div>}
       {threadMessages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
-      {applied && <div className="message ai resolvedMessage"><span>✓</span><div><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={planTarget}>已更新，回到行程 →</Link></div></div>}
-      {unchanged && <div className="message ai resolvedMessage"><span>↩</span><div><p>The proposal is closed. The Current Plan did not change.</p><Link className="inlineAction" to={planTarget}>行程没变，回到行程 →</Link></div></div>}
+      {applied && <div className="message ai resolvedMessage"><span>✓</span><div><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={planTarget}>Back to updated plan →</Link></div></div>}
+      {unchanged && <div className="message ai resolvedMessage"><span>↩</span><div><p>The proposal is closed. The Current Plan did not change.</p><Link className="inlineAction" to={planTarget}>Back to Current Plan →</Link></div></div>}
     </div>
     <div className="chatComposer"><button>＋</button><input value={reply} onChange={event => setReply(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendReply()} placeholder="Reply anonymously in this conversation..."/><button className="sendBtn" onClick={sendReply}>↑</button></div>
   </section>

@@ -98,17 +98,27 @@ def understand(request: UnderstandInput) -> Understanding:
         schema_name="chat_understanding",
         mock=_mock_understanding(request),
     )
+
+    result_patch = result.get("patch") or {}
+
+    # Exact time values are deterministic.
+    # Do not rely on the LLM to calculate 3:30 PM -> 15.5 correctly.
+    exact_hour = _hour_from_text(request.message.lower())
+
+    if exact_hour is not None:
+        result_patch["start_hour"] = exact_hour
+
     patch = {
         key: value
-        for key, value in (result.get("patch") or {}).items()
+        for key, value in result_patch.items()
         if value is not None
     }
+
     return Understanding(
         intent=result["intent"],
         item_hint=result.get("item_hint"),
         patch=patch,
     )
-
 
 def explain(request: ReplyInput) -> Reply:
     safe = base.safe_context(request.verdict)
