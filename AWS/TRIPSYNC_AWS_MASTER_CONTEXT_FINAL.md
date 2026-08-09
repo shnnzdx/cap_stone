@@ -1303,7 +1303,7 @@ Current status:
 
 ```text
 frontend integration portion: complete
-backend cloud-readiness portion: still pending
+backend cloud-readiness portion: Phase 1 local preparation in progress
 AWS infrastructure creation: not started
 ```
 
@@ -1343,12 +1343,12 @@ Remaining backend cloud-readiness work:
 Backend:
 
 ```text
-keep /api/health
-environment-driven CORS
-complete .env.example
-Dockerfile
-.dockerignore
-Docker local health validation
+/api/health exists and must remain available
+environment-driven CORS added through CORS_ORIGINS with localhost defaults
+.env.example expanded with DISABLE_SCHEDULER, FRONTEND_BASE_URL, and CORS_ORIGINS
+backend Dockerfile added for local/ECS candidate container validation
+backend .dockerignore added so local secrets and virtual environments are not copied into images
+Docker local build/run/health validation is still pending because Docker CLI is not installed on the current machine
 ```
 
 Database:
@@ -1368,6 +1368,17 @@ validate frontend build
 ```
 
 The frontend build/sync/test portion is currently validated locally. It still needs GitHub Actions build-validation coverage.
+
+Backend Phase 1 validation notes:
+
+```text
+targeted backend configuration test passed: backend/tests/test_api_config.py
+Python compile check passed: python -m compileall app
+full backend pytest currently depends on local PostgreSQL test database access
+observed blocker: postgresql+psycopg://localhost/tripsync_test requires local database authentication
+observed blocker: Docker CLI is not installed locally, so container build/run/health validation cannot be executed yet
+this is a local test-environment issue, not an AWS deployment signal
+```
 
 ## Phase 2 — Build Validation CI
 

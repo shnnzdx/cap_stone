@@ -37,6 +37,15 @@ from ..domain.decisions import organizer as org_actions
 from ..domain.preferences import service as pref_service
 from ..domain.trips import service as trip_service
 
+DEFAULT_CORS_ORIGINS = ("http://localhost:5173", "http://localhost:3000")
+
+
+def parse_cors_origins(raw: str | None = None) -> list[str]:
+    value = raw if raw is not None else os.getenv("CORS_ORIGINS", "")
+    origins = [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
+    return origins or list(DEFAULT_CORS_ORIGINS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """后端一启动,定时结算就在后台转起来了 —— 不用另外开一个进程。"""
@@ -54,7 +63,7 @@ app = FastAPI(title="TripSync API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=parse_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
