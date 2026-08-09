@@ -57,6 +57,23 @@ class User(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(255), unique=True)
     avatar: Mapped[str | None] = mapped_column(String(255))
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+
+
+class AuthSession(Base, TimestampMixin):
+    """Login session for a real account.
+
+    The browser receives the raw token once. The database only stores a hash,
+    so a database dump is not enough to impersonate a user.
+    """
+
+    __tablename__ = "auth_session"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("user_account.id"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Trip(Base, TimestampMixin):
@@ -185,6 +202,7 @@ class Plan(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     trip_id: Mapped[str] = mapped_column(ForeignKey("trip.id"))
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | blocked
+    blocked_reason: Mapped[str | None] = mapped_column(Text)
     estimated_total_per_person: Mapped[float] = mapped_column(Float, default=0)
     currency: Mapped[str] = mapped_column(String(8), default="USD")
 
@@ -225,6 +243,20 @@ class PlanItem(Base, TimestampMixin):
     plan: Mapped[Plan] = relationship(back_populates="items")
 
 
+class PlanItemComment(Base, TimestampMixin):
+    """A public group note attached to one itinerary item."""
+
+    __tablename__ = "plan_item_comment"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    plan_item_id: Mapped[str] = mapped_column(ForeignKey("plan_item.id"))
+    trip_membership_id: Mapped[str] = mapped_column(ForeignKey("trip_membership.id"))
+    body: Mapped[str] = mapped_column(Text)
+
+    item: Mapped[PlanItem] = relationship()
+    membership: Mapped[TripMembership] = relationship()
+
+
 class PlanChange(Base):
     """流水账。三条路径最后都只做一件事:往这里追加一行。
 
@@ -237,7 +269,7 @@ class PlanChange(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     plan_id: Mapped[str] = mapped_column(ForeignKey("plan.id"))
     plan_item_id: Mapped[str] = mapped_column(ForeignKey("plan_item.id"))
-    # notice | round | reopen_round | confirm | ai_generate | preference_update
+    # notice | round | reopen_round | confirm | ai_generate | rule_generate | preference_update
     origin: Mapped[str] = mapped_column(String(30))
     patch: Mapped[dict] = mapped_column(JSON, default=dict)
     reason: Mapped[str | None] = mapped_column(Text)

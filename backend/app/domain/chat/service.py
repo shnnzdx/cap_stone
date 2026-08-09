@@ -60,6 +60,19 @@ def respond_to_trip_chat(
     selected = _selected_item(items, item_id)
     item_context = _item_context(selected) if selected else None
 
+    if not _looks_like_change_request(message):
+        try:
+            reply = chat_agent.answer_question(
+                chat_agent.QuestionInput(
+                    message=message,
+                    item=item_context,
+                    itinerary=tuple(_item_context(item) for item in items),
+                )
+            ).text
+        except base.AgentUnavailable:
+            reply = chat_agent.no_change_reply()
+        return ChatResult(reply=reply, proposed_change=None)
+
     try:
         understanding = chat_agent.understand(
             chat_agent.UnderstandInput(message=message, item=item_context)
@@ -68,7 +81,17 @@ def respond_to_trip_chat(
         return ChatResult(reply=chat_agent.fallback_unavailable(), proposed_change=None)
 
     if understanding.intent != "change":
-        return ChatResult(reply=chat_agent.no_change_reply(), proposed_change=None)
+        try:
+            reply = chat_agent.answer_question(
+                chat_agent.QuestionInput(
+                    message=message,
+                    item=item_context,
+                    itinerary=tuple(_item_context(item) for item in items),
+                )
+            ).text
+        except base.AgentUnavailable:
+            reply = chat_agent.no_change_reply()
+        return ChatResult(reply=reply, proposed_change=None)
 
     target = selected or _match_item(items, understanding.item_hint)
     if target is None:
@@ -148,6 +171,30 @@ def _match_item(items: list[PlanItem], hint: str | None) -> PlanItem | None:
         if score > best[0]:
             best = (score, item)
     return best[1] if best[0] >= 0.55 else None
+
+
+def _looks_like_change_request(message: str) -> bool:
+    text = message.lower()
+    change_words = (
+        "change",
+        "move",
+        "replace",
+        "remove",
+        "switch",
+        "reschedule",
+        "shift",
+        "edit",
+        "skip",
+        "cancel",
+        "instead",
+        "later",
+        "earlier",
+    )
+    if any(word in text for word in change_words):
+        return True
+    if "can we" in text or "could we" in text or "i want" in text or "let's" in text:
+        return True
+    return False
 
 
 def _normalize_patch(patch: dict[str, Any]) -> dict[str, Any]:

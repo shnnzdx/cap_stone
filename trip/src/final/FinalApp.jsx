@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { TripAppProvider, useTripApp } from './TripAppState.jsx'
-import { initialComments, otherTrips, routeSegments, trip, tripMembers, tripStyles } from './tripContent.js'
+import { otherTrips, trip, tripMembers, tripStyles } from './tripContent.js'
 import TripMap from './TripMap.jsx'
 
 const visibleStatus = status => ['Booked', 'Updated'].includes(status) ? status : ''
@@ -28,6 +28,15 @@ const readInviteSession = token => {
   }
 }
 // 改动卡上的日期。写成 "Sat, Aug 15" —— 换天的改动只看时间是分不清的。
+// 日期选择器给的是 Date 对象，后端要 YYYY-MM-DD
+const toISODate = value => {
+  if (!value) return null
+  const d = new Date(value)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const fromISODate = value => value ? new Date(`${value}T00:00:00`) : null
+
 const formatChangeDay = value => value
   ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   : null
@@ -39,6 +48,33 @@ const formatPlanHour = value => {
   const minutes = Math.round((numeric - whole) * 60)
   const suffix = whole >= 12 ? 'PM' : 'AM'
   return `${whole % 12 || 12}:${String(minutes).padStart(2, '0')} ${suffix}`
+}
+
+const coordsFor = item => {
+  if (!Array.isArray(item?.coords) || item.coords.length < 2) return null
+  const [lat, lng] = item.coords.map(Number)
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null
+}
+
+const straightLineMiles = (from, to) => {
+  const start = coordsFor(from)
+  const end = coordsFor(to)
+  if (!start || !end) return null
+  const radiusMiles = 3958.8
+  const toRad = degrees => degrees * Math.PI / 180
+  const dLat = toRad(end.lat - start.lat)
+  const dLng = toRad(end.lng - start.lng)
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(start.lat)) * Math.cos(toRad(end.lat)) *
+    Math.sin(dLng / 2) ** 2
+  return radiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const formatStraightLineDistance = (from, to) => {
+  const miles = straightLineMiles(from, to)
+  if (miles === null) return 'Distance unavailable'
+  if (miles < 0.1) return '<0.1 mi straight line'
+  return `${miles.toFixed(miles < 10 ? 1 : 0)} mi straight line`
 }
 
 const pathLabels = {
@@ -152,7 +188,7 @@ function ActionBell() {
   const currentTrip = app.trip || trip
   const actions = []
   app.activeRounds?.filter(round => round.status === 'open').forEach(round => actions.push({ trip: currentTrip.name, text: `${round.itemTitle || 'A block'} has a group round open`, to: `/trip/${currentTrip.id}/updates` }))
-  app.activeProposals?.filter(proposal => proposal.status === 'waiting_affected_members').forEach(proposal => actions.push({ trip: currentTrip.name, text: `${proposal.before?.title || 'A proposal'} is waiting for confirmation`, to: `/trip/${currentTrip.id}/updates` }))
+  app.activeProposals?.filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).forEach(proposal => actions.push({ trip: currentTrip.name, text: proposal.status === 'escalated' ? `${proposal.before?.title || 'A proposal'} is with the organizer` : `${proposal.before?.title || 'A proposal'} is waiting for confirmation`, to: `/trip/${currentTrip.id}/updates` }))
   return <div className="actionBellWrap" ref={ref}>
     <button className={cx('actionBell', actions.length && 'hasActions')} type="button" onClick={() => setOpen(current => !current)} aria-label="Action inbox">🔔</button>
     {open && <div className="actionInbox">
@@ -187,7 +223,7 @@ function ProfileMenu() {
           <span>{link.icon}</span><div><strong>{link.label}</strong><small>{link.detail}</small></div>
         </Link>)}
       </div>
-      <button type="button" className="profileMenuSignOut" onClick={() => { setOpen(false); app.notify('Sign out connects when login is added') }}><span>↪</span><div><strong>Sign out</strong><small>Login is not connected yet</small></div></button>
+      <button type="button" className="profileMenuSignOut" onClick={() => { setOpen(false); app.logout() }}><span>↪</span><div><strong>Sign out</strong><small>End this session</small></div></button>
     </div>}
   </div>
 }
@@ -220,7 +256,7 @@ function Home() {
   const currentTrip = app.trip || trip
   if (currentUser.role === 'guest') return <Navigate to={`/trip/${currentTrip.id}/plan`} replace/>
   const roundOpen = app.activeRounds?.some(round => round.status === 'open')
-  const proposalPending = app.activeProposals?.some(proposal => proposal.status === 'waiting_affected_members')
+  const proposalPending = app.activeProposals?.some(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
   return <main className="homePage">
     <header className="editorialNav"><Logo/><nav><Link className="active" to="/">MY TRIPS</Link><Link to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
     <section className="homeContent">
@@ -245,7 +281,7 @@ function TripShell({ children }) {
   const currentUser = app.currentUser
   const currentTrip = useCurrentTrip()
   const pending = (app.activeRounds || []).filter(round => round.status === 'open').length +
-    (app.activeProposals || []).filter(proposal => proposal.status === 'waiting_affected_members').length
+    (app.activeProposals || []).filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).length
   const segment = location.pathname.split('/').filter(Boolean).pop()
   const active = segment === 'conflict' ? 'chat' : segment
   // 组织者不是超级用户,只是多了几个「维护公共框架」的入口。
@@ -313,6 +349,8 @@ function MembersPage() {
   const currentUser = app.currentUser
   const currentTrip = useCurrentTrip()
   const [roster, setRoster] = useState(null)
+  const [reminded, setReminded] = useState({})
+  const [remindingId, setRemindingId] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -338,6 +376,18 @@ function MembersPage() {
   const list = roster || []
   const submitted = list.filter(member => member.preferencesSubmitted).length
   const joined = list.filter(member => member.joined).length
+  const remind = async member => {
+    setRemindingId(member.id)
+    try {
+      await app.remindMember(member.id)
+      setReminded(current => ({ ...current, [member.id]: true }))
+      app.notify('Reminder sent')
+    } catch (err) {
+      app.notify(err.status === 429 ? 'You can remind each person once every 24 hours.' : 'Could not send the reminder.')
+    } finally {
+      setRemindingId('')
+    }
+  }
   if (currentUser.role !== 'organizer') {
     return <TripShell><div className="emptyState quietEmptyState"><span></span><h2>Organizer only</h2><p>The member roster is part of maintaining the trip frame. Your own preferences and the shared plan are unaffected.</p><Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/plan`}>Back to plan</Link></div></TripShell>
   }
@@ -356,8 +406,8 @@ function MembersPage() {
           <h3>{member.isMe ? `${member.name} (you)` : member.name}</h3>
           <p>{member.role === 'organizer' ? 'Organizer' : 'Participant'}{member.isGuest && ' · guest, no account'}{!member.joined && ' · invite not opened yet'}</p>
         </div>
-        <span className={cx('memberState', member.preferencesSubmitted ? 'done' : 'waiting')}>{member.preferencesSubmitted ? 'Preferences in' : member.joined ? 'No preferences yet' : 'Not joined'}</span>
-        {!member.preferencesSubmitted && member.joined && <button className="memberRemind" onClick={() => app.notify('Reminder sent')}>Remind</button>}
+        <span className={cx('memberState', member.preferencesSubmitted ? 'done' : 'waiting')}>{member.preferencesSubmitted ? 'Preferences in' : reminded[member.id] ? 'Reminded' : member.joined ? 'No preferences yet' : 'Not joined'}</span>
+        {!member.preferencesSubmitted && !member.isMe && <button className="memberRemind" disabled={reminded[member.id] || remindingId === member.id} onClick={() => remind(member)}>{remindingId === member.id ? 'Sending...' : reminded[member.id] ? 'Reminded' : 'Remind'}</button>}
       </article>)}
     </section>
     <div className="organizerLimits">
@@ -368,10 +418,6 @@ function MembersPage() {
         <li>Read hidden preference text — the same rule applies to the organizer</li>
         <li>Confirm a proposal on someone else's behalf</li>
       </ul>
-      <div className="btnRow">
-        <Button secondary onClick={() => app.notify('Deadline extended by 48 hours')}>Extend deadline</Button>
-        <Button ghost onClick={() => app.notify('Reminder sent to the whole group still waiting')}>Remind whole group</Button>
-      </div>
     </div>
   </TripShell>
 }
@@ -405,6 +451,7 @@ function DecisionRoundCard({ round, compact }) {
   const app = useTripApp()
   const navigate = useNavigate()
   const currentTrip = useCurrentTrip()
+  const isOrganizer = app.currentUser.role === 'organizer'
   const myVote = round.myVote
   const voteCount = round.responded || 0
   const closed = round.status === 'closed'
@@ -413,6 +460,14 @@ function DecisionRoundCard({ round, compact }) {
   const leading = Math.max(1, ...Object.values(tally))
   const isReopen = round.kind === 'reopen'
   const planTarget = `/trip/${currentTrip.id}/plan${round.itemId ? `?focus=${round.itemId}` : ''}`
+  const extend = async () => {
+    try {
+      await app.extendRound(round.id)
+      app.notify('Round extended')
+    } catch (err) {
+      app.notify(err.status === 409 ? 'This round has already been extended once.' : 'Could not extend this round.')
+    }
+  }
   return <article id={`round-card-${round.id}`} data-round-item-id={round.itemId || ''} className={cx('roundCard', compact && 'roundCardCompact', closed && 'roundClosed')}>
     <div className="roundHead">
       <div>
@@ -445,7 +500,10 @@ function DecisionRoundCard({ round, compact }) {
     </div>
     {!closed && <div className="roundFooter">
       <span>Anonymous — nobody sees who picked what.</span>
-      <button type="button" className="roundDiscuss" onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>None of these work — discuss instead</button>
+      <div className="roundFooterActions">
+        {isOrganizer && <button type="button" className="roundDiscuss" disabled={app.loading.action} onClick={extend}>{app.loading.action ? 'Extending...' : 'Extend'}</button>}
+        <button type="button" className="roundDiscuss" onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>None of these work — discuss instead</button>
+      </div>
     </div>}
     {closed && <div className="roundFooter">
       <span>The round has been settled.</span>
@@ -457,33 +515,82 @@ function DecisionRoundCard({ round, compact }) {
 // 新建的 trip 还没有行程。不伪造计划,而是显示偏好收集进度和下一步动作。
 function NewTripPlan({ currentTrip }) {
   const app = useTripApp()
-  const total = Math.max(1, currentTrip.people || 1)
-  const submitted = app.preferencesSubmittedFor.includes(currentTrip.id) ? 1 : 0
-  // 收齐半数(至少 2 份)才允许生成初稿。但阈值不能超过总人数 ——
-  // 1~2 人的小团队否则永远达不到。
-  const threshold = Math.min(total, Math.max(2, Math.ceil(total / 2)))
-  const ready = submitted >= threshold
+  const [progress, setProgress] = useState(null)
+  const [generateError, setGenerateError] = useState('')
+  const [blockedReason, setBlockedReason] = useState('')
+  const isOrganizer = app.currentUser.role === 'organizer'
+  useEffect(() => {
+    let cancelled = false
+    app.loadMembers()
+      .then(data => {
+        if (cancelled) return
+        const members = data.members || []
+        setProgress({
+          total: data.total ?? members.length,
+          submitted: data.submitted ?? members.filter(member => member.preferences_submitted).length,
+          meSubmitted: Boolean(members.find(member => member.is_me)?.preferences_submitted),
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setProgress({ total: currentTrip.people || 1, submitted: 0, meSubmitted: false })
+      })
+    return () => { cancelled = true }
+  }, [app.loadMembers, currentTrip.people])
+  const total = Math.max(1, progress?.total || currentTrip.people || 1)
+  const submitted = Math.min(total, progress?.submitted || 0)
+  const missing = Math.max(0, total - submitted)
+  const meSubmitted = Boolean(progress?.meSubmitted)
+  const canGenerate = isOrganizer && meSubmitted && !app.loading.action
+  const progressText = `${submitted} of ${total} people have shared what they need.`
+  const generate = async () => {
+    setGenerateError('')
+    setBlockedReason('')
+    try {
+      const result = await app.generatePlan()
+      if (result.status === 'blocked') {
+        setBlockedReason(result.blocked_reason || 'The itinerary is blocked.')
+        return
+      }
+      app.notify('Itinerary generated')
+    } catch (err) {
+      if (err.status === 422) setGenerateError('Share your own preferences first.')
+      else if (err.status === 409) setGenerateError('An itinerary already exists.')
+      else setGenerateError('Could not generate the itinerary. Try again in a moment.')
+    }
+  }
   return <>
     <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Current Plan</span><h1>No itinerary yet</h1><p>Waiting for preferences.</p></div></div>
     <div className="planEmptyPanel">
       <section className="collectPanel">
         <div className="collectHead">
-          <div><span className="eyebrow">Collecting preferences</span><h3>{submitted} of {total} submitted</h3></div>
-          <span className="collectCount">{ready ? 'Ready' : `${threshold - submitted} more to start`}</span>
+          <div><span className="eyebrow">Collecting preferences</span><h3>{progressText}</h3></div>
+          <span className="collectCount">{missing === 0 ? 'All set' : `${missing} waiting`}</span>
         </div>
-        <div className="collectBar"><i style={{ width: `${Math.min(100, (submitted / total) * 100)}%` }}/><b style={{ left: `${Math.min(100, (threshold / total) * 100)}%` }} title={`Draft can be generated at ${threshold}`}/></div>
-        <p className="fieldHint">Draft starts at {threshold} submitted. No reply is recorded as no preference, not agreement.</p>
+        <div className="collectBar"><i style={{ width: `${Math.min(100, (submitted / total) * 100)}%` }}/></div>
+        {!isOrganizer && <p className="fieldHint">Waiting for the organizer to generate the itinerary.</p>}
+        {isOrganizer && !meSubmitted && <p className="fieldHint">Share your own preferences first; the itinerary should be checked against what you need too. <Link className="inlineAction" to={`/trip/${currentTrip.id}/preferences`}>Open preferences →</Link></p>}
+        {isOrganizer && meSubmitted && missing > 0 && <div className="generateCopy"><p>{progressText}</p><p>{missing} {missing === 1 ? 'person has' : 'people have'} not shared theirs; their hard limits will not be taken into account.</p></div>}
+        {isOrganizer && meSubmitted && missing === 0 && <p className="fieldHint">Everyone's requirements will be checked.</p>}
+        {blockedReason && <div className="generationError"><strong>{blockedReason}</strong><p>You can loosen requirements or adjust the dates.</p></div>}
+        {generateError && <p className="formError">{generateError}</p>}
         {currentTrip.deadline && <div className="collectDeadline"><span>◷</span><div><strong>Preferences deadline</strong><p>{currentTrip.deadline}</p></div></div>}
       </section>
       <div className="proposalCard tripFrameLine"><span>Trip frame</span><h3>{currentTrip.destination} · {currentTrip.dates}</h3><p>{currentTrip.assumptions || 'Share the invite link.'}</p></div>
       <div className="btnRow">
-        <Button disabled={!ready} onClick={() => app.notify('Draft generation connects to the backend later')}>Generate draft itinerary</Button>
-        <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/invite`}>Share invite link</Link>
+        {isOrganizer && <Button disabled={!canGenerate} onClick={generate}>{app.loading.action ? 'Generating...' : 'Generate itinerary'}</Button>}
+        {isOrganizer && <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/members`}>See who's in →</Link>}
         <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/preferences`}>{submitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
       </div>
     </div>
   </>
 }
+
+const groupCommentsByItem = rows => (rows || []).reduce((grouped, comment) => {
+  const itemId = comment.plan_item_id || comment.planItemId
+  if (!itemId) return grouped
+  grouped[itemId] = [...(grouped[itemId] || []), comment]
+  return grouped
+}, {})
 
 function PlanPage() {
   const app = useTripApp()
@@ -491,11 +598,11 @@ function PlanPage() {
   const currentTrip = useCurrentTrip()
   const location = useLocation()
   const [openDays, setOpenDays] = useState(['day2'])
-  const [comments, setComments] = useState(initialComments)
+  const [comments, setComments] = useState({})
   const [commenting, setCommenting] = useState(null)
   const [commentDraft, setCommentDraft] = useState('')
+  const [commentError, setCommentError] = useState('')
   const [menuOpen, setMenuOpen] = useState(null)
-  const [bookedItems, setBookedItems] = useState(() => new Set(['dinner']))
   const [drawerItem, setDrawerItem] = useState(null)
   const [drawerMode, setDrawerMode] = useState('ask')
   const [selectedTripItemId, setSelectedTripItemId] = useState(null)
@@ -531,32 +638,61 @@ function PlanPage() {
     const focusItemId = new URLSearchParams(location.search).get('focus')
     if (focusItemId && days.length) focusPlanItem(focusItemId)
   }, [days.length, focusPlanItem, location.search])
+  useEffect(() => {
+    if (!app.loadComments || !days.length) return undefined
+    let cancelled = false
+    const load = async () => {
+      try {
+        const rows = await app.loadComments()
+        if (!cancelled) {
+          setComments(groupCommentsByItem(rows))
+          setCommentError('')
+        }
+      } catch {
+        if (!cancelled) setCommentError('Could not load group notes.')
+      }
+    }
+    load()
+    const timer = window.setInterval(load, 5000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [app.loadComments, days.length])
   const railDays = railDay === 'all' ? days : days.filter(day => day.id === railDay)
   const toggleDay = id => setOpenDays(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id])
-  const addComment = id => {
+  const postComment = async id => {
     if (!commentDraft.trim()) return
-    setComments(current => ({ ...current, [id]: [...(current[id] || []), { name: currentUser.name.split(' ')[0], text: commentDraft.trim() }] }))
-    setCommentDraft('')
-    setCommenting(null)
-    app.notify('Group note posted')
+    setCommentError('')
+    try {
+      const saved = await app.addComment(id, commentDraft.trim())
+      setComments(current => ({
+        ...current,
+        [id]: [...(current[id] || []).filter(comment => comment.id !== saved.id), saved],
+      }))
+      setCommentDraft('')
+      setCommenting(null)
+      app.notify('Group note posted')
+    } catch (err) {
+      setCommentError(err.status === 422 ? 'Write a note before posting.' : 'Could not post this note.')
+    }
   }
   const openDrawer = (item, mode, day) => {
     setDrawerItem(day ? { ...item, dayLabel: `${day.label} · ${day.date}` } : item)
     setDrawerMode(mode)
     setMenuOpen(null)
   }
-  const toggleBooked = id => {
-    const nextBooked = !bookedItems.has(id)
-    setBookedItems(current => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const toggleBooked = async item => {
+    const nextBooked = item.settledness !== 'booked'
     setMenuOpen(null)
-    app.notify(nextBooked ? 'Marked as booked' : 'Booked status removed')
+    try {
+      await app.setItemBooked(item.id, nextBooked)
+      app.notify(nextBooked ? 'Marked as booked' : 'Booked status removed')
+    } catch (err) {
+      app.notify(err.status === 404 ? 'This plan item no longer exists.' : 'Could not update booking status.')
+    }
   }
-  if (currentTrip.isCreated) return <TripShell><NewTripPlan currentTrip={currentTrip}/></TripShell>
+  if (currentTrip.isCreated || (!app.loading.initial && days.length === 0)) return <TripShell><NewTripPlan currentTrip={currentTrip}/></TripShell>
   return <TripShell>
     <div className={cx('planSplit', !drawerItem && 'withMap', drawerItem && 'withAssistant')}>
       <section className="planMainPane">
@@ -584,13 +720,17 @@ function PlanPage() {
                   <article id={`trip-item-${item.id}`} className={cx('activityBlock', selectedTripItemId === item.id && 'selected', highlightedItemId === item.id && 'updatedFlash')} onClick={() => setSelectedTripItemId(item.id)}>
                     <span className="activityIndex"><b>{index + 1}</b></span>
                     <ActivityPhoto item={item}/>
-                    <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{item.title}</h3></div>{visibleStatus(bookedItems.has(item.id) ? 'Booked' : item.status) && <Badge tone={statusTone(bookedItems.has(item.id) ? 'Booked' : item.status)}>{visibleStatus(bookedItems.has(item.id) ? 'Booked' : item.status)}</Badge>}</div><p className="activityMeta">⌖ {item.place} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
-                    <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => { setCommenting(commenting === item.id ? null : item.id); setMenuOpen(null) }}>💬{(comments[item.id] || []).length > 0 && <i>{comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => setMenuOpen(menuOpen === item.id ? null : item.id)}>•••</button>{menuOpen === item.id && <div className="actionMenu"><button onClick={() => openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => openDrawer(item, 'replacePlace', day)}>Replace place</button><button onClick={() => toggleBooked(item.id)}>{bookedItems.has(item.id) ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
-                    {(comments[item.id] || []).length > 0 && <div className="publicThread">{comments[item.id].map((comment, i) => <div key={`${item.id}-${i}`}><span>{comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
-                    {commenting === item.id && <div className="publicComposer"><label>Group note</label><textarea rows="2" value={commentDraft} onChange={e => setCommentDraft(e.target.value)} placeholder="Whole group can see this note."/><div><button onClick={() => { setCommenting(null); setCommentDraft('') }}>Cancel</button><Button onClick={() => addComment(item.id)}>Post note</Button></div></div>}
+                    <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{item.title}</h3></div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div><p className="activityMeta">⌖ {item.place} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
+                    <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => { setCommenting(commenting === item.id ? null : item.id); setMenuOpen(null) }}>💬{(comments[item.id] || []).length > 0 && <i>{comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => setMenuOpen(menuOpen === item.id ? null : item.id)}>•••</button>{menuOpen === item.id && <div className="actionMenu"><button onClick={() => openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
+                    {(comments[item.id] || []).length > 0 && <div className="publicThread">{comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
+                    {commenting === item.id && <div className="publicComposer"><label>Group note</label><textarea rows="2" value={commentDraft} onChange={e => setCommentDraft(e.target.value)} placeholder="Whole group can see this note." />{commentError && <p className="formError">{commentError}</p>}<div><button onClick={() => { setCommenting(null); setCommentDraft(''); setCommentError('') }}>Cancel</button><Button disabled={app.loading.action || !commentDraft.trim()} onClick={() => postComment(item.id)}>{app.loading.action ? 'Posting...' : 'Post note'}</Button></div></div>}
                   </article>
                   {app.activeRounds?.filter(round => round.itemId === item.id || round.itemTitle === item.title).map(round => <DecisionRoundCard key={round.id} round={round} compact/>)}
-                  {index < day.items.length - 1 && <div className="routeSegment"><strong>{routeSegments[index % routeSegments.length]}</strong><button type="button">Route</button></div>}
+                  {index < day.items.length - 1 && <div className="routeSegment">
+                    <span>Between stops</span>
+                    <strong>{formatStraightLineDistance(item, day.items[index + 1])}</strong>
+                    <button type="button" onClick={() => setRailDay(day.id)}>Map</button>
+                  </div>}
                 </div>)}</div>
               </div></div>
             </section>
@@ -629,6 +769,7 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
   const [pendingRedirect, setPendingRedirect] = useState('')
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState([])
+  const [sending, setSending] = useState(false)
   const threadEndRef = useRef(null)
   const threadRef = useRef(null)
   const inputRef = useRef(null)
@@ -642,23 +783,24 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
     details: 'View details',
   }
   const promptExamples = {
-  global: '',
-  ask: '',
-  editTime: '',
-  moveDay: '',
-  replacePlace: '',
-  removePlan: '',
-  details: '',
-}
+    global: '',
+    ask: '',
+    editTime: '',
+    moveDay: '',
+    replacePlace: '',
+    removePlan: '',
+    details: '',
+  }
   const placeholder = mode === 'global'
-    ? 'Tell Cadensy what you want to change...'
-    : 'Tell Cadensy what you want to change about this item...'
+    ? 'Ask Cadensy or request a change...'
+    : 'Ask about this item or request a change...'
   const itemId = mode === 'global' ? null : item.id
   const itemById = useMemo(() => Object.fromEntries((app.days || []).flatMap(day => day.items.map(planItem => [planItem.id, planItem]))), [app.days])
   useEffect(() => {
     setDraft(promptExamples[mode] || '')
     setMessages([])
     setPendingRedirect('')
+    setSending(false)
   }, [item.id, mode])
   useEffect(() => {
     const thread = threadRef.current
@@ -672,26 +814,31 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
   }
   const sendMessage = async () => {
     const text = draft.trim()
-    if (!text || app.loading.action) return
+    if (!text || sending) return
+    const loadingId = `ai-loading-${Date.now()}`
     const userMessage = { id: `user-${Date.now()}`, from: 'you', text }
-    setMessages(current => [...current, userMessage])
+    setMessages(current => [...current, userMessage, { id: loadingId, from: 'tripSync', text: 'Thinking...', loading: true }])
     setDraft('')
+    setSending(true)
     try {
       const result = await app.chatWithTrip({ message: text, itemId })
-      setMessages(current => [...current, {
-        id: `ai-${Date.now()}`,
+      setMessages(current => current.map(message => message.id === loadingId ? {
+        ...message,
+        loading: false,
         from: 'tripSync',
         text: result.reply,
         proposedChange: result.proposed_change,
         request: text,
-      }])
+      } : message))
     } catch (err) {
       const text = err.status === 409
         ? 'A vote is already open for this time block.'
         : err.status === 422
           ? 'Reopening this block needs a written reason.'
           : 'I could not reach the backend. Try again in a moment.'
-      setMessages(current => [...current, { id: `ai-error-${Date.now()}`, from: 'tripSync', text, error: true }])
+      setMessages(current => current.map(message => message.id === loadingId ? { ...message, text, loading: false, error: true } : message))
+    } finally {
+      setSending(false)
     }
   }
   const dismissProposal = id => updateMessage(id, { proposedChange: null })
@@ -734,7 +881,7 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
       <header><div><span className="eyebrow">{actionLabels[mode]}</span><h2>{item.title}</h2><p>{item.place} · {item.time}</p></div><button type="button" onClick={onClose}>×</button></header>
       <div className="drawerThread" ref={threadRef}>
         <div className="assistantBubbleRail"><i/><i/><i/></div>
-        <ChatBubble from="tripSync">{mode === 'global' ? 'Tell me what you want to adjust. If I can identify the itinerary item, I will show you the change before anything is submitted.' : 'Tell me the change in your own words. I will check it first and show you exactly what would be submitted.'}</ChatBubble>
+        <ChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</ChatBubble>
         {messages.map(message => <div key={message.id}>
           <ChatBubble from={message.from}>{message.text}</ChatBubble>
           {message.proposedChange && <ChangeConfirmCard
@@ -750,7 +897,7 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
         {pendingRedirect && <p className="redirectHint">{pendingRedirect}</p>}
         <div ref={threadEndRef}/>
       </div>
-      <div className="drawerComposer"><input ref={inputRef} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendMessage()} placeholder={placeholder}/><button aria-label="Send message" disabled={app.loading.action || !draft.trim()} onClick={sendMessage}>{app.loading.action ? '...' : '↑'}</button></div>
+      <div className="drawerComposer"><input ref={inputRef} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendMessage()} placeholder={placeholder}/><button aria-label="Send message" disabled={sending || !draft.trim()} onClick={sendMessage}>{sending ? '...' : '↑'}</button></div>
     </aside>
   if (inline) return drawer
   return <div className="drawerOverlay" onClick={onClose}>{drawer}</div>
@@ -821,7 +968,7 @@ function ChatBubble({ from, children }) {
 function ChatWorkspace({ thread }) {
   const app = useTripApp()
   const currentTrip = useCurrentTrip()
-  const showTradeoff = Boolean(app.activeProposal)
+  const showTradeoff = Boolean(app.activeProposal && ['waiting_affected_members', 'escalated'].includes(app.activeProposal.status))
   return <TripShell>
     <div className="chatLayout">
       <aside className="conversationList">
@@ -844,20 +991,45 @@ function EmptyTradeoffPanel({ tripId }) {
 }
 
 function PersonalThread() {
+  const app = useTripApp()
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState([])
-  const send = () => {
-    if (!draft.trim()) return
-    setMessages(current => [...current, { from: 'you', text: draft.trim() }, { from: 'tripSync', text: 'I can check that against the current plan — hard constraints first, then whether anyone else has asked about the same slot. Most requests apply straight away; only the hard ones need other people.' }])
+  const [sending, setSending] = useState(false)
+  const send = async () => {
+    const text = draft.trim()
+    if (!text || sending) return
+    const loadingId = `ai-loading-${Date.now()}`
+    setMessages(current => [...current, { from: 'you', text }, { id: loadingId, from: 'tripSync', text: 'Thinking...', loading: true }])
     setDraft('')
+    setSending(true)
+    try {
+      const result = await app.chatWithTrip({ message: text, itemId: null })
+      setMessages(current => current.map(message => message.id === loadingId ? {
+        ...message,
+        loading: false,
+        from: 'tripSync',
+        text: result.proposed_change
+          ? `${result.reply} I matched this to ${result.proposed_change.item_title}. Open that item in the plan to review and submit the change.`
+          : result.reply,
+      } : message))
+    } catch (err) {
+      const text = err.status === 409
+        ? 'A vote is already open for this time block.'
+        : err.status === 422
+          ? 'Reopening this block needs a written reason.'
+          : 'I could not reach the backend. Try again in a moment.'
+      setMessages(current => current.map(message => message.id === loadingId ? { ...message, text, loading: false, error: true } : message))
+    } finally {
+      setSending(false)
+    }
   }
   return <section className="chatPanel">
     <header><div><span className="aiAvatar">C</span><div><h2>Cadensy</h2><p>Just for you · not shared with the group</p></div></div><Badge>My AI</Badge></header>
     <div className="messages">
       <ChatBubble from="tripSync">This conversation is just between us. Ask about the plan, flag fatigue or weather, or request a change — nothing reaches the group until I have checked what it affects.</ChatBubble>
-      {messages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
+      {messages.map((message, index) => <ChatBubble from={message.from} key={message.id || `${message.from}-${index}`}>{message.text}</ChatBubble>)}
     </div>
-    <div className="chatComposer"><button>＋</button><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && send()} placeholder="Message Cadensy..."/><button className="sendBtn" onClick={send}>↑</button></div>
+    <div className="chatComposer"><button>＋</button><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && send()} placeholder="Message Cadensy..."/><button className="sendBtn" disabled={sending || !draft.trim()} onClick={send}>{sending ? '…' : '↑'}</button></div>
   </section>
 }
 
@@ -865,6 +1037,7 @@ function PersonalThread() {
 function TradeoffThread() {
   const app = useTripApp()
   const currentTrip = useCurrentTrip()
+  const isOrganizer = app.currentUser.role === 'organizer'
   const [reply, setReply] = useState('')
   const [threadMessages, setThreadMessages] = useState([])
   const proposal = app.activeProposal
@@ -873,7 +1046,24 @@ function TradeoffThread() {
   const planTarget = `/trip/${currentTrip.id}/plan${proposal.sourceItemId ? `?focus=${proposal.sourceItemId}` : ''}`
   const applied = app.decisionResolved || proposal.status === 'applied'
   const unchanged = ['declined', 'withdrawn', 'expired'].includes(proposal.status)
+  const escalated = proposal.status === 'escalated'
   const pending = !applied && !unchanged && proposal.status === 'waiting_affected_members'
+  const escalate = async () => {
+    try {
+      await app.escalateProposal(proposal.id)
+      app.notify('Sent to the organizer')
+    } catch {
+      app.notify('Could not escalate this proposal.')
+    }
+  }
+  const resolveDeadlock = async action => {
+    try {
+      await app.resolveDeadlock(proposal.id, action)
+      app.notify(action === 'split' ? 'Block split' : 'Block cleared')
+    } catch {
+      app.notify('Could not resolve this block.')
+    }
+  }
   const sendReply = () => {
     if (!reply.trim()) return
     setThreadMessages(current => [...current,
@@ -883,13 +1073,15 @@ function TradeoffThread() {
     setReply('')
   }
   return <section className="chatPanel">
-    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>{affectedMembers.length} affected members · anonymous</p></div></div><Badge tone={applied ? 'green' : unchanged ? 'blue' : 'orange'}>{applied ? 'Resolved' : unchanged ? 'Closed' : 'Awaiting confirmation'}</Badge></header>
+    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>{affectedMembers.length} affected members · anonymous</p></div></div><Badge tone={applied ? 'green' : unchanged ? 'blue' : 'orange'}>{applied ? 'Resolved' : unchanged ? 'Closed' : escalated ? 'With organizer' : 'Awaiting confirmation'}</Badge></header>
     <div className="messages conflictMessages">
       <div className="anonBanner"><span>◍</span><p>{proposal.privacyNote}</p></div>
       <div className="message ai"><span>✦</span><div><p>{proposal.headline}. {proposal.detail}</p><p>This could not be settled by picking an option, so it comes to the affected members directly. The person who proposed it counts as accepted.</p></div></div>
       <div className="changeCompare conflictCompare"><div><small>Current{before.dayLabel ? ` · ${before.dayLabel}` : ''}</small><strong>{before.time} · {before.title}</strong><span>{before.place}</span></div><b>→</b><div className="new"><small>Proposed{after.dayLabel ? ` · ${after.dayLabel}` : ''}</small><strong>{after.time} · {after.title}</strong><span>{after.place}</span></div></div>
       <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{applied || member.status === 'accepted' ? `${member.label}: accepted` : unchanged ? `${member.label}: closed` : `${member.label}: needs decision`}{member.proposer ? ' (proposer)' : ''}</span>)}<span>Names hidden</span><span>Personal reasons hidden</span></div>
-      {pending && <div className="message ai"><span>✦</span><div><p>The Current Plan does not move until every affected member confirms.</p><div className="messageActions"><Button secondary onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost onClick={async () => { await app.resolveProposal(proposal.id, 'declined'); app.notify('Current plan kept') }}>Decline</Button><Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Withdrawn locally — current plan kept') }}>Withdraw</Button></div></div></div>}
+      {pending && <div className="message ai"><span>✦</span><div><p>The Current Plan does not move until every affected member confirms.</p><div className="messageActions"><Button secondary onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost onClick={async () => { await app.resolveProposal(proposal.id, 'declined'); app.notify('Current plan kept') }}>Decline</Button><Button ghost disabled={app.loading.action} onClick={escalate}>{app.loading.action ? 'Sending...' : 'Escalate to organizer'}</Button></div></div></div>}
+      {escalated && isOrganizer && <div className="message ai"><span>✦</span><div><p>The affected members could not agree. Choose how to leave this block undecided.</p><div className="messageActions"><Button secondary disabled={app.loading.action} onClick={() => resolveDeadlock('split')}>Split the block</Button><Button ghost disabled={app.loading.action} onClick={() => resolveDeadlock('clear')}>Clear the block</Button></div></div></div>}
+      {escalated && !isOrganizer && <div className="message ai"><span>✦</span><div><p>Waiting for the organizer to handle this block.</p></div></div>}
       {threadMessages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
       {applied && <div className="message ai resolvedMessage"><span>✓</span><div><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={planTarget}>Back to updated plan →</Link></div></div>}
       {unchanged && <div className="message ai resolvedMessage"><span>↩</span><div><p>The proposal is closed. The Current Plan did not change.</p><Link className="inlineAction" to={planTarget}>Back to Current Plan →</Link></div></div>}
@@ -903,7 +1095,7 @@ function UpdatesPage() {
   const navigate = useNavigate()
   const currentTrip = useCurrentTrip()
   const openRounds = (app.activeRounds || []).filter(round => round.status === 'open')
-  const pendingProposals = (app.activeProposals || []).filter(proposal => proposal.status === 'waiting_affected_members')
+  const pendingProposals = (app.activeProposals || []).filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
   const hasActions = openRounds.length > 0 || pendingProposals.length > 0
   return <TripShell>
     <div className="pageHeading editorialPageHeading"><div><h1>Trip notes</h1></div></div>
@@ -919,10 +1111,10 @@ function UpdatesPage() {
         {!hasActions && <div className="emptyState quietEmptyState"><span></span><h2>No actions right now</h2></div>}
         {openRounds.map(round => <DecisionRoundCard key={round.id} round={round}/>)}
         {pendingProposals.map(proposal => <article className="decisionCard" key={proposal.id}>
-          <div className="decisionTop"><div><Badge tone="orange">Needs confirmation</Badge><h2>{proposal.headline}</h2><p>{proposal.detail} You proposed this, so you already count as accepted.</p></div><span>{proposal.createdAt}</span></div>
+          <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can split or clear this block.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
           <div className="changeCompare"><div><small>Current{proposal.before.dayLabel ? ` · ${proposal.before.dayLabel}` : ''}</small><strong>{proposal.before.time} · {proposal.before.title}</strong><span>{proposal.before.place}</span></div><b>→</b><div className="new"><small>Proposed{proposal.after.dayLabel ? ` · ${proposal.after.dayLabel}` : ''}</small><strong>{proposal.after.time} · {proposal.after.title}</strong><span>{proposal.after.place}</span></div></div>
           <div className="impactRow">{proposal.affectedMembers.map(member => <span key={member.id}>{member.label}: {member.status === 'accepted' ? 'accepted' : 'needs decision'}</span>)}<span>Names hidden</span></div>
-          <div className="decisionActions"><Button onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>Open the conversation</Button><Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button></div>
+          <div className="decisionActions"><Button onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>Open the conversation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
         </article>)}
       </>}
       {app.updateFilter === 'all' && <>
@@ -1039,6 +1231,14 @@ function PreferencesPage() {
         const pref = data.preference
         if (pref) setForm(current => ({
           ...current,
+          preferredRange: {
+            start: fromISODate(pref.preferred_start_date) || current.preferredRange.start,
+            end: fromISODate(pref.preferred_end_date) || current.preferredRange.end,
+          },
+          availableRange: {
+            start: fromISODate(pref.available_start_date) || current.availableRange.start,
+            end: fromISODate(pref.available_end_date) || current.availableRange.end,
+          },
           idealBudget: pref.ideal_budget ?? current.idealBudget,
           maxBudget: pref.maximum_budget ?? current.maxBudget,
           budgetVisibility: pref.budget_visibility || current.budgetVisibility,
@@ -1086,6 +1286,10 @@ function PreferencesPage() {
   const save = async () => {
     try {
       await app.saveMyPreferences({
+        preferred_start_date: toISODate(form.preferredRange?.start),
+        preferred_end_date: toISODate(form.preferredRange?.end),
+        available_start_date: toISODate(form.availableRange?.start),
+        available_end_date: toISODate(form.availableRange?.end),
         ideal_budget: Number(String(form.idealBudget).replace(/[^0-9.]/g, '')) || null,
         maximum_budget: Number(String(form.maxBudget).replace(/[^0-9.]/g, '')) || null,
         budget_visibility: form.budgetVisibility === 'planning' ? 'planning_only' : form.budgetVisibility,
@@ -1116,7 +1320,7 @@ function PreferencesPage() {
           <p className="needsHint">Only these are checked against the plan. Anything else, say it to the group.</p>
           {/* 隐私承诺只说一次，放在最私密的东西正上方 —— 说三遍反而像在极力保证。
               最后半句主动说破预算那个例外：承诺得比做到的多，是最伤信任的一种错。 */}
-          <div className="privacyBox"><div><strong>Private by default</strong><p>Nobody sees what you write here — not even the organizer. The group only ever sees “one requirement affects this activity.”</p></div><Badge tone="green">Protected</Badge></div>
+          <div className="privacyBox"><div><strong>Private by default</strong><p>Nobody sees this — not even the organizer.</p></div><Badge tone="green">Protected</Badge></div>
           {constraints.map(entry => <div className="needRow savedNeed" key={entry.id}>
             <div><strong>{labelFor(entry.kind)}</strong><small>{constraintSummary(entry)}</small><small className="needVisibility">Visible to: {visibilityLabel(entry.visibility)}</small></div>
             <Badge tone={entry.importance === 'required' ? 'orange' : 'blue'}>{entry.importance}</Badge>
@@ -1152,7 +1356,7 @@ function PreferencesPage() {
           </li>)}</ul>
         </div>}
 
-        <div className="formFooter"><span>{loaded ? '' : 'Loading your preferences...'}</span><Button onClick={save}>Save preferences</Button></div>
+        <div className="formFooter"><span>{loaded ? '' : 'Loading your preferences...'}</span><Button disabled={app.loading.action} onClick={save}>{app.loading.action ? 'Saving...' : 'Save preferences'}</Button></div>
       </section>
     </div>
   </TripShell>
@@ -1239,21 +1443,29 @@ function CreateTrip() {
   const [form, setForm] = useState({ name: '', destination: '', theme: '', groupSize: '', currency: 'USD', budget: '', assumptions: '', deadline: '' })
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const canCreate = form.name.trim() && form.destination.trim() && dateRange.start && dateRange.end
-  const createTrip = () => {
-    const created = app.addTrip({
-      name: form.name.trim(),
-      destination: form.destination.trim(),
-      theme: form.theme.trim(),
-      dates: formatDateRange(dateRange),
-      people: Number(form.groupSize) || 1,
-      currency: form.currency,
-      budget: form.budget.trim(),
-      assumptions: form.assumptions.trim(),
-      deadline: form.deadline.trim(),
-    })
-    app.setInviteCopied(false)
-    app.notify('Trip created')
-    navigate(`/trip/${created.id}/invite`)
+  const [creating, setCreating] = useState(false)
+  const createTrip = async () => {
+    if (creating) return
+    setCreating(true)
+    try {
+      // 后端要的是这几个字段。theme / assumptions 等目前后端不存，先不传，
+      // 免得给人"填了会被用上"的错觉。
+      const created = await app.createTrip({
+        name: form.name.trim(),
+        destination: form.destination.trim(),
+        preferred_start_date: toISODate(dateRange.start),
+        preferred_end_date: toISODate(dateRange.end),
+        expected_group_size: Number(form.groupSize) || 1,
+        currency: form.currency,
+      })
+      app.setInviteCopied(false)
+      app.notify('Trip created')
+      navigate(`/trip/${created.id}/invite`)
+    } catch {
+      /* provider already surfaced it */
+    } finally {
+      setCreating(false)
+    }
   }
   return <div className="simplePage createPage"><header className="editorialNav glassTop"><Logo/><nav><Link to="/">MY TRIPS</Link><Link className="active" to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header><main className="createEditorial">
     <section className="createHero"><div><span className="roleChip">Organizer</span><h1>Create the trip frame.</h1><p>Set the destination, date window, group size, and shared assumptions. Guests add their preferences after joining.</p></div><div className="createHeroPhoto"><Badge tone="blue">New trip</Badge></div></section>
@@ -1267,7 +1479,7 @@ function CreateTrip() {
       <label>Currency<select value={form.currency} onChange={e => set('currency', e.target.value)}><option>USD</option><option>CAD</option><option>CNY</option><option>EUR</option></select></label><label>Approximate budget<input value={form.budget} placeholder="e.g. $600 per person" onChange={e => set('budget', e.target.value)}/></label>
       <label className="wide">Shared trip assumptions<textarea rows="4" value={form.assumptions} placeholder="e.g. Relaxed pace, central stay, shared dinners." onChange={e => set('assumptions', e.target.value)}/></label>
       <label className="wide">Preferences deadline<input value={form.deadline} placeholder="e.g. Friday, August 7 at 6:00 PM" onChange={e => set('deadline', e.target.value)}/></label>
-      <div className="formFooter wide"><span>Guests will choose dates and styles from this frame.</span><Button disabled={!canCreate} onClick={createTrip}>Create trip</Button></div>
+      <div className="formFooter wide"><span>Guests will choose dates and styles from this frame.</span><Button disabled={!canCreate || creating} onClick={createTrip}>{creating ? "Creating..." : "Create trip"}</Button></div>
     </section>
   </main></div>
 }
@@ -1352,7 +1564,12 @@ function JoinInvitePage() {
           // Temporary local identity until real login exists: the invite token
           // maps to the membership created on this browser. The preview request
           // above still confirms a revoked or expired link before auto-entering.
-          app.adoptMembership({ membershipId: saved.membershipId, tripId: saved.tripId, inviteToken: token })
+          app.adoptMembership({
+            membershipId: saved.membershipId,
+            tripId: saved.tripId,
+            inviteToken: token,
+            profile: { name: 'Guest', role: 'guest', isGuest: true },
+          })
           navigate(`/trip/${saved.tripId}/plan`, { replace: true })
         } else {
           setPreview(data)
@@ -1391,6 +1608,12 @@ function JoinInvitePage() {
         membershipId: joined.membership_id,
         tripId: joined.trip_id,
         inviteToken: token,
+        profile: {
+          name: name.trim(),
+          email: withAccount ? email.trim() : null,
+          role: withAccount ? joined.role : 'guest',
+          isGuest: !withAccount,
+        },
       })
       navigate(`/trip/${joined.trip_id}/preferences`, { replace: true })
     } catch (err) {

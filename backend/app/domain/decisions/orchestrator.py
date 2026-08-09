@@ -15,10 +15,13 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from data.poi_chicago import POIS
 
 from ...db.models import (
     ChangeProposal,
@@ -52,8 +55,8 @@ TRAVELING_WINDOW = timedelta(hours=2)
 
 # 确认也要有截止时间，否则一个人不点头就能把一个时段无限期占住。
 # 比投票短，因为确认只涉及受影响的那几个人，不是全组。
-PROPOSAL_PLANNING_WINDOW = timedelta(hours=8)
-PROPOSAL_TRAVELING_WINDOW = timedelta(hours=4)
+PROPOSAL_PLANNING_WINDOW = timedelta(days=7)
+PROPOSAL_TRAVELING_WINDOW = timedelta(days=2)
 
 
 class ReasonRequired(Exception):
@@ -66,6 +69,10 @@ class AlreadyPending(Exception):
     数据库本来就拦得住,但那是最后一道防线 ——
     在这里拦下来,用户看到的是一句人话,不是 500。
     """
+
+
+class WrongTrip(Exception):
+    """这个身份不属于这趟旅行。"""
 
 
 @dataclass
@@ -137,13 +144,20 @@ def _proposal_deadline_for(trip: Trip) -> datetime:
     return _now() + window
 
 
-def _options_for(item: PlanItem, request: str) -> list[dict]:
+def _options_for(item: PlanItem, request: str, patch: dict | None = None) -> list[dict]:
     """候选项**必须包含「分头行动」** —— 这是产品规定,不是可选项。"""
+    requested = {
+        "id": "requested",
+        "label": "New idea",
+        "title": request[:60] or "The newly suggested plan",
+        "body": "Switch this block to the option raised most recently.",
+    }
+    if patch:
+        requested["patch"] = _json_patch(_patch_with_poi_metadata(item, patch))
     return [
         {"id": KEEP_CURRENT, "label": "Keep current", "title": item.title,
          "body": f"Stay with {item.place} exactly as planned."},
-        {"id": "requested", "label": "New idea", "title": request[:60] or "The newly suggested plan",
-         "body": "Switch this block to the option raised most recently."},
+        requested,
         {"id": SPLIT_UP, "label": "Split up", "title": "Split for this block",
          "body": "Both options run in parallel and the group regroups afterwards."},
     ]
@@ -161,9 +175,81 @@ def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None
     )
 
 
-def _apply(db: Session, item: PlanItem, patch: dict) -> None:
-    for field, value in patch.items():
+def _apply(db: Session, item: PlanItem, patch: dict) -> dict:
+    applied = _patch_with_poi_metadata(item, patch)
+    for field, value in applied.items():
         setattr(item, field, value)
+    return applied
+
+
+def _patch_with_poi_metadata(item: PlanItem, patch: dict) -> dict:
+    applied = dict(patch)
+    if not ({"title", "place"} & applied.keys()):
+        return applied
+    poi = _match_poi(applied.get("title", item.title), applied.get("place", item.place))
+    if poi is None:
+        return applied
+    applied["lat"] = poi["lat"]
+    applied["lng"] = poi["lng"]
+    applied["photo_url"] = poi["photo_url"]
+    return applied
+
+
+def _match_poi(title: str | None, place: str | None) -> dict | None:
+    title_key = _poi_key(title)
+    place_key = _poi_key(place)
+    rows = [_poi_row(raw) for raw in POIS]
+
+    for row in rows:
+        if title_key and title_key == row["title_key"]:
+            return row
+    for row in rows:
+        if title_key and _meaningful_overlap(title_key, row["title_key"]):
+            return row
+    for row in rows:
+        if place_key and place_key in {row["title_key"], row["area_key"]}:
+            return row
+    for row in rows:
+        if place_key and (
+            _meaningful_overlap(place_key, row["title_key"])
+            or _meaningful_overlap(place_key, row["area_key"])
+        ):
+            return row
+    return None
+
+
+def _poi_row(raw: tuple) -> dict:
+    return {
+        "title": raw[0],
+        "area": raw[1],
+        "title_key": _poi_key(raw[0]),
+        "area_key": _poi_key(raw[1]),
+        "lat": raw[2],
+        "lng": raw[3],
+        "photo_url": raw[12] if len(raw) > 12 else None,
+    }
+
+
+def _poi_key(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _meaningful_overlap(left: str, right: str) -> bool:
+    return len(left) >= 6 and len(right) >= 6 and (left in right or right in left)
+
+
+def _json_patch(patch: dict) -> dict:
+    return {
+        key: value.isoformat() if hasattr(value, "isoformat") else value
+        for key, value in patch.items()
+    }
+
+
+def _patch_from_json(patch: dict | None) -> dict:
+    converted = dict(patch or {})
+    if isinstance(converted.get("day_date"), str):
+        converted["day_date"] = date.fromisoformat(converted["day_date"])
+    return converted
 
 
 def _guard_not_pending(db: Session, item: PlanItem) -> None:
@@ -222,13 +308,13 @@ def propose_change(
     if verdict.path is Path.NOTICE:
         return _do_notice(db, item, patch, actor_membership_id, verdict)
     if verdict.path is Path.ROUND:
-        return _do_round(db, item, trip, request, verdict, kind="normal")
+        return _do_round(db, item, trip, request, verdict, kind="normal", patch=patch)
     if verdict.path is Path.REOPEN_ROUND:
         if not (reason or "").strip():
             raise ReasonRequired(
                 "Reopening a settled block needs a written reason."
             )
-        return _do_round(db, item, trip, request, verdict, kind="reopen", reason=reason)
+        return _do_round(db, item, trip, request, verdict, kind="reopen", reason=reason, patch=patch)
     return _do_confirm(
         db, item, patch, actor_membership_id, trip, verdict,
         affected=affected_membership_ids(change, constraints),
@@ -265,6 +351,46 @@ def classify_change(
     return classify(change, _load_constraints(db, trip.id))
 
 
+def set_booking_status(
+    db: Session, item: PlanItem, membership: TripMembership, booked: bool
+) -> PlanItem:
+    """Mark an item as booked or remove that booking marker.
+
+    This is not a plan-change proposal: it records real-world booking state for
+    an already scheduled item. Removing the marker leaves the block settled,
+    because the group still picked this plan even if the reservation was
+    cancelled.
+    """
+    trip = db.get(Trip, item.plan.trip_id)
+    if membership.trip_id != trip.id:
+        raise WrongTrip("Membership does not belong to this trip")
+
+    before = item.settledness
+    after = Settledness.BOOKED.value if booked else Settledness.SETTLED.value
+    if before == after:
+        return item
+
+    item.settledness = after
+    item.settled_at = _now() if booked else None
+    patch = {"settledness": after}
+    _log(db, item, "booking", patch, actor_membership_id=membership.id)
+    db.add(
+        UpdateNotice(
+            trip_id=trip.id,
+            plan_item_id=item.id,
+            kind="plan",
+            title=f"{item.title} booking {'added' if booked else 'removed'}",
+            body=(
+                "This block is now marked as a confirmed booking."
+                if booked
+                else "The booking marker was removed; the plan itself is still kept."
+            ),
+        )
+    )
+    db.flush()
+    return item
+
+
 _VIEW_FIELDS = {
     "day_date", "start_hour", "duration_min", "price_per_person",
     "tags", "dietary_tags", "is_meal",
@@ -275,9 +401,9 @@ _VIEW_FIELDS = {
 
 
 def _do_notice(db, item, patch, actor_membership_id, verdict) -> Outcome:
-    _apply(db, item, patch)
+    applied_patch = _apply(db, item, patch)
     item.settledness = Settledness.TOUCHED.value
-    _log(db, item, "notice", patch, actor_membership_id=actor_membership_id)
+    _log(db, item, "notice", applied_patch, actor_membership_id=actor_membership_id)
     db.add(
         UpdateNotice(
             trip_id=item.plan.trip_id,
@@ -299,6 +425,9 @@ def object_to_notice(db: Session, notice: UpdateNotice, request: str = "") -> Ou
     """有人在通知上说「我有别的想法」→ 升级成投票。"""
     item = db.get(PlanItem, notice.plan_item_id)
     trip = db.get(Trip, notice.trip_id)
+    # 和 propose_change 走同一道闸:这个时段已经有轮次/提案时,
+    # 用户该看到一句人话,而不是撞到 one_open_round_per_item 变成 500。
+    _guard_not_pending(db, item)
     notice.can_object = False
     notice.body = "Escalated to a group round after an objection."
     verdict = Classification(
@@ -312,11 +441,11 @@ def object_to_notice(db: Session, notice: UpdateNotice, request: str = "") -> Ou
 # ————————————————————— 路径 B:投票 —————————————————————
 
 
-def _do_round(db, item, trip, request, verdict, *, kind, reason=None) -> Outcome:
+def _do_round(db, item, trip, request, verdict, *, kind, reason=None, patch=None) -> Outcome:
     round_ = DecisionRound(
         plan_item_id=item.id,
         kind=kind,
-        options=_options_for(item, request),
+        options=_options_for(item, request, patch),
         reason=reason,
         deadline=_deadline_for(trip),
         status="open",
@@ -379,9 +508,9 @@ def settle_round(db: Session, round_: DecisionRound) -> str:
     winner = _winner(round_, votes, _member_count(db, trip_id))
 
     option = next((o for o in round_.options if o["id"] == winner), None)
-    patch = {} if winner == KEEP_CURRENT else {"title": option["title"]}
+    patch = {} if winner == KEEP_CURRENT else _patch_from_json(option.get("patch") or {"title": option["title"]})
     if patch:
-        _apply(db, item, patch)
+        patch = _apply(db, item, patch)
 
     item.settledness = Settledness.SETTLED.value
     item.settled_at = _now()
@@ -461,6 +590,7 @@ def settle_due_rounds(db: Session, now: datetime | None = None) -> list[str]:
 def _do_confirm(
     db, item, patch, actor_membership_id, trip, verdict, affected=frozenset()
 ) -> Outcome:
+    after_patch = _patch_with_poi_metadata(item, patch)
     proposal = ChangeProposal(
         plan_item_id=item.id,
         action_type="edit",
@@ -468,8 +598,7 @@ def _do_confirm(
             "title": item.title, "place": item.place,
             "start_hour": item.start_hour, "day_date": item.day_date.isoformat(),
         },
-        after_json={k: (v.isoformat() if hasattr(v, "isoformat") else v)
-                    for k, v in patch.items()},
+        after_json=_json_patch(after_patch),
         requested_by_membership_id=actor_membership_id,
         status="waiting_affected_members",
         deadline=_proposal_deadline_for(trip),
@@ -534,8 +663,8 @@ def decide_proposal(
         return False
 
     item = db.get(PlanItem, proposal.plan_item_id)
-    patch = dict(proposal.after_json or {})
-    _apply(db, item, patch)
+    patch = _patch_from_json(proposal.after_json)
+    patch = _apply(db, item, patch)
     item.settledness = Settledness.SETTLED.value
     item.settled_at = _now()
     proposal.status = "applied"

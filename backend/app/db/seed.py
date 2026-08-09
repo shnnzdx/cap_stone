@@ -7,21 +7,25 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import os
 
 from sqlalchemy import delete
 
 from .models import (
+    AuthSession,
     Base,
     MemberConstraint,
     MemberConstraintPrivate,
     Plan,
     PlanItem,
+    PlanItemComment,
     Preference,
     Trip,
     TripMembership,
     User,
 )
 from .session import SessionLocal, engine
+from ..domain.auth import hash_password
 
 # 这几张是前端 final.css 里已经在用的图（确认能加载），先拿来当占位。
 # 真正的配图应该跟着景点库走 —— 每个景点自带一张，AI 生成时直接抄过来。
@@ -30,7 +34,7 @@ PHOTOS = [U.format("1494522358652-f30e61a60313"), U.format("1500530855697-b586d8
           U.format("1486911278844-a81c5267e227"), U.format("1514893011-72dfa15c5ab3")]
 
 MEMBERS = [
-    ("Mia Chen", "mia@example.com", "organizer"),
+    ("Mia Chen", "organizer@cadensy.local", "organizer"),
     ("Elena Cruz", "elena@example.com", "participant"),
     ("Sam Osei", "sam@example.com", "participant"),
     ("Priya Raman", "priya@example.com", "participant"),
@@ -59,11 +63,19 @@ def reset_schema() -> None:
 
 def seed() -> dict:
     with SessionLocal() as db:
-        for model in (MemberConstraintPrivate, MemberConstraint, Preference, PlanItem,
+        for model in (AuthSession, MemberConstraintPrivate, MemberConstraint, Preference, PlanItemComment, PlanItem,
                       Plan, TripMembership, Trip, User):
             db.execute(delete(model))
 
-        users = [User(name=n, email=e) for n, e, _ in MEMBERS]
+        organizer_password = os.getenv("SEED_ORGANIZER_PASSWORD", "12345678")
+        users = [
+            User(
+                name=n,
+                email=e,
+                password_hash=hash_password(organizer_password) if role == "organizer" else None,
+            )
+            for n, e, role in MEMBERS
+        ]
         db.add_all(users)
         db.flush()
 

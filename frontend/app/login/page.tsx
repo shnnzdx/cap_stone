@@ -1,15 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import BrandLogo from "../BrandLogo";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
+  const [email, setEmail] = useState("organizer@cadensy.local");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [nextPath, setNextPath] = useState("/trip");
 
-  useEffect(() => { setAccountCreated(new URLSearchParams(window.location.search).get("created") === "1"); }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setAccountCreated(params.get("created") === "1");
+    const next = params.get("next");
+    if (next?.startsWith("/")) setNextPath(next);
+  }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -39,6 +52,37 @@ export default function LoginPage() {
   }, []);
 
   const setPupil = (index: number) => (node: HTMLElement | null) => { if (node) pupilsRef.current[index] = node; };
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!response.ok) {
+        setError(response.status === 401 ? "Invalid email or password." : "Could not log in. Try again.");
+        return;
+      }
+      const result = await response.json();
+      const membership = result.default_membership || result.memberships?.[0];
+      if (!result.token || !membership) {
+        setError("This account is not connected to a trip yet.");
+        return;
+      }
+      window.localStorage.setItem("tripsync:authToken", result.token);
+      window.localStorage.setItem("tripsync:membershipId", membership.membership_id);
+      window.localStorage.setItem("tripsync:tripId", membership.trip_id);
+      window.location.href = nextPath;
+    } catch {
+      setError("Could not reach the backend. Make sure the API is running.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <main className="login-page">
@@ -77,15 +121,16 @@ export default function LoginPage() {
               <p className="login-kicker">Welcome back</p><h2>Welcome back.</h2>
               <p>Sign in to bring your group&apos;s ideas back into sync.</p>
             </div>
-            <form className="login-form" onSubmit={(event) => event.preventDefault()}>
+            <form className="login-form" onSubmit={submit}>
               <label htmlFor="email">Email address</label>
-              <input id="email" name="email" autoComplete="email" defaultValue="organizer@cadensy.demo" type="email" />
+              <input id="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
               <div className="password-row"><label htmlFor="password">Password</label><Link href="#">Forgot password?</Link></div>
               <div className="password-field">
-                <input id="password" name="password" autoComplete="current-password" defaultValue="demo-password" type={showPassword ? "text" : "password"} />
+                <input id="password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} type={showPassword ? "text" : "password"} />
                 <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
               </div>
-              <Link className="login-submit" href="/trip">Log in <span>→</span></Link>
+              {error && <p className="login-error" role="alert">{error}</p>}
+              <button className="login-submit" type="submit" disabled={submitting || !email.trim() || !password}>{submitting ? "Logging in..." : "Log in"} <span>→</span></button>
             </form>
             <div className="login-divider"><span>or</span></div>
             <button className="google-button" type="button"><span>G</span> Continue with Google</button>
