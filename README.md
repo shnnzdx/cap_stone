@@ -1,57 +1,56 @@
 # TripSync Capstone Workspace
 
-This repository currently contains two frontend surfaces for the same product:
+TripSync currently lives in one repository, but it still has two frontend surfaces:
 
-- `frontend/`: the main TripSync marketing site and product shell built with Vinext/Next-style app routing
-- `trip/`: the TripSync workspace prototype built as a standalone React + Vite frontend app
-- `backend/`: the FastAPI + PostgreSQL backend used by the Trip workspace
+- `frontend/`: the main marketing site and product shell
+- `trip/`: the standalone Trip workspace prototype
+- `backend/`: the FastAPI + PostgreSQL backend that supports the Trip workspace
 
-The two apps were originally developed separately. They are not fully merged yet, but this repo now includes a compatibility layer so they can share a more stable integration boundary.
+The repo is usable as one workspace, but the apps are not fully merged yet. The current setup focuses on keeping the integration boundary stable while the product continues to evolve.
 
-## Current Architecture
+## At a glance
 
-Today the product is integrated like this:
+Today the product works like this:
 
-- `frontend/app/` owns the main public-facing site and the `/trip` preview shell
-- `trip/` builds a static workspace app
-- `frontend/public/trip-app/` stores the built Trip workspace that is embedded by `frontend`
-- `shared/` stores cross-app contracts and shared integration tokens
-- `AWS/` stores AWS planning and deployment context documents; it does not create AWS resources by itself
-- local agent/skill installation artifacts are kept outside this repository under `C:\Users\ROG\Desktop\capstone\TripSync-Skills-Summary`
+- `frontend/app/` owns the public-facing site and the `/trip` shell
+- `trip/` builds the standalone workspace app
+- `frontend/public/trip-app/` stores the built Trip workspace that `frontend` embeds
+- `shared/` holds cross-app contracts and shared integration tokens
+- `AWS/` stores deployment planning and AWS context documents
 
-Key shared files:
+Shared files you will touch most often:
 
-- `shared/tripsync-preview-theme.css`: shared visual tokens for the embedded Trip workspace
-- `shared/tripsync-preview-contract.js`: shared embed path and iframe contract
-- `shared/tripsync-domain.js`: shared route and flow helpers for Trip domain paths
-- `shared/tripsync-product-content.js`: shared product workflow and principle content
-- `shared/tripsync-demo-data.js`: shared Trip demo fallback data used by the workspace
+- `shared/tripsync-preview-theme.css`
+- `shared/tripsync-preview-contract.js`
+- `shared/tripsync-domain.js`
+- `shared/tripsync-product-content.js`
+- `shared/tripsync-demo-data.js`
 
-## What Was Unified
+## What is already unified
 
-The recent compatibility work focused on stabilizing the seam between `frontend` and `trip`, not force-merging both codebases.
+Recent work was aimed at making `frontend` and `trip` cooperate cleanly, not forcing them into one codebase too early.
 
 Completed:
 
 - Shared embed theme between the shell and the Trip workspace
 - Shared embed path contract for `/trip-app` and the default `#/` workspace route
-- Shared domain helpers for current workspace, account, trip-section, and invite paths
-- Automated sync flow from `trip/dist` into `frontend/public/trip-app`
-- Embed manifest output so the shell can identify which Trip build is mounted
+- Shared domain helpers for workspace, account, trip-section, and invite paths
+- Automated sync from `trip/dist` into `frontend/public/trip-app`
+- Embed manifest output for the mounted Trip build
 - Compatibility tests around the integration contract
-- Shared product workflow/principle content for `frontend`
+- Shared product workflow and principle content for `frontend`
 - Shared Trip demo fallback data for `trip`
-- Windows-compatible `npm run build:trip-preview` script
+- Windows-compatible `npm run build:trip-preview`
 
-Not done yet:
+Still not done:
 
 - Full component-library unification
-- Shared typed data model across both apps
+- One typed data model across both apps
 - Moving Trip workspace pages into `frontend/app`
-- Replacing the static embed with a single runtime/app architecture
-- AWS deployment beyond identity validation
+- Replacing the static embed with one shared runtime
+- Production AWS deployment beyond identity validation
 
-## Project Structure
+## Project structure
 
 ```text
 /
@@ -61,7 +60,7 @@ Not done yet:
 |-- backend/                     FastAPI backend for the Trip workspace
 |-- shared/                      Shared integration contracts and tokens
 |-- docs/                        Project notes and supporting documents
-|-- AWS/                         AWS deployment context and planning notes
+|-- AWS/                         AWS planning and deployment notes
 |-- AI.md                        Local agent setup note for this repo
 |-- INTEGRATION-ROADMAP.md       Compatibility summary and future plan
 `-- README.md
@@ -72,9 +71,9 @@ Not done yet:
 - Node.js `>= 22.13.0`
 - npm
 
-## Install Dependencies
+## Install dependencies
 
-Install each app in its own directory.
+Install each frontend app in its own directory.
 
 For `frontend`:
 
@@ -90,7 +89,7 @@ cd trip
 npm install
 ```
 
-## Local Development
+## Local development
 
 Run the main site:
 
@@ -118,9 +117,9 @@ Default URL:
 http://localhost:5173
 ```
 
-## Sync The Embedded Trip Workspace
+## Sync the embedded Trip workspace
 
-The recommended flow is:
+Recommended flow:
 
 ```bash
 cd frontend
@@ -129,29 +128,29 @@ npm run build:trip-preview
 
 That command:
 
-- builds `trip/`
-- copies `trip/dist` into `frontend/public/trip-app/`
-- writes `frontend/public/trip-app/embed-manifest.json`
+1. builds `trip/`
+2. copies `trip/dist` into `frontend/public/trip-app/`
+3. writes `frontend/public/trip-app/embed-manifest.json`
 
-If you already built `trip/` and only want to refresh the copied assets:
+If `trip/` is already built and you only want to refresh the copied assets:
 
 ```bash
 cd frontend
 npm run sync:trip-preview
 ```
 
-## Main Routes
+## Main routes
 
 From `frontend`:
 
-- `/`: landing page
-- `/login`: login page
-- `/signup`: signup page
-- `/how-it-works`: workflow page
-- `/faq`: FAQ page
-- `/privacy`: privacy page
-- `/trip`: embedded Trip workspace shell
-- `/trip-app/`: direct static Trip workspace output
+- `/` - landing page
+- `/login` - login page
+- `/signup` - signup page
+- `/how-it-works` - workflow page
+- `/faq` - FAQ page
+- `/privacy` - privacy page
+- `/trip` - embedded Trip workspace shell
+- `/trip-app/` - direct static Trip workspace output
 
 From `trip`:
 
@@ -170,7 +169,7 @@ From `trip`:
 - `#/trip/:tripId/invite`
 - `#/join/:token`
 
-## Build And Verification
+## Build and verification
 
 Build `frontend`:
 
@@ -186,7 +185,7 @@ cd trip
 npm run build
 ```
 
-Run the integration tests we added for the compatibility layer:
+Run the integration test for the compatibility layer:
 
 ```bash
 cd frontend
@@ -200,25 +199,33 @@ cd frontend
 npm test
 ```
 
-Current expected result:
+Expected result:
 
 - `frontend` build succeeds
 - `trip` build succeeds through `npm run build:trip-preview`
 - frontend tests pass
-- Vite may print a chunk-size warning; that warning is not currently a build failure
+- Vite may print a chunk-size warning; that is not currently treated as a build failure
 
-## Important Notes
+## Important notes
 
-- `frontend` and `trip` are still two separate apps.
-- The current compatibility approach is intentional: stabilize the boundary first, then merge deeper layers.
-- The embedded workspace loaded by `/trip` is static output from `trip`.
-- Phase 3 deeper frontend/runtime merge is intentionally paused for now.
-- GitHub Actions has an AWS identity validation workflow, but no AWS deployment workflow should run until build validation and deployment architecture are agreed.
+- `frontend` and `trip` are still separate apps
+- the current compatibility approach is intentional
+- `/trip` loads static output built from `trip`
+- the deeper Phase 3 frontend/runtime merge is paused for now
+- GitHub Actions includes AWS identity validation, but no AWS deployment workflow should run until build validation and deployment architecture are settled
 
-## Related Docs
+Local agent and skill installation artifacts are kept outside this repository under:
+
+`C:\Users\ROG\Desktop\capstone\TripSync-Skills-Summary`
+
+## Related docs
 
 - [INTEGRATION-ROADMAP.md](./INTEGRATION-ROADMAP.md)
 - [AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md](./AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md)
+- [docs/PRODUCT.md](./docs/PRODUCT.md)
+- [docs/PROPOSAL.md](./docs/PROPOSAL.md)
+- [docs/PROPOSAL_EN.md](./docs/PROPOSAL_EN.md)
+- [docs/AGENTS.md](./docs/AGENTS.md)
 - [docs/frontend/3d-collaborative-idea-sphere-design.md](./docs/frontend/3d-collaborative-idea-sphere-design.md)
 - [docs/frontend/ai-travel-hero-scroll-storytelling-final.md](./docs/frontend/ai-travel-hero-scroll-storytelling-final.md)
 - [AI.md](./AI.md)
