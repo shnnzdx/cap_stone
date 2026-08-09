@@ -1,49 +1,75 @@
-export const organizerStageOrder = [
-  ["collect", "Collect", "Preferences"],
-  ["insights", "Insights", "Preference check"],
+export const tripWorkspaceSectionOrder = [
   ["plan", "Plan", "Draft itinerary"],
-  ["review", "Review", "Suggested adjustment"],
-  ["final", "Final", "Final plan"],
+  ["chat", "Chat", "Personal thread"],
+  ["conflict", "Conflict", "Tradeoff thread"],
+  ["updates", "Updates", "Latest changes"],
+  ["preferences", "Preferences", "Traveler inputs"],
+  ["members", "Members", "Traveler list"],
+  ["invite", "Invite", "Share access"],
 ];
 
-export const guestStageOrder = [
-  ["preferences", "Preferences"],
-  ["review", "Review"],
-  ["final", "Final"],
+export const accountSectionOrder = [
+  ["profile", "Profile"],
+  ["travel", "Travel"],
+  ["notifications", "Notifications"],
+  ["settings", "Settings"],
 ];
+
+export const organizerStageOrder = tripWorkspaceSectionOrder;
+export const guestStageOrder = accountSectionOrder;
+
+export function buildTripWorkspaceHomePath() {
+  return "/";
+}
+
+export function buildTripCreatePath() {
+  return "/create";
+}
+
+export function buildTripAccountPath(section = "profile") {
+  return `/account/${section}`;
+}
+
+export function buildTripWorkspaceSectionPath(tripId, section = "plan") {
+  return `/trip/${tripId}/${section}`;
+}
+
+export function buildTripInvitePath(token) {
+  return `/join/${token}`;
+}
 
 export function buildOrganizerHomePath() {
-  return "/organizer";
+  return buildTripWorkspaceHomePath();
 }
 
 export function buildOrganizerArchivedPath() {
-  return "/organizer/archived";
+  return buildTripWorkspaceHomePath();
 }
 
 export function buildOrganizerCreatePath() {
-  return "/organizer/create";
+  return buildTripCreatePath();
 }
 
 export function buildOrganizerAccountPath() {
-  return "/organizer/account";
+  return buildTripAccountPath("profile");
 }
 
 export function buildOrganizerSettingsPath() {
-  return "/organizer/settings";
+  return buildTripAccountPath("settings");
 }
 
 export function buildOrganizerTripStagePath(tripId, stage) {
-  return `/organizer/trip/${tripId}/${stage}`;
+  return buildTripWorkspaceSectionPath(tripId, stage);
 }
 
 export function buildOrganizerTripPreferencesPath(tripId) {
-  return `/organizer/trip/${tripId}/preferences`;
+  return buildTripWorkspaceSectionPath(tripId, "preferences");
 }
 
 export function buildParticipantTripPath(tripId) {
-  return `/participant/trip/${tripId}`;
+  return buildTripWorkspaceSectionPath(tripId, "plan");
 }
 
-export function buildGuestInvitePath(slug) {
-  return `/t/${slug}`;
+export function buildGuestInvitePath(token) {
+  return buildTripInvitePath(token);
 }

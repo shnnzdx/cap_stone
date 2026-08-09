@@ -2,57 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-
-const features = [
-  {
-    number: "01",
-    title: "Create",
-    text: "Add a destination and date range, then bring everyone in with one link.",
-    note: "Everyone enters the plan with equal decision weight.",
-    action: "Start a trip",
-    icon: "+",
-  },
-  {
-    number: "02",
-    title: "Share",
-    text: "Each traveler adds preferences, hard limits, and private needs in their own space.",
-    note: "Private input can shape the plan without being shown to the group.",
-    action: "See private input",
-    icon: "*",
-  },
-  {
-    number: "03",
-    title: "Build",
-    text: "AI drafts a complete itinerary; fixed rules check dates, budgets, and must-haves.",
-    note: "A plan only goes live after every confirmed hard limit passes.",
-    action: "See plan checks",
-    icon: "^",
-  },
-  {
-    number: "04",
-    title: "Decide",
-    text: "CADENSY checks hard limits and decision history before the plan moves.",
-    note: "Open changes apply directly; contested choices open a round; hard-limit changes require confirmation.",
-    action: "Explore decisions",
-    icon: "o",
-  },
-  {
-    number: "05",
-    title: "Adapt",
-    text: "The Current Plan updates without rebuilding what already works.",
-    note: "Every decision stays traceable, and hard limits stay protected.",
-    action: "See the living plan",
-    icon: "v",
-  },
-] as const;
-
-const featureSignals = [
-  ["Destination + dates", "Open shared space", "One invitation link"],
-  ["Private preferences", "Structure hard limits", "Protected group needs"],
-  ["Confirmed inputs", "Draft + validate", "One viable plan"],
-  ["Change request", "Route by impact", "Notice, round, or confirm"],
-  ["Resolved changes", "Preserve what works", "Current Plan stays ready"],
-] as const;
+import { planningFlowSteps } from "../../shared/tripsync-product-content.js";
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const easeOutCubic = (value: number) => 1 - Math.pow(1 - value, 3);
@@ -65,7 +15,7 @@ export default function FeatureStory() {
   const topbarRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
   const holdRatio = 0.18;
-  const activeSpan = 1 / (features.length + holdRatio);
+  const activeSpan = 1 / (planningFlowSteps.length + holdRatio);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -82,7 +32,7 @@ export default function FeatureStory() {
     let resizeObserver: ResizeObserver | null = null;
     let lastProgress = 0;
     let stepStartProgress = 0.22;
-    const featureCount = features.length;
+    const featureCount = planningFlowSteps.length;
     const backdropMetrics = {
       top: 0,
       right: 0,
@@ -207,7 +157,7 @@ export default function FeatureStory() {
               <h2>Five steps.<br />One living plan.</h2>
               <p>Private needs stay protected. Every change follows a clear path.</p>
               <nav className="story-nav" aria-label="Choose a process step">
-                {features.map((feature, index) => (
+                {planningFlowSteps.map((feature, index) => (
                   <button
                     type="button"
                     key={feature.number}
@@ -222,7 +172,7 @@ export default function FeatureStory() {
 
             <div className="process-viewport">
               <div className="stacked-features">
-                {features.map((feature, index) => (
+                {planningFlowSteps.map((feature, index) => (
                   <article
                     className={[
                       "stacked-feature",
@@ -244,7 +194,7 @@ export default function FeatureStory() {
                           <small>{feature.note}</small>
                         </div>
                         <div className="stacked-signal" aria-label={`${feature.title} information flow`}>
-                          {featureSignals[index].map((signal, signalIndex) => (
+                          {feature.signals.map((signal, signalIndex) => (
                             <div key={signal}>
                               <span>{["INPUT", "CADENSY", "GROUP RESULT"][signalIndex]}</span>
                               <strong>{signal}</strong>

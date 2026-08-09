@@ -5,47 +5,11 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import type { IdeaSphereStoryMotion } from "./IdeaSphereCanvas";
+import { productPrinciples } from "../../shared/tripsync-product-content.js";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
-const principles = [
-  {
-    key: "validate",
-    word: "Validate",
-    symbol: "*",
-    tone: "validate",
-    description: "Make sure the group is working from real preferences.",
-    focusOffset: { x: 0.08, y: -0.06 },
-    entryX: -12,
-  },
-  {
-    key: "protect",
-    word: "Protect",
-    symbol: "[]",
-    tone: "protect",
-    description: "Keep private input private by default.",
-    focusOffset: { x: -0.08, y: -0.06 },
-    entryX: 12,
-  },
-  {
-    key: "explain",
-    word: "Explain",
-    symbol: "~",
-    tone: "explain",
-    description: "Show how the plan got to this decision.",
-    focusOffset: { x: 0.07, y: 0.06 },
-    entryX: -10,
-  },
-  {
-    key: "confirm",
-    word: "Route",
-    symbol: "v",
-    tone: "confirm",
-    description: "Turn agreement into a clear next step.",
-    focusOffset: { x: -0.08, y: 0.06 },
-    entryX: 12,
-  },
-];
+const principles = productPrinciples;
 
 type ProductPrinciplesProps = {
   storyMotionRef: MutableRefObject<IdeaSphereStoryMotion>;

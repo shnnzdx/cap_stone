@@ -16,12 +16,16 @@ Today the product is integrated like this:
 - `trip/` builds a static workspace app
 - `frontend/public/trip-app/` stores the built Trip workspace that is embedded by `frontend`
 - `shared/` stores cross-app contracts and shared integration tokens
+- `AWS/` stores AWS planning and deployment context documents; it does not create AWS resources by itself
+- local agent/skill installation artifacts are kept outside this repository under `C:\Users\ROG\Desktop\capstone\TripSync-Skills-Summary`
 
 Key shared files:
 
 - `shared/tripsync-preview-theme.css`: shared visual tokens for the embedded Trip workspace
 - `shared/tripsync-preview-contract.js`: shared embed path and iframe contract
 - `shared/tripsync-domain.js`: shared route and flow helpers for Trip domain paths
+- `shared/tripsync-product-content.js`: shared product workflow and principle content
+- `shared/tripsync-demo-data.js`: shared Trip demo fallback data used by the workspace
 
 ## What Was Unified
 
@@ -30,11 +34,14 @@ The recent compatibility work focused on stabilizing the seam between `frontend`
 Completed:
 
 - Shared embed theme between the shell and the Trip workspace
-- Shared embed path contract for `/trip-app` and default hash routes
-- Shared domain helpers for organizer, participant, and invite paths
+- Shared embed path contract for `/trip-app` and the default `#/` workspace route
+- Shared domain helpers for current workspace, account, trip-section, and invite paths
 - Automated sync flow from `trip/dist` into `frontend/public/trip-app`
 - Embed manifest output so the shell can identify which Trip build is mounted
 - Compatibility tests around the integration contract
+- Shared product workflow/principle content for `frontend`
+- Shared Trip demo fallback data for `trip`
+- Windows-compatible `npm run build:trip-preview` script
 
 Not done yet:
 
@@ -42,16 +49,19 @@ Not done yet:
 - Shared typed data model across both apps
 - Moving Trip workspace pages into `frontend/app`
 - Replacing the static embed with a single runtime/app architecture
+- AWS deployment beyond identity validation
 
 ## Project Structure
 
 ```text
 /
+|-- .github/                     GitHub Actions workflows
 |-- frontend/                    Main site and `/trip` shell
 |-- trip/                        Standalone Trip workspace app
 |-- backend/                     FastAPI backend for the Trip workspace
 |-- shared/                      Shared integration contracts and tokens
 |-- docs/                        Project notes and supporting documents
+|-- AWS/                         AWS deployment context and planning notes
 |-- AI.md                        Local agent setup note for this repo
 |-- INTEGRATION-ROADMAP.md       Compatibility summary and future plan
 `-- README.md
@@ -145,11 +155,20 @@ From `frontend`:
 
 From `trip`:
 
-- `#/organizer`
-- `#/organizer/create`
-- `#/organizer/trip/:tripId/:stage`
-- `#/participant/trip/:tripId`
-- `#/t/:slug`
+- `#/`
+- `#/create`
+- `#/account/profile`
+- `#/account/travel`
+- `#/account/notifications`
+- `#/account/settings`
+- `#/trip/:tripId/plan`
+- `#/trip/:tripId/chat`
+- `#/trip/:tripId/conflict`
+- `#/trip/:tripId/updates`
+- `#/trip/:tripId/preferences`
+- `#/trip/:tripId/members`
+- `#/trip/:tripId/invite`
+- `#/join/:token`
 
 ## Build And Verification
 
@@ -174,14 +193,32 @@ cd frontend
 node --test tests/trip-preview-integration.test.mjs
 ```
 
+Run the full frontend verification suite:
+
+```bash
+cd frontend
+npm test
+```
+
+Current expected result:
+
+- `frontend` build succeeds
+- `trip` build succeeds through `npm run build:trip-preview`
+- frontend tests pass
+- Vite may print a chunk-size warning; that warning is not currently a build failure
+
 ## Important Notes
 
 - `frontend` and `trip` are still two separate apps.
 - The current compatibility approach is intentional: stabilize the boundary first, then merge deeper layers.
 - The embedded workspace loaded by `/trip` is static output from `trip`.
-- `frontend/tests/rendered-html.test.mjs` still reflects an older starter/skeleton expectation and is not yet aligned with the current TripSync product UI.
+- Phase 3 deeper frontend/runtime merge is intentionally paused for now.
+- GitHub Actions has an AWS identity validation workflow, but no AWS deployment workflow should run until build validation and deployment architecture are agreed.
 
 ## Related Docs
 
 - [INTEGRATION-ROADMAP.md](./INTEGRATION-ROADMAP.md)
+- [AWS/TRIPSYNC_AWS_MASTER_CONTEXT.md](./AWS/TRIPSYNC_AWS_MASTER_CONTEXT.md)
+- [docs/frontend/3d-collaborative-idea-sphere-design.md](./docs/frontend/3d-collaborative-idea-sphere-design.md)
+- [docs/frontend/ai-travel-hero-scroll-storytelling-final.md](./docs/frontend/ai-travel-hero-scroll-storytelling-final.md)
 - [AI.md](./AI.md)

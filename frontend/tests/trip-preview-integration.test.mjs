@@ -11,6 +11,28 @@ import {
   tripPreviewBasePath,
   tripPreviewDefaultHashRoute,
 } from "../../shared/tripsync-preview-contract.js";
+import {
+  buildGuestInvitePath,
+  buildOrganizerCreatePath,
+  buildOrganizerHomePath,
+  buildOrganizerSettingsPath,
+  buildOrganizerTripStagePath,
+  buildParticipantTripPath,
+  buildTripAccountPath,
+  buildTripCreatePath,
+  buildTripInvitePath,
+  buildTripWorkspaceHomePath,
+  buildTripWorkspaceSectionPath,
+} from "../../shared/tripsync-domain.js";
+import {
+  demoInitialDays,
+  demoTrip,
+  demoTripMembers,
+} from "../../shared/tripsync-demo-data.js";
+import {
+  planningFlowSteps,
+  productPrinciples,
+} from "../../shared/tripsync-product-content.js";
 
 test("shares one preview routing contract across frontend and trip", async () => {
   const [previewConfig, tripViteConfig, tripFinalApp] = await Promise.all([
@@ -20,15 +42,32 @@ test("shares one preview routing contract across frontend and trip", async () =>
   ]);
 
   assert.equal(tripPreviewBasePath, "/trip-app");
-  assert.equal(tripPreviewDefaultHashRoute, "#/organizer");
-  assert.equal(buildTripPreviewFrameSrc(), "/trip-app/#/organizer");
+  assert.equal(tripPreviewDefaultHashRoute, "#/");
+  assert.equal(buildTripPreviewFrameSrc(), "/trip-app/#/");
   assert.equal(
-    buildTripPreviewAbsoluteUrl("http://127.0.0.1:5173", "/t/chicago-birthday"),
-    "http://127.0.0.1:5173/trip-app/#/t/chicago-birthday",
+    buildTripPreviewAbsoluteUrl("http://127.0.0.1:5173", "/join/chicago-birthday"),
+    "http://127.0.0.1:5173/trip-app/#/join/chicago-birthday",
   );
   assert.match(previewConfig, /tripsync-preview-contract\.js/);
   assert.match(tripViteConfig, /base:\s*["']\/trip-app\/["']/);
-  assert.match(tripFinalApp, /buildTripPreviewAbsoluteUrl|BrandLogo|cadensy-wordmark/i);
+  assert.match(tripFinalApp, /path="\/"/);
+  assert.match(tripFinalApp, /path="\/trip\/:tripId\/plan"/);
+  assert.match(tripFinalApp, /path="\/join\/:token"/);
+});
+
+test("maps shared Trip domain helpers to the active workspace routes", () => {
+  assert.equal(buildTripWorkspaceHomePath(), "/");
+  assert.equal(buildTripCreatePath(), "/create");
+  assert.equal(buildTripAccountPath("settings"), "/account/settings");
+  assert.equal(buildTripWorkspaceSectionPath("demo-trip", "chat"), "/trip/demo-trip/chat");
+  assert.equal(buildTripInvitePath("invite-token"), "/join/invite-token");
+
+  assert.equal(buildOrganizerHomePath(), "/");
+  assert.equal(buildOrganizerCreatePath(), "/create");
+  assert.equal(buildOrganizerSettingsPath(), "/account/settings");
+  assert.equal(buildOrganizerTripStagePath("demo-trip", "updates"), "/trip/demo-trip/updates");
+  assert.equal(buildParticipantTripPath("demo-trip"), "/trip/demo-trip/plan");
+  assert.equal(buildGuestInvitePath("invite-token"), "/join/invite-token");
 });
 
 test("keeps the Trip preview contract and shell connected", async () => {
@@ -45,6 +84,28 @@ test("keeps the Trip preview contract and shell connected", async () => {
   assert.match(frontendGlobals, /@import "\.\.\/\.\.\/shared\/tripsync-preview-theme\.css";/);
   assert.match(frontendGlobals, /var\(--trip-preview-accent\)/);
   assert.match(tripIndex, /\/trip-app\/assets\//);
+});
+
+test("shares product content and demo trip data across app boundaries", async () => {
+  const [howItWorksPage, featureStory, productPrinciplesPage, tripContent] = await Promise.all([
+    readFile(new URL("../app/how-it-works/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/FeatureStory.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ProductPrinciples.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../trip/src/final/tripContent.js", import.meta.url), "utf8"),
+  ]);
+
+  assert.equal(planningFlowSteps.length, 5);
+  assert.equal(planningFlowSteps[0].title, "Create");
+  assert.equal(planningFlowSteps[4].title, "Adapt");
+  assert.equal(productPrinciples.length, 4);
+  assert.equal(demoTrip.id, "chicago-birthday");
+  assert.equal(demoTripMembers.length, demoTrip.people);
+  assert.equal(demoInitialDays.length, 3);
+
+  assert.match(howItWorksPage, /tripsync-product-content\.js/);
+  assert.match(featureStory, /tripsync-product-content\.js/);
+  assert.match(productPrinciplesPage, /tripsync-product-content\.js/);
+  assert.match(tripContent, /tripsync-demo-data\.js/);
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {

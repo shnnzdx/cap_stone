@@ -1,6 +1,6 @@
 export const tripPreviewBasePath = "/trip-app";
-export const tripPreviewDefaultHashRoute = "#/organizer";
-export const tripPreviewWorkspaceTitle = "TripSync organizer workspace";
+export const tripPreviewDefaultHashRoute = "#/";
+export const tripPreviewWorkspaceTitle = "TripSync workspace";
 
 export function normalizeTripPreviewHashRoute(route = tripPreviewDefaultHashRoute) {
   if (!route) {
