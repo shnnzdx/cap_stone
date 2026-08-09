@@ -3,10 +3,10 @@
 AI 协调的多人旅行规划工具的前端原型。核心理念:**没有 Final 发布或 Lock 流程**,系统维护一份持续更新的 Current Plan。
 
 **技术栈**:前端 Vite + React 18 + React Router 6(HashRouter,无 UI 框架);
-后端 Python + FastAPI + PostgreSQL,在 [`backend/`](backend/)。
+后端 Python + FastAPI + PostgreSQL,在同级 [`../backend/`](../backend/)。
 
 > **前端还没接后端。** 前端数据仍是 mock + localStorage;后端已独立跑通(判定、三条路径、
-> 投票结算、流水账,13 个接口)。接法见 [BACKEND.md](BACKEND.md) 第五节和 [HANDOFF.md](HANDOFF.md)。
+> 投票结算、流水账,13 个接口)。接法见 [BACKEND.md](BACKEND.md) 第五节和 [交接.md](交接.md)。
 
 ## 快速开始
 
@@ -31,7 +31,7 @@ npm run dev
 **问题二:有人跟它抢吗?**(同一时段最近已经有别人表达过不同意愿)
 有 → 路径 B。没有 → 路径 A。
 
-判定的权威实现在后端 `backend/app/domain/constraints/engine.py`,前端那份 `classifyChange()` 是等着被删掉的 mock。
+判定的权威实现在后端 `../backend/app/domain/constraints/engine.py`,前端那份 `classifyChange()` 是等着被删掉的 mock。
 
 **实际有四条路,不是三条**:`settled`(已经投票定过)的时段会走一条门槛更高的重开轮 ——
 要写理由,而且要过半数明确支持才能推翻。判定顺序和四档"结实程度"见 [BACKEND.md](BACKEND.md) 第一节。
@@ -117,7 +117,7 @@ legacy/                     旧版原型(v4 五阶段版)与旧交接文档,仅�
 
 ## 接后端
 
-完整契约见 **[BACKEND.md](BACKEND.md)** 第五节,交接说明见 **[HANDOFF.md](HANDOFF.md)**。
+完整契约见 **[BACKEND.md](BACKEND.md)** 第五节,交接说明见 **[交接.md](交接.md)**。
 
 三条红线里,前两条后端已经做掉了:
 
@@ -129,7 +129,7 @@ legacy/                     旧版原型(v4 五阶段版)与旧交接文档,仅�
 
 ## 已知未实现
 
-**后端**:AI 五个活、偏好接口、景点库、登录/邀请、组织者功能。详见 [HANDOFF.md](HANDOFF.md) 第五节。
+**后端**:AI 五个活、偏好接口、景点库、登录/邀请、组织者功能。详见 [交接.md](交接.md) 第五节。
 
 **前端**:组织者角色、成员名单、AI Explanation 与可信度标签、预算视图、初始行程生成与 Blocked 状态、
 Suggestion/Needs adjustment 区分。

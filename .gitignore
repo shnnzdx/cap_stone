@@ -1,3 +1,12 @@
 OLD/
 New/
 .DS_Store
+.env
+*.local
+node_modules/
+dist/
+dist-ssr/
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc

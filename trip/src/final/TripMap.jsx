@@ -1,61 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-
-const NOMINATIM_CACHE_KEY = 'tripsync:nominatim-cache'
-const NOMINATIM_DELAY_MS = 1100
-
-let geocodeChain = Promise.resolve()
-let lastGeocodeAt = 0
-
-const readCache = () => {
-  try {
-    return JSON.parse(window.localStorage.getItem(NOMINATIM_CACHE_KEY)) || {}
-  } catch {
-    return {}
-  }
-}
-
-const writeCache = cache => {
-  try {
-    window.localStorage.setItem(NOMINATIM_CACHE_KEY, JSON.stringify(cache))
-  } catch {
-    // Cache is best-effort. The map still works with provided coords.
-  }
-}
-
-const sleep = ms => new Promise(resolve => window.setTimeout(resolve, ms))
-
-const geocodePlace = ({ place, destination }) => {
-  const query = [place, destination].filter(Boolean).join(', ')
-  if (!query) return Promise.resolve(null)
-
-  geocodeChain = geocodeChain.then(async () => {
-    const cache = readCache()
-    if (cache[query]) return cache[query]
-
-    const wait = Math.max(0, NOMINATIM_DELAY_MS - (Date.now() - lastGeocodeAt))
-    if (wait) await sleep(wait)
-    lastGeocodeAt = Date.now()
-
-    const params = new URLSearchParams({
-      format: 'jsonv2',
-      limit: '1',
-      q: query,
-    })
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-      headers: { Accept: 'application/json' },
-    })
-    if (!response.ok) throw new Error(`Nominatim failed: ${response.status}`)
-    const [match] = await response.json()
-    if (!match) return null
-    const coords = [Number(match.lat), Number(match.lon)]
-    writeCache({ ...cache, [query]: coords })
-    return coords
-  }).catch(() => null)
-
-  return geocodeChain
-}
 
 const flattenDays = days => {
   let globalIndex = 0
@@ -100,28 +45,15 @@ const curvedRoute = points => {
   }).concat([points[points.length - 1]])
 }
 
-export default function TripMap({ days, destination, selectedItemId, onSelectItem, compact = false, variant = 'sketch', markerMode = 'stop' }) {
+export default function TripMap({ days, selectedItemId, onSelectItem, compact = false, variant = 'sketch', markerMode = 'stop' }) {
   const mapRef = useRef(null)
   const layerRef = useRef(null)
   const containerRef = useRef(null)
   const baseItems = useMemo(() => flattenDays(days), [days])
-  const [resolvedCoords, setResolvedCoords] = useState({})
-
-  useEffect(() => {
-    let cancelled = false
-    const missing = baseItems.filter(item => !item.coords && !resolvedCoords[item.id])
-    missing.forEach(item => {
-      geocodePlace({ place: item.place, destination }).then(coords => {
-        if (!cancelled && coords) setResolvedCoords(current => ({ ...current, [item.id]: coords }))
-      })
-    })
-    return () => { cancelled = true }
-  }, [baseItems, destination, resolvedCoords])
 
   const mappedItems = useMemo(() => baseItems
-    .map(item => ({ ...item, coords: item.coords || resolvedCoords[item.id] }))
     .filter(item => Array.isArray(item.coords) && item.coords.length === 2),
-  [baseItems, resolvedCoords])
+  [baseItems])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
