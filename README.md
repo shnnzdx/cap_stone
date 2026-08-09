@@ -3,7 +3,8 @@
 This repository currently contains two frontend surfaces for the same product:
 
 - `frontend/`: the main TripSync marketing site and product shell built with Vinext/Next-style app routing
-- `trip/`: the TripSync workspace prototype built as a standalone React + Vite app
+- `trip/`: the TripSync workspace prototype built as a standalone React + Vite frontend app
+- `backend/`: the FastAPI + PostgreSQL backend used by the Trip workspace
 
 The two apps were originally developed separately. They are not fully merged yet, but this repo now includes a compatibility layer so they can share a more stable integration boundary.
 
@@ -48,6 +49,7 @@ Not done yet:
 /
 |-- frontend/                    Main site and `/trip` shell
 |-- trip/                        Standalone Trip workspace app
+|-- backend/                     FastAPI backend for the Trip workspace
 |-- shared/                      Shared integration contracts and tokens
 |-- docs/                        Project notes and supporting documents
 |-- AI.md                        Local agent setup note for this repo
