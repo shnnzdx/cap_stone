@@ -1562,3 +1562,10 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .conflictPanel ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
 .conflictPanel li{display:flex;justify-content:space-between;gap:12px;padding:8px 11px;border-radius:9px;background:#fff}
 .conflictPanel li small{color:var(--muted)}
+.roundFooterActions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.memberRemind:disabled{opacity:.55;cursor:not-allowed}
+.generateCopy{display:grid;gap:4px;margin-top:12px}
+.generateCopy p{margin:0!important;font-size:13px}
+.generationError{margin-top:14px;padding:12px 14px;border:1px solid #d8d2c6;border-radius:8px;background:#faf8f4}
+.generationError strong{display:block;margin-bottom:4px}
+.generationError p{margin:0!important;font-size:12px}

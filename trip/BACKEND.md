@@ -237,7 +237,7 @@ PlanItem: `id` `plan_id` `day_index` `day_date` `start_hour` `duration_min`
 
 **只追加,不修改,不删除。** 一个条目"现在长什么样"= 原始状态叠加所有改动。
 
-`origin`: `notice` | `round` | `reopen_round` | `confirm` | `ai_generate` | `preference_update`
+`origin`: `notice` | `round` | `reopen_round` | `confirm` | `ai_generate` | `rule_generate` | `preference_update`
 
 免费得到:版本号、"谁改的为什么"、可回滚、以及"已接受部分保留率"这个指标。
 
@@ -265,19 +265,33 @@ Decision: `id` `proposal_id` `trip_membership_id` `status`(`accepted` | `decline
 
 **故意没有 actor 字段。**
 
-### PlanValidation ⬜
-`status`: `passed` | `failed` | `blocked`
-`failure_code`: `REQUIRED_CONSTRAINT_VIOLATED` | `BUDGET_LIMIT_EXCEEDED` | `DATE_RANGE_EXCEEDED` |
-`SCHEDULE_OVERLAP` | `TRAVEL_TIME_INSUFFICIENT` | `INSUFFICIENT_DATA`
+### 初始行程生成 ✅(Planner 管道 + 规则兜底)
 
-**生成规则**:首次生成失败 → 带着失败原因重新生成**一次** → 仍失败则标记 `blocked`,
-向组织者展示匿名阻塞摘要,**不得展示一份看起来正常但实际违规的行程**。
+接口:`POST /api/trips/{trip_id}/plans/generate`,只允许 organizer 调。
+返回:`{ plan_id, status, days, blocked_reason, generated_by }`,`generated_by` 是 `planner` 或 `rules`。
+
+两道门槛在 domain 层:
+
+1. 组织者必须先提交自己的偏好,否则 422。
+2. 这趟旅行已经有任何 `PlanItem` 时拒绝重新生成,否则会冲掉投票/确认/预订过的东西,返回 409。
+
+生成器只从 `backend/data/poi_chicago.py` 的 49 个点选点,每天排 `10:00` / `14:00` / `19:00`。
+候选点必须开门、不能重复、不能让累计每人价格超过任何人的 `budget_ceiling`,
+并且每一条 required 约束都用 `engine.violates()` 逐条检查。规则兜底排晚上时必须选吃饭,
+或带 `food` / `nightlife` 标签。
+
+**生成规则**:先把合法 candidates 交给 `app/agents/planner.py::plan_day()`;agent 抛错、不可用、
+返回空、或编出不在 candidates 里的名字时,管道会丢弃非法 pick,必要时退回规则兜底。
+每天排完后每条 + 总价再过一遍 engine → 不通过就换选择重排一次 →
+还不通过则 `Plan.status = "blocked"`,写脱敏 `blocked_reason`,**一条 PlanItem 都不写**。
+成功时写 `PlanItem.source = "ai_estimate"`,把景点的 `lat` / `lng` / `photo_url` 一起抄进
+`PlanItem`,并记录 `PlanChange.origin = "ai_generate"` 或 `rule_generate`。
 
 ---
 
 ## 四、接口
 
-已实现 22 个,全部可在 http://localhost:8000/docs 直接点着试。
+已实现 33 个,全部可在 http://localhost:8000/docs 直接点着试。
 
 ```text
 GET    /api/health
@@ -291,10 +305,13 @@ GET    /api/rounds/{round_id}
 GET    /api/proposals/{proposal_id}
 GET    /api/plans/{plan_id}/changes          ← 流水账
 GET    /api/invites/{token}                   ← 只返回 trip 框架信息,不入会
+GET    /api/trips/{trip_id}/preferences/me    ← 只读自己的偏好和原话
+GET    /api/trips/{trip_id}/members           ← 只看交没交,不看内容
 
 POST   /api/trips                              创建旅行 + organizer membership + 空 Plan
 POST   /api/trips/{trip_id}/invite             organizer 生成不可猜 token,库里只存 sha256
 POST   /api/trips/{trip_id}/chat              自然语言理解 + 只读判定,不执行
+POST   /api/trips/{trip_id}/plans/generate    Planner 管道 + 规则兜底,失败写 blocked
 POST   /api/plans/items/{item_id}/classify   ← 只试算，不执行
 POST   /api/plans/items/{item_id}/changes    ← 判定 + 执行，一步到位
 POST   /api/updates/{notice_id}/object       ← Notice 上的异议，升级为 Round
@@ -303,6 +320,14 @@ POST   /api/rounds/{round_id}/settle         ← 演示用，真实场景由定�
 POST   /api/proposals/{proposal_id}/decisions
 POST   /api/invites/{token}/join              display_name 必填,email 可选
 POST   /api/invites/{invite_id}/revoke         organizer 撤销链接
+PUT    /api/trips/{trip_id}/preferences/me
+POST   /api/trips/{trip_id}/constraints
+PATCH  /api/constraints/{constraint_id}
+DELETE /api/constraints/{constraint_id}
+POST   /api/trips/{trip_id}/members/{membership_id}/remind
+POST   /api/rounds/{round_id}/extend
+POST   /api/proposals/{proposal_id}/escalate
+POST   /api/proposals/{proposal_id}/deadlock
 ```
 
 **`/classify` 和 `/changes` 收同一个 body,走同一套判定。** 区别只是前者跑完回滚。
@@ -313,9 +338,6 @@ POST   /api/invites/{invite_id}/revoke         organizer 撤销链接
 ### 还没做的接口 ⬜
 
 ```text
-GET    /api/trips/{id}/members
-GET/PUT /api/trips/{id}/preferences/me         ← 偏好 + 六种约束的增删改
-POST   /api/trips/{id}/plans/generate          ← AI 生成
 GET    /api/plans/{id}/validation
 POST   /api/proposals/{id}/withdraw            ← 逻辑已实现，只差接口
 POST   /api/plans/items/{id}/comments
@@ -369,14 +391,12 @@ POST   /api/plans/items/{id}/comments
 
 按重要性:
 
-1. **AI 五个活** ⬜ —— 翻译约束 / 生成行程 / 解释与可信度标签 / 出候选项 / 私聊。
-   接入方式见 [`交接.md`](交接.md)。
-2. **偏好接口 + 六种约束的增删改** ⬜ —— 表有了,没有接口能填。也是 AI 翻译那一步的落点。
-3. **AI Explanation + 可信度标签** ⬜ —— Why this works / Trade-offs / Verified·AI estimate·Mock。
+1. **AI agent 剩余活** ⬜ —— 翻译约束 / AI Planner / Mediator / Options。
+   接入方式见 [`交接.md`](交接.md) 和 [`../docs/AGENTS.md`](../docs/AGENTS.md)。
+2. **AI Explanation + 可信度标签** ⬜ —— Why this works / Trade-offs / Verified·AI estimate·Mock。
    **这是"AI 提议、人来决定"唯一能被看见的地方,目前一条都没有。**
-4. **预算视图** ⬜ —— 建议不做单独页面,把预算影响挂在每次改动上("+$12"),更符合"活的 Current Plan"。
-5. **初始行程生成 + `blocked` 状态** ⬜ —— 依赖景点库。
-6. **组织者角色** ⬜ —— 成员名单、催交、延长截止、僵局出口。
-7. **登录 / 邀请链接 / Guest 加入** ⬜ —— 建议邮箱 magic link,不做密码。
-8. **重开轮的 48 小时冷却期** ⬜ —— 半天的事。
-9. **Trip 四状态自动流转** ⬜。
+3. **预算视图** ⬜ —— 建议不做单独页面,把预算影响挂在每次改动上("+$12"),更符合"活的 Current Plan"。
+4. **Planner agent 函数体** ⬜ —— `planner.py` 的 dataclass 和调用点已留好,只补 prompt/schema/选择逻辑。
+5. **登录 / Guest 绑定账户** ⬜ —— 建议邮箱 magic link,不做密码。
+6. **重开轮的 48 小时冷却期** ⬜ —— 半天的事。
+7. **Trip 四状态自动流转** ⬜。

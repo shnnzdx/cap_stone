@@ -90,12 +90,15 @@ export async function syncTripPreview({
 }
 
 export async function runTripBuild(sourceRoot = defaultTripRoot) {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const useShell = process.platform === "win32";
+  const command = useShell ? "npm run build" : "npm";
+  const args = useShell ? [] : ["run", "build"];
 
   await new Promise((resolve, reject) => {
-    const child = spawn(npmCommand, ["run", "build"], {
+    const child = spawn(command, args, {
       cwd: sourceRoot,
       stdio: "inherit",
+      shell: useShell,
     });
 
     child.on("exit", (code) => {

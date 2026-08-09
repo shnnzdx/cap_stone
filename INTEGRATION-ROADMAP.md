@@ -25,6 +25,16 @@ That created a few concrete problems:
 
 ## What Was Changed
 
+### 0. Repository cleanup and local tool separation
+
+Updated:
+
+- local skill installation artifacts were moved outside the repository to `C:\Users\ROG\Desktop\capstone\TripSync-Skills-Summary`
+- frontend design reference documents were kept under `docs/frontend/`
+- the removed `monad-pipeline-animation/` folder is no longer part of the active root-level project structure
+
+This keeps application commits focused on product code, integration contracts, tests, and project docs.
+
 ### 1. Shared preview theme
 
 Added:
@@ -55,13 +65,12 @@ Added:
 
 This centralizes the most repeated business paths:
 
-- organizer home
-- organizer archived
-- organizer create
-- organizer account/settings
-- organizer trip stage paths
-- participant trip path
-- guest invite path
+- workspace home
+- create-trip flow
+- account sections
+- trip workspace sections
+- invite join links
+- legacy organizer/participant helper names that now map to the active workspace routes
 
 ### 4. Automated Trip asset sync
 
@@ -74,6 +83,17 @@ Updated:
 - `frontend/package.json`
 
 This replaces a fragile manual copy workflow with a repeatable sync command.
+
+Later updated:
+
+- `frontend/scripts/sync-trip-preview.mjs`
+
+The script now runs `npm run build` correctly on Windows when invoked through:
+
+```bash
+cd frontend
+npm run build:trip-preview
+```
 
 ### 5. Embed manifest
 
@@ -94,6 +114,23 @@ These tests verify:
 - shared preview routing contract
 - shared preview theme contract
 - sync script behavior
+- shared product content and demo Trip fallback data
+
+### 7. Shared product and demo data
+
+Added:
+
+- `shared/tripsync-product-content.js`
+- `shared/tripsync-demo-data.js`
+
+Updated:
+
+- `frontend/app/how-it-works/page.tsx`
+- `frontend/app/FeatureStory.tsx`
+- `frontend/app/ProductPrinciples.tsx`
+- `trip/src/final/tripContent.js`
+
+This moves stable product workflow copy, product principles, and Trip demo fallback data into shared modules. `trip/src/final/tripContent.js` remains as a compatibility layer so existing Trip workspace imports keep working.
 
 ## Why This Approach
 
@@ -111,34 +148,44 @@ This reduces regression risk while the team still has two active code shapes.
 
 ## Current State
 
-As of Thursday, August 6, 2026:
+As of Sunday, August 9, 2026:
 
 - `frontend` builds successfully
 - `trip` builds successfully
-- compatibility tests pass
+- full `frontend npm test` passes
 - `/trip` embeds the synced static Trip workspace using shared contracts
+- shared route helpers match the active `trip/src/final/FinalApp.jsx` routes:
+  `#/`, `#/create`, `#/account/:section`, `#/trip/:tripId/:section`, and `#/join/:token`
+- `frontend` now reads product workflow/principle content from `shared`
+- `trip` now reads demo fallback data from `shared`
+- `frontend/public/trip-app/` has been regenerated from the current `trip` build
+- AWS identity validation has succeeded through GitHub Actions using repository secrets and `aws sts get-caller-identity`
 
 Still true:
 
 - `frontend` and `trip` are separate apps
-- product data and page configuration are still mostly duplicated
-- `frontend/tests/rendered-html.test.mjs` is still outdated relative to the current UI
+- product data and page configuration are not fully unified
+- Phase 3 deeper runtime merge is intentionally paused
+- no AWS application resources have been created or deployed from this repository yet
 
 ## Recommended Next Changes
 
 ### Near-term
 
-1. Move more Trip product constants into shared modules.
-   Candidates: stage labels, CTA labels, invite copy, route metadata.
+1. Commit and push the current Phase 1/Phase 2 integration changes.
+   Keep the commit scoped to route contracts, shared content/data, tests, docs, and regenerated `frontend/public/trip-app` assets.
 
-2. Extract shared Trip data/schema from `trip/src/final/finalData.js`.
-   Goal: one source for trip IDs, stage copy, sample entities, and page-level content.
+2. Run GitHub Actions after push.
+   Confirm AWS identity validation still succeeds and add a separate build/test validation workflow before any deployment workflow.
 
-3. Align `frontend` product explanation pages with shared domain definitions.
-   Example: `frontend/app/how-it-works/page.tsx` should eventually read from the same stage model as `trip`.
+3. Continue moving Trip workspace copy into shared modules.
+   Candidates: invite copy, account labels, route metadata, member role labels.
 
-4. Update or replace `frontend/tests/rendered-html.test.mjs`.
-   It still expects a starter loading skeleton that no longer represents the app.
+4. Add lightweight schemas or TypeScript types for shared Trip data.
+   Goal: one checked shape for trip IDs, sample entities, plan days, updates, and page-level content.
+
+5. Decide the first AWS deployment target only after local and GitHub build validation are green.
+   Current likely order: static frontend hosting first, backend/API second, database last.
 
 ### Mid-term
 
@@ -151,12 +198,22 @@ Still true:
 
 ### Long-term
 
-1. Decide whether `trip` remains a standalone prototype surface or gets absorbed into `frontend`.
+1. Revisit Phase 3 when the team is ready.
+   Decide whether `trip` remains a standalone prototype surface or gets absorbed into `frontend`.
 
 2. If absorbed:
    Move core Trip workspace pages into `frontend/app`
    Replace static embed deployment with a single deployment surface
    Retire duplicated assets and transitional sync scripts
+
+## Phase Status
+
+| Phase | Status | Notes |
+| --- | --- | --- |
+| Phase 1: route/embed contract alignment | Complete | `shared/tripsync-preview-contract.js`, `shared/tripsync-domain.js`, manifest, and tests now match the active Trip routes. |
+| Phase 2: shared product/demo data | Complete for first pass | Stable product content and Trip fallback data now live in `shared/`; existing UI imports remain compatible. |
+| Phase 3: deeper runtime merge | Paused | Do not move Trip workspace pages into `frontend/app` yet. |
+| AWS deployment | Not started | Identity validation succeeded; no billable AWS resources should be created until deployment architecture is approved. |
 
 ## Decision Rule For Future Work
 

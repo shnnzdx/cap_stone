@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from uuid import uuid4
 
 import pytest
@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import main as api
-from app.db.models import Plan, PlanItem, Trip, TripMembership, User
+from app.db.models import Plan, PlanChange, PlanItem, PlanItemComment, Preference, Trip, TripMembership, User
 
 
 @pytest.fixture
@@ -65,6 +65,25 @@ def _trip_with_member(
     db.add(membership)
     db.flush()
     return trip, membership
+
+
+def _plan_item(db: Session, trip: Trip) -> tuple[Plan, PlanItem]:
+    plan = Plan(trip_id=trip.id)
+    db.add(plan)
+    db.flush()
+    item = PlanItem(
+        plan_id=plan.id,
+        day_index=1,
+        day_date=date.today() + timedelta(days=30),
+        start_hour=14.0,
+        duration_min=90,
+        title="Art Institute of Chicago",
+        place="Michigan Avenue",
+        settledness="loose",
+    )
+    db.add(item)
+    db.flush()
+    return plan, item
 
 
 def test_create_trip_makes_creator_organizer_and_empty_plan(
@@ -130,7 +149,7 @@ def test_list_trips_returns_only_current_users_trips(
             PlanItem(
                 plan_id=plan.id,
                 day_index=2,
-                day_date=date(2026, 8, 9),
+                day_date=date.today() + timedelta(days=2),
                 start_hour=14.0,
                 title="Later museum",
                 place="Museum",
@@ -138,7 +157,9 @@ def test_list_trips_returns_only_current_users_trips(
             PlanItem(
                 plan_id=plan.id,
                 day_index=1,
-                day_date=date(2026, 8, 8),
+                # 相对今天算，不要写死日期 —— 写死的日期会随着时间流逝变成"过去"，
+                # 被"只看未来"的过滤挡掉，测试某天就莫名其妙红了。
+                day_date=date.today() + timedelta(days=1),
                 start_hour=9.0,
                 title="Morning coffee",
                 place="Cafe",
@@ -328,3 +349,130 @@ def test_me_reports_a_guest_as_guest_with_no_email(
 
 def test_me_needs_an_identity(client: TestClient):
     assert client.get("/api/me").status_code == 401
+
+
+def test_creating_a_trip_returns_the_new_membership(client: TestClient, api_session: Session):
+    """不返回它，前端就没法把身份切过去 —— 之后调这趟旅行的任何接口都会 403。"""
+    user = _user(api_session, "Mia")
+    _, auth = _trip_with_member(api_session, user)
+
+    body = client.post(
+        "/api/trips",
+        headers={"X-Membership-Id": auth.id},
+        json={"name": "Paris", "destination": "Paris"},
+    ).json()
+
+    assert body["membership_id"]
+    assert body["membership_id"] != auth.id          # 是新 trip 里的那个
+    membership = api_session.get(TripMembership, body["membership_id"])
+    assert membership.trip_id == body["id"]
+    assert membership.role == "organizer"
+
+
+def test_an_identity_from_another_trip_is_refused_not_silently_answered(
+    client: TestClient, api_session: Session
+):
+    """拿 A 旅行的身份去问 B 旅行的成员名单，必须 403。
+
+    悄悄返回 A 的数据更糟 —— 用户以为在看 B，看到的是别人那趟的人数和进度。
+    """
+    user = _user(api_session, "Mia")
+    trip_a, auth_a = _trip_with_member(api_session, user, name="Trip A")
+    trip_b, _ = _trip_with_member(api_session, user, name="Trip B")
+
+    ok = client.get(f"/api/trips/{trip_a.id}/members", headers={"X-Membership-Id": auth_a.id})
+    wrong = client.get(f"/api/trips/{trip_b.id}/members", headers={"X-Membership-Id": auth_a.id})
+
+    assert ok.status_code == 200
+    assert wrong.status_code == 403
+
+
+def test_item_comments_are_saved_and_read_back(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia Chen")
+    trip, membership = _trip_with_member(api_session, user)
+    _, item = _plan_item(api_session, trip)
+
+    created = client.post(
+        f"/api/plans/items/{item.id}/comments",
+        headers={"X-Membership-Id": membership.id},
+        json={"text": "Meet by the main entrance."},
+    )
+    assert created.status_code == 200
+    assert api_session.query(PlanItemComment).count() == 1
+
+    rows = client.get(
+        f"/api/trips/{trip.id}/comments",
+        headers={"X-Membership-Id": membership.id},
+    ).json()
+    assert rows[0]["plan_item_id"] == item.id
+    assert rows[0]["text"] == "Meet by the main entrance."
+    assert rows[0]["name"] == "Mia Chen"
+
+
+def test_preference_dates_are_saved_and_read_back(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    start = date.today() + timedelta(days=30)
+    end = start + timedelta(days=3)
+
+    saved = client.put(
+        f"/api/trips/{trip.id}/preferences/me",
+        headers={"X-Membership-Id": membership.id},
+        json={
+            "preferred_start_date": start.isoformat(),
+            "preferred_end_date": end.isoformat(),
+            "available_start_date": (start - timedelta(days=1)).isoformat(),
+            "available_end_date": (end + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert saved.status_code == 200
+
+    row = api_session.scalar(select(Preference).where(Preference.trip_membership_id == membership.id))
+    assert row.preferred_start_date == start
+    assert row.preferred_end_date == end
+    assert row.available_start_date == start - timedelta(days=1)
+    assert row.available_end_date == end + timedelta(days=1)
+
+    body = client.get(
+        f"/api/trips/{trip.id}/preferences/me",
+        headers={"X-Membership-Id": membership.id},
+    ).json()
+    assert body["preference"]["preferred_start_date"] == start.isoformat()
+    assert body["preference"]["available_end_date"] == (end + timedelta(days=1)).isoformat()
+
+
+def test_marking_an_item_booked_and_unbooked_is_persistent(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    _, item = _plan_item(api_session, trip)
+
+    booked = client.patch(
+        f"/api/plans/items/{item.id}/booking",
+        headers={"X-Membership-Id": membership.id},
+        json={"booked": True},
+    )
+    assert booked.status_code == 200
+    api_session.refresh(item)
+    assert item.settledness == "booked"
+    assert booked.json()["settledness"] == "booked"
+
+    unbooked = client.patch(
+        f"/api/plans/items/{item.id}/booking",
+        headers={"X-Membership-Id": membership.id},
+        json={"booked": False},
+    )
+    assert unbooked.status_code == 200
+    api_session.refresh(item)
+    assert item.settledness == "settled"
+    assert unbooked.json()["settledness"] == "settled"
+
+    changes = api_session.scalars(
+        select(PlanChange).where(PlanChange.plan_item_id == item.id)
+    ).all()
+    assert [change.patch["settledness"] for change in changes] == ["booked", "settled"]

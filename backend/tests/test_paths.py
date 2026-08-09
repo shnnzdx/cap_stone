@@ -339,8 +339,8 @@ def test_a_proposal_gets_a_deadline(db, full_trip):
         db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
     )
     proposal = db.get(ChangeProposal, outcome.proposal_id)
-    hours = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
-    assert 7.5 < hours < 8.5          # 规划中 8 小时
+    days = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 86400
+    assert 6.9 < days < 7.1           # 规划中 7 天
 
 
 def test_the_proposal_deadline_halves_once_the_trip_starts(db, full_trip):
@@ -350,8 +350,8 @@ def test_the_proposal_deadline_halves_once_the_trip_starts(db, full_trip):
         db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
     )
     proposal = db.get(ChangeProposal, outcome.proposal_id)
-    hours = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
-    assert 3.5 < hours < 4.5          # 旅行中 4 小时
+    days = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 86400
+    assert 1.9 < days < 2.1           # 旅行中 2 天
 
 
 def test_an_expired_proposal_is_voided_not_approved(db, full_trip):

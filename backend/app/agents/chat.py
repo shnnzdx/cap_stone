@@ -51,6 +51,13 @@ class ReplyInput:
 
 
 @dataclass(frozen=True)
+class QuestionInput:
+    message: str
+    item: ItemContext | None
+    itinerary: tuple[ItemContext, ...]
+
+
+@dataclass(frozen=True)
 class Reply:
     text: str
 
@@ -97,10 +104,19 @@ def understand(request: UnderstandInput) -> Understanding:
         schema=UNDERSTAND_SCHEMA,
         schema_name="chat_understanding",
         mock=_mock_understanding(request),
+        max_tokens=220,
     )
+    result_patch = result.get("patch") or {}
+
+    # Exact time values are deterministic. Do not rely on the LLM to calculate
+    # "3:30 PM" -> 15.5 correctly.
+    exact_hour = _hour_from_text(request.message.lower())
+    if exact_hour is not None:
+        result_patch["start_hour"] = exact_hour
+
     patch = {
         key: value
-        for key, value in (result.get("patch") or {}).items()
+        for key, value in result_patch.items()
         if value is not None
     }
     return Understanding(
@@ -122,6 +138,25 @@ def explain(request: ReplyInput) -> Reply:
         schema=REPLY_SCHEMA,
         schema_name="chat_reply",
         mock={"reply": _mock_reply(request.verdict)},
+        max_tokens=260,
+    )
+    return Reply(text=result["reply"])
+
+
+def answer_question(request: QuestionInput) -> Reply:
+    result = base.call_model(
+        system=(
+            "You are Cadensy, a private trip-planning assistant. Answer the "
+            "traveler's question using only the shared itinerary context below. "
+            "Do not claim to know hidden preferences, private notes, or anyone's "
+            "personal reasons. If the traveler asks for a change, say you can help "
+            "check a specific change against the plan. Keep the answer brief."
+        ),
+        user=_question_prompt(request),
+        schema=REPLY_SCHEMA,
+        schema_name="chat_question_reply",
+        mock={"reply": _mock_question_reply(request)},
+        max_tokens=220,
     )
     return Reply(text=result["reply"])
 
@@ -182,6 +217,24 @@ def _reply_prompt(request: ReplyInput, safe: base.SafeContext) -> str:
     )
 
 
+def _question_prompt(request: QuestionInput) -> str:
+    parts = [
+        "Traveler question:",
+        request.message,
+        "",
+    ]
+    if request.item:
+        parts.extend(["Selected itinerary item:", request.item.prompt_block(), ""])
+    parts.append("Shared itinerary:")
+    if request.itinerary:
+        for item in request.itinerary:
+            parts.append(item.prompt_block())
+            parts.append("")
+    else:
+        parts.append("No itinerary items are available yet.")
+    return "\n".join(parts).strip()
+
+
 def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
     message = request.message.lower()
     patch = {
@@ -192,8 +245,8 @@ def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
         "price_per_person": None,
     }
     if "shopping" in message or "shop" in message:
-        patch["title"] = "Shopping"
-        patch["place"] = "Shopping district"
+        patch["title"] = "Magnificent Mile shopping"
+        patch["place"] = "Magnificent Mile"
     elif "dinner" in message and "move" not in message:
         patch["title"] = "Dinner"
 
@@ -238,3 +291,9 @@ def _mock_reply(verdict: Classification) -> str:
     if verdict.path.value in {"round", "reopen_round"}:
         return "I can prepare that change, but this slot needs a group round before it changes."
     return "I can prepare that change, but affected members need to confirm before the current plan changes."
+
+
+def _mock_question_reply(request: QuestionInput) -> str:
+    if request.item:
+        return f"{request.item.title} is scheduled at {request.item.start_hour:g}:00 at {request.item.place}."
+    return "I can answer questions about the shared itinerary or help prepare a change to a specific block."

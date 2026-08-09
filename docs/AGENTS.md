@@ -65,12 +65,16 @@ MOCK_AI=1    # 返回固定假回复，不发任何网络请求
 
 ```
 app/agents/
-├── base.py          客户端 + MOCK_AI 开关 + 脱敏上下文构造
-├── preference.py    人话 → 六种约束
-├── explainer.py     判定结果 → 人话
-├── mediator.py      冲突对话里的斡旋
-├── planner.py       景点库 → 行程
-└── options.py       争议时段 → 三个选项
+├── base.py          ✅ 客户端 + MOCK_AI 开关 + 脱敏上下文构造
+├── chat.py          ✅ 私聊：听懂改动 → 试算 → 说人话（已实现）
+├── explainer.py     ✅ 判定结果 → 人话（已实现，是最好的模板）
+├── preference.py    ⬜ 人话 → 六种约束
+├── mediator.py      ⬜ 冲突对话里的斡旋
+├── planner.py       ⬜ 景点库 → 行程（dataclass/stub 已留，函数体待填）
+└── options.py       ⬜ 争议时段 → 三个选项
+
+app/domain/plans/
+└── generator.py      ✅ 生成管道：过滤合法 candidates → Planner → 规则兜底 → 验证 → 写库
 ```
 
 **每个 agent 都是纯函数**:输入 dataclass → 输出 dataclass。
@@ -235,7 +239,7 @@ OpenAI 报错时，classify / changes / votes 三个接口行为不变
 cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
 ```
 
-现在是 73 passed。**加 agent 之后只能变多,不能变少。**
+现在是 143 passed。**加 agent 之后只能变多,不能变少。**
 
 ---
 

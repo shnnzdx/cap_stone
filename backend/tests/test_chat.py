@@ -61,7 +61,8 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
     assert not re.search(r"[\u4e00-\u9fff]", body["reply"])
     assert body["proposed_change"]["item_id"] == full_trip["art"].id
     assert body["proposed_change"]["item_title"] == "Art Institute of Chicago"
-    assert body["proposed_change"]["patch"]["title"] == "Shopping"
+    assert body["proposed_change"]["patch"]["title"] == "Magnificent Mile shopping"
+    assert body["proposed_change"]["patch"]["place"] == "Magnificent Mile"
     assert body["proposed_change"]["verdict"]["path"] == "notice"
 
 

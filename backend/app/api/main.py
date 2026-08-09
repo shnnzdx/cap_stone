@@ -3,8 +3,8 @@
 这一层**很薄**,故意的:它只做三件事 —— 收参数、调 domain、把结果转成 JSON。
 所有规则都在 domain/ 里,这里一条业务判断都不写。
 
-身份验证目前是临时的:请求头 X-Membership-Id 说自己是谁。
-真的登录(邮箱 magic link)以后替换,只需要改 current_membership 这一个函数。
+身份验证走邮箱密码登录后的 bearer token；本地开发可以用
+DEV_ALLOW_MEMBERSHIP_HEADER=1 暂时保留 X-Membership-Id 调试入口。
 """
 
 from __future__ import annotations
@@ -25,17 +25,35 @@ from ..db.models import (
     Plan,
     PlanChange,
     PlanItem,
+    PlanItemComment,
     Trip,
     TripMembership,
     UpdateNotice,
+    User,
     Vote,
 )
 from ..db.session import get_session
+from ..domain import auth as auth_service
 from ..domain.chat import service as chat_service
 from ..domain.decisions import orchestrator as orch
 from ..domain.decisions import organizer as org_actions
+from ..domain.plans import generator as plan_generator
 from ..domain.preferences import service as pref_service
 from ..domain.trips import service as trip_service
+
+
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+)
+
+
+def parse_cors_origins(raw: str | None = None) -> list[str]:
+    value = raw if raw is not None else os.getenv("CORS_ORIGINS", "")
+    origins = [origin.strip().rstrip("/") for origin in value.split(",") if origin.strip()]
+    return origins or list(DEFAULT_CORS_ORIGINS)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,23 +72,59 @@ app = FastAPI(title="TripSync API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=parse_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+def _same_trip(membership: TripMembership, trip_id: str) -> None:
+    """路径里的旅行必须就是你身份所属的那一趟。
+
+    不查的话，拿 A 旅行的身份去问 B 旅行，接口会**默默返回 A 的数据** ——
+    用户以为看的是 B，看到的却是别人那趟的人数和进度。
+    """
+    if membership.trip_id != trip_id:
+        raise HTTPException(403, "This identity belongs to a different trip")
+
+
 def current_membership(
     db: Session = Depends(get_session),
+    authorization: str | None = Header(default=None),
+    x_trip_id: str | None = Header(default=None),
     x_membership_id: str | None = Header(default=None),
 ) -> TripMembership:
-    """临时身份。真做了登录之后,这里改成从 token 解析。"""
-    if not x_membership_id:
-        raise HTTPException(401, "Missing X-Membership-Id header")
-    membership = db.get(TripMembership, x_membership_id)
-    if membership is None:
-        raise HTTPException(401, "Unknown membership")
-    return membership
+    """Authenticated trip identity.
+
+    Real login uses a bearer token for the account, then X-Trip-Id chooses the
+    membership for this trip. The old membership header is kept behind a local
+    dev flag so two-window demos can still switch roles quickly.
+    """
+    token = _bearer_token(authorization)
+    if token:
+        try:
+            user = auth_service.user_for_token(db, token)
+            return auth_service.membership_for_trip(db, user, x_trip_id)
+        except auth_service.AuthRequired as exc:
+            raise HTTPException(401, str(exc)) from exc
+        except auth_service.TripMembershipRequired as exc:
+            raise HTTPException(403, str(exc)) from exc
+
+    if os.getenv("DEV_ALLOW_MEMBERSHIP_HEADER", "1") == "1" and x_membership_id:
+        membership = db.get(TripMembership, x_membership_id)
+        if membership is not None:
+            return membership
+
+    raise HTTPException(401, "Login required")
+
+
+def _bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
 
 
 # ————————————————————— 输入输出的形状 —————————————————————
@@ -98,6 +152,10 @@ class ChangeRequest(BaseModel):
 
 class VoteRequest(BaseModel):
     option_id: str
+
+
+class BookingRequest(BaseModel):
+    booked: bool
 
 
 class DecisionRequest(BaseModel):
@@ -151,9 +209,18 @@ class ChatRequest(BaseModel):
     item_id: str | None = None
 
 
+class CommentRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+
+
 class InviteJoinRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
     email: str | None = Field(default=None, max_length=255)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
 
 
 def _item_out(item: PlanItem) -> dict:
@@ -172,6 +239,33 @@ def _item_out(item: PlanItem) -> dict:
         "coords": [item.lat, item.lng] if item.lat is not None else None,
         # 没有配图时给 null，前端有占位框兜着，不要在这里编一张
         "photoUrl": item.photo_url,
+    }
+
+
+def _initials(name: str) -> str:
+    parts = [part for part in name.split() if part]
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[1][0]).upper()
+    return (parts[0][:2] if parts else "?").upper()
+
+
+def _member_name(db: Session, membership: TripMembership) -> str:
+    user = db.get(User, membership.user_id) if membership.user_id else None
+    return user.name if user else (membership.guest_display_name or "Guest")
+
+
+def _comment_out(db: Session, comment: PlanItemComment, me: TripMembership) -> dict:
+    membership = db.get(TripMembership, comment.trip_membership_id)
+    name = _member_name(db, membership) if membership else "Guest"
+    return {
+        "id": comment.id,
+        "plan_item_id": comment.plan_item_id,
+        "membership_id": comment.trip_membership_id,
+        "name": name,
+        "initials": _initials(name),
+        "text": comment.body,
+        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+        "is_me": comment.trip_membership_id == me.id,
     }
 
 
@@ -279,6 +373,43 @@ def health() -> dict:
     return {"ok": True}
 
 
+@app.post("/api/auth/login")
+def login(body: LoginRequest, db: Session = Depends(get_session)) -> dict:
+    try:
+        result = auth_service.login(
+            db,
+            email=body.email,
+            password=body.password,
+        )
+    except auth_service.InvalidCredentials as exc:
+        raise HTTPException(401, str(exc)) from exc
+    db.commit()
+    default_membership = result.memberships[0] if result.memberships else None
+    return {
+        "token": result.token,
+        "user": {
+            "id": result.user.id,
+            "name": result.user.name,
+            "email": result.user.email,
+            "initials": _initials(result.user.name),
+        },
+        "memberships": result.memberships,
+        "default_membership": default_membership,
+    }
+
+
+@app.post("/api/auth/logout")
+def logout(
+    db: Session = Depends(get_session),
+    authorization: str | None = Header(default=None),
+) -> dict:
+    token = _bearer_token(authorization)
+    if token:
+        auth_service.revoke_token(db, token)
+        db.commit()
+    return {"ok": True}
+
+
 @app.get("/api/me")
 def get_me(
     db: Session = Depends(get_session),
@@ -335,9 +466,28 @@ def get_current_plan(trip_id: str, db: Session = Depends(get_session)) -> dict:
     return {
         "plan_id": plan.id,
         "status": plan.status,
+        "blocked_reason": plan.blocked_reason,
         "estimated_total_per_person": plan.estimated_total_per_person,
         "days": [{"day_index": d, "items": v} for d, v in sorted(days.items())],
     }
+
+
+@app.get("/api/trips/{trip_id}/comments")
+def get_trip_comments(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> list[dict]:
+    """Public group notes for itinerary items in this trip."""
+    _same_trip(me, trip_id)
+    comments = db.scalars(
+        select(PlanItemComment)
+        .join(PlanItem, PlanItemComment.plan_item_id == PlanItem.id)
+        .join(Plan, PlanItem.plan_id == Plan.id)
+        .where(Plan.trip_id == trip_id)
+        .order_by(PlanItemComment.created_at, PlanItemComment.id)
+    ).all()
+    return [_comment_out(db, comment, me) for comment in comments]
 
 
 @app.get("/api/trips/{trip_id}/updates")
@@ -402,7 +552,7 @@ def get_trip_actions(
         .join(Plan, PlanItem.plan_id == Plan.id)
         .where(
             Plan.trip_id == trip_id,
-            ChangeProposal.status == "waiting_affected_members",
+            ChangeProposal.status.in_(("waiting_affected_members", "escalated")),
         )
         .order_by(ChangeProposal.created_at.desc())
     ).all()
@@ -457,17 +607,24 @@ def chat_with_trip(
     return {"reply": result.reply, "proposed_change": proposed}
 
 
+def _round_payload(db: Session, round_id: str, membership_id: str | None) -> dict:
+    """路由内部要复用这段就调它,别直接调路由函数 ——
+    路由的默认值是 Header(...) 这类依赖对象,直接调会把它当成真实参数传下去。
+    """
+    round_ = db.get(DecisionRound, round_id)
+    if round_ is None:
+        raise HTTPException(404, "Round not found")
+    me = db.get(TripMembership, membership_id) if membership_id else None
+    return _round_out(db, round_, me)
+
+
 @app.get("/api/rounds/{round_id}")
 def get_round(
     round_id: str,
     db: Session = Depends(get_session),
     x_membership_id: str | None = Header(default=None),
 ) -> dict:
-    round_ = db.get(DecisionRound, round_id)
-    if round_ is None:
-        raise HTTPException(404, "Round not found")
-    me = db.get(TripMembership, x_membership_id) if x_membership_id else None
-    return _round_out(db, round_, me)
+    return _round_payload(db, round_id, x_membership_id)
 
 
 @app.get("/api/plans/{plan_id}/changes")
@@ -515,6 +672,9 @@ def create_trip(
         "destination": created.trip.destination,
         "status": created.trip.status,
         "plan_id": created.plan.id,
+        # 创建者在新 trip 里是另一个 membership。不返回它，前端就没法把身份切过去，
+        # 之后调这趟旅行的任何接口都会因为"身份属于别的旅行"被拒。
+        "membership_id": created.membership.id,
     }
 
 
@@ -581,6 +741,32 @@ def revoke_invite(
     return {"revoked": True}
 
 
+@app.post("/api/trips/{trip_id}/plans/generate")
+def generate_trip_plan(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    try:
+        result = plan_generator.generate_plan(db, trip_id, me)
+    except plan_generator.OrganizerRequired as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except plan_generator.OrganizerPreferencesRequired as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except plan_generator.PlanAlreadyHasItems as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except plan_generator.TripNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    db.commit()
+    return {
+        "plan_id": result.plan.id,
+        "status": result.status,
+        "days": result.days,
+        "blocked_reason": result.blocked_reason,
+        "generated_by": result.generated_by,
+    }
+
+
 @app.post("/api/plans/items/{item_id}/classify")
 def classify_only(
     item_id: str,
@@ -630,6 +816,50 @@ def submit_change(
     return _outcome_out(outcome)
 
 
+@app.post("/api/plans/items/{item_id}/comments")
+def add_item_comment(
+    item_id: str,
+    body: CommentRequest,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    item = db.get(PlanItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Item not found")
+    _same_trip(me, item.plan.trip_id)
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(422, "Comment cannot be empty")
+    comment = PlanItemComment(
+        plan_item_id=item.id,
+        trip_membership_id=me.id,
+        body=text,
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return _comment_out(db, comment, me)
+
+
+@app.patch("/api/plans/items/{item_id}/booking")
+def set_item_booking(
+    item_id: str,
+    body: BookingRequest,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    item = db.get(PlanItem, item_id)
+    if item is None:
+        raise HTTPException(404, "Item not found")
+    try:
+        updated = orch.set_booking_status(db, item, me, body.booked)
+    except orch.WrongTrip as exc:
+        raise HTTPException(403, str(exc)) from exc
+    db.commit()
+    db.refresh(updated)
+    return _item_out(updated)
+
+
 @app.post("/api/updates/{notice_id}/object")
 def object_to_notice(
     notice_id: str,
@@ -640,7 +870,10 @@ def object_to_notice(
     notice = db.get(UpdateNotice, notice_id)
     if notice is None or not notice.can_object:
         raise HTTPException(404, "Nothing to object to")
-    outcome = orch.object_to_notice(db, notice)
+    try:
+        outcome = orch.object_to_notice(db, notice)
+    except orch.AlreadyPending as exc:
+        raise HTTPException(409, str(exc)) from exc
     db.commit()
     return _outcome_out(outcome)
 
@@ -657,7 +890,7 @@ def vote(
         raise HTTPException(404, "Round is not open")
     orch.cast_vote(db, round_, me.id, body.option_id)
     db.commit()
-    return get_round(round_id, db)
+    return _round_payload(db, round_id, me.id)
 
 
 @app.post("/api/rounds/{round_id}/settle")
@@ -668,7 +901,7 @@ def settle(round_id: str, db: Session = Depends(get_session)) -> dict:
         raise HTTPException(404, "Round not found")
     orch.settle_round(db, round_)
     db.commit()
-    return get_round(round_id, db)
+    return _round_payload(db, round_id, None)
 
 
 @app.post("/api/proposals/{proposal_id}/decisions")
@@ -777,6 +1010,7 @@ def list_members(
     db: Session = Depends(get_session),
 ) -> dict:
     """谁在这趟旅行里，交没交偏好。**只说交没交，不说交了什么。**"""
+    _same_trip(me, trip_id)
     return pref_service.list_members(db, me)
 
 
