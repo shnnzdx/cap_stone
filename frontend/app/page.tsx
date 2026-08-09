@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { DemoPanel } from "./ui";
 import FeatureStory from "./FeatureStory";
-import HeroStory from "./HeroStory";
+import HomeIntroSequence from "./HomeIntroSequence";
 import PeopleProblem from "./PeopleProblem";
-import ProductPrinciples from "./ProductPrinciples";
 import ProductScrollFlow from "./ProductScrollFlow";
 import SiteHeader from "./SiteHeader";
 
@@ -12,13 +11,7 @@ export default function Home() {
     <main className="product-page">
       <Header />
       <ProductScrollFlow />
-      <HeroStory />
-
-      <section className="section product-overview" id="product-overview">
-        <div className="shell">
-          <ProductPrinciples />
-        </div>
-      </section>
+      <HomeIntroSequence />
 
       <PeopleProblem />
 

@@ -9,6 +9,10 @@ export type IdeaSphereStoryMotion = {
   rotationDamp: number;
   shatter: number;
   mapProgress: number;
+  mapPresence: number;
+  principleFocusX: number;
+  principleFocusY: number;
+  principleFocusStrength: number;
 };
 
 type IdeaParticle = {
@@ -65,6 +69,9 @@ const vertexShader = `
   uniform float uShatter;
   uniform float uShatterScale;
   uniform float uMapProgress;
+  uniform float uMapPresence;
+  uniform vec2 uPrincipleFocus;
+  uniform float uPrincipleFocusStrength;
 
   void main() {
     vec3 displaced = position;
@@ -105,11 +112,17 @@ const vertexShader = `
     gl_Position = projectionMatrix * mvPosition;
 
     float depthScale = clamp(2.32 / -mvPosition.z, 0.42, 2.05);
-    gl_PointSize = aSize * uPixelRatio * depthScale * mix(1.0, 1.05, uAbsorption) * mix(1.0, 0.88, releaseEase) * mix(1.0, 1.02, mapEaseGlobal);
+    vec2 particleNdc = gl_Position.xy / gl_Position.w;
+    float focusDistance = distance(particleNdc, uPrincipleFocus);
+    float focusMask = (1.0 - smoothstep(0.11, 0.32, focusDistance)) * uPrincipleFocusStrength * mapEaseGlobal;
+    float mapPresenceSize = mix(1.0, mix(0.9, 1.0, uMapPresence), mapEaseGlobal);
+    gl_PointSize = aSize * uPixelRatio * depthScale * mix(1.0, 1.05, uAbsorption) * mix(1.0, 0.88, releaseEase) * mix(1.0, 1.02, mapEaseGlobal) * mapPresenceSize * mix(1.0, 1.045, focusMask);
 
+    float mapPresenceAlpha = mix(1.0, uMapPresence, mapEaseGlobal);
+    float mapPresenceBrightness = mix(1.0, mix(0.72, 1.0, uMapPresence), mapEaseGlobal);
     vColor = color;
-    vAlpha = aAlpha * mix(1.0, 1.14, uAbsorption) * mix(1.0, 0.92, releaseEase) * mix(1.0, 1.08, mapEaseGlobal);
-    vBrightness = aBrightness * clamp(depthScale, 0.82, 1.24) * mix(1.0, 1.07, uAbsorption) * mix(1.0, 0.96, releaseEase) * mix(1.0, 1.04, mapEaseGlobal);
+    vAlpha = aAlpha * mix(1.0, 1.14, uAbsorption) * mix(1.0, 0.92, releaseEase) * mix(1.0, 1.08, mapEaseGlobal) * mapPresenceAlpha * mix(1.0, 1.16, focusMask);
+    vBrightness = aBrightness * clamp(depthScale, 0.82, 1.24) * mix(1.0, 1.07, uAbsorption) * mix(1.0, 0.96, releaseEase) * mix(1.0, 1.04, mapEaseGlobal) * mapPresenceBrightness * mix(1.0, 1.1, focusMask);
   }
 `;
 
@@ -173,6 +186,7 @@ function projectedLabelPlacement(x: number, y: number, width: number, height: nu
 
 type IdeaSphereCanvasProps = {
   storyMotionRef?: MutableRefObject<IdeaSphereStoryMotion>;
+  visibilityRootRef?: MutableRefObject<HTMLElement | HTMLDivElement | null>;
 };
 
 function shatterScaleForViewport(width: number) {
@@ -314,7 +328,7 @@ async function sampleWorldMapMask(count: number, viewportWidth: number): Promise
   return assignMapTargets(candidates, count, viewportWidth, candidates.length ? "mask" : "fallback");
 }
 
-export default function IdeaSphereCanvas({ storyMotionRef }: IdeaSphereCanvasProps) {
+export default function IdeaSphereCanvas({ storyMotionRef, visibilityRootRef }: IdeaSphereCanvasProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const labelRef = useRef<HTMLDivElement | null>(null);
   const labelTextNodeRef = useRef<HTMLSpanElement | null>(null);
@@ -517,6 +531,9 @@ export default function IdeaSphereCanvas({ storyMotionRef }: IdeaSphereCanvasPro
         uShatter: { value: 0 },
         uShatterScale: { value: shatterScaleForViewport(window.innerWidth) },
         uMapProgress: { value: 0 },
+        uMapPresence: { value: 1 },
+        uPrincipleFocus: { value: new THREE.Vector2(0, 0) },
+        uPrincipleFocusStrength: { value: 0 },
       },
     });
 
@@ -738,9 +755,16 @@ export default function IdeaSphereCanvas({ storyMotionRef }: IdeaSphereCanvasPro
       const rotationDamp = storyMotion?.rotationDamp ?? 1;
       const shatter = storyMotion?.shatter ?? 0;
       const mapProgress = storyMotion?.mapProgress ?? 0;
+      const mapPresence = THREE.MathUtils.clamp(storyMotion?.mapPresence ?? 1, 0, 1);
+      const principleFocusX = THREE.MathUtils.clamp(storyMotion?.principleFocusX ?? 0, -1, 1);
+      const principleFocusY = THREE.MathUtils.clamp(storyMotion?.principleFocusY ?? 0, -1, 1);
+      const principleFocusStrength = THREE.MathUtils.clamp(storyMotion?.principleFocusStrength ?? 0, 0, 1);
       material.uniforms.uAbsorption.value = reduced ? 0 : absorption;
       material.uniforms.uShatter.value = reduced ? 0 : shatter;
       material.uniforms.uMapProgress.value = mapProgress;
+      material.uniforms.uMapPresence.value = mapPresence;
+      material.uniforms.uPrincipleFocus.value.set(principleFocusX, principleFocusY);
+      material.uniforms.uPrincipleFocusStrength.value = reduced ? 0 : principleFocusStrength;
       const breath = reduced ? 1 : 1 + Math.sin(elapsed * 0.42) * 0.004;
       const mapRotationEase = THREE.MathUtils.smoothstep(mapProgress, 0.08, 0.86);
       const targetYaw = pointerRef.current.x && pointerRef.current.inside
@@ -790,7 +814,7 @@ export default function IdeaSphereCanvas({ storyMotionRef }: IdeaSphereCanvasPro
 
     const resizeObserver = new ResizeObserver(() => resize());
 
-    observer.observe(mount);
+    observer.observe(visibilityRootRef?.current ?? mount);
     resizeObserver.observe(mount);
     window.addEventListener("resize", resize);
     mount.addEventListener("pointermove", onPointerMove);
@@ -814,7 +838,7 @@ export default function IdeaSphereCanvas({ storyMotionRef }: IdeaSphereCanvasPro
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [ideas]);
+  }, [ideas, visibilityRootRef]);
 
   return (
     <div className="idea-sphere-canvas" ref={mountRef} aria-label="A field of traveler ideas transforming into a dotted world map">

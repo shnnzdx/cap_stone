@@ -1,119 +1,262 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, type MutableRefObject } from "react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useGSAP } from "@gsap/react";
+import type { IdeaSphereStoryMotion } from "./IdeaSphereCanvas";
+
+gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const principles = [
-  { key: "validate", word: "Validate", symbol: "*", tone: "validate", range: [0.16, 0.4] as const },
-  { key: "protect", word: "Protect", symbol: "[]", tone: "protect", range: [0.34, 0.58] as const },
-  { key: "explain", word: "Explain", symbol: "~", tone: "explain", range: [0.52, 0.76] as const },
-  { key: "confirm", word: "Confirm", symbol: "v", tone: "confirm", range: [0.7, 0.9] as const },
+  {
+    key: "validate",
+    word: "Validate",
+    symbol: "*",
+    tone: "validate",
+    description: "Make sure the group is working from real preferences.",
+    focusOffset: { x: 0.08, y: -0.06 },
+    entryX: -12,
+  },
+  {
+    key: "protect",
+    word: "Protect",
+    symbol: "[]",
+    tone: "protect",
+    description: "Keep private input private by default.",
+    focusOffset: { x: -0.08, y: -0.06 },
+    entryX: 12,
+  },
+  {
+    key: "explain",
+    word: "Explain",
+    symbol: "~",
+    tone: "explain",
+    description: "Show how the plan got to this decision.",
+    focusOffset: { x: 0.07, y: 0.06 },
+    entryX: -10,
+  },
+  {
+    key: "confirm",
+    word: "Confirm",
+    symbol: "v",
+    tone: "confirm",
+    description: "Turn agreement into a clear next step.",
+    focusOffset: { x: -0.08, y: 0.06 },
+    entryX: 12,
+  },
 ];
 
-const clamp = (value: number) => Math.max(0, Math.min(1, value));
-const getReveal = (progress: number, start: number, end: number) => clamp((progress - start) / Math.max(end - start, 0.0001));
-const easeOutQuad = (value: number) => 1 - Math.pow(1 - value, 2);
-const headingOffset = 108;
-const itemOffsets = [202, 156, 118, 84] as const;
+type ProductPrinciplesProps = {
+  storyMotionRef: MutableRefObject<IdeaSphereStoryMotion>;
+};
 
-export default function ProductPrinciples() {
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const [progress, setProgress] = useState(0);
+type FocusPoint = {
+  x: number;
+  y: number;
+};
 
-  useEffect(() => {
-    const section = sectionRef.current;
-    if (!section) return;
+export default function ProductPrinciples({ storyMotionRef }: ProductPrinciplesProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const focusTargetsRef = useRef<Record<string, FocusPoint>>({});
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceMotion) {
-      setProgress(1);
-      return;
-    }
+  useGSAP(() => {
+    const root = rootRef.current;
+    if (!root) return;
 
-    let progressFrame = 0;
-    const updateProgress = () => {
-      const rect = section.getBoundingClientRect();
-      const distance = Math.max(1, section.offsetHeight - window.innerHeight);
-      const next = clamp(-rect.top / distance);
-      if (progressFrame) cancelAnimationFrame(progressFrame);
-      progressFrame = requestAnimationFrame(() => {
-        setProgress(next);
-        progressFrame = 0;
+    const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const stage = root.querySelector<HTMLElement>(".principle-stage");
+    const headingKicker = root.querySelector<HTMLElement>(".principle-heading .eyebrow");
+    const heading = root.querySelector<HTMLElement>(".principle-heading h2");
+    const lines = principles
+      .map((principle) => root.querySelector<HTMLElement>(`[data-principle="${principle.key}"]`))
+      .filter((line): line is HTMLElement => Boolean(line));
+    const symbols = lines
+      .map((line) => line.querySelector<HTMLElement>(".principle-symbol"))
+      .filter((symbol): symbol is HTMLElement => Boolean(symbol));
+    const words = lines
+      .map((line) => line.querySelector<HTMLElement>("h3"))
+      .filter((word): word is HTMLElement => Boolean(word));
+    const descriptions = lines
+      .map((line) => line.querySelector<HTMLElement>("p"))
+      .filter((description): description is HTMLElement => Boolean(description));
+    const clampNdc = gsap.utils.clamp(-0.92, 0.92);
+    const motion = storyMotionRef.current;
+    let timeline: gsap.core.Timeline | null = null;
+    let resizeFrame = 0;
+
+    const measureFocusTargets = () => {
+      if (!stage) return;
+
+      const stageRect = stage.getBoundingClientRect();
+      const stageStyle = window.getComputedStyle(stage);
+      const stickyTop = Number.parseFloat(stageStyle.top) || 0;
+      const nextTargets: Record<string, FocusPoint> = {};
+      for (const principle of principles) {
+        const element = root.querySelector<HTMLElement>(`[data-principle="${principle.key}"]`);
+        if (!element) continue;
+
+        const rect = element.getBoundingClientRect();
+        const relativeCenterX = rect.left - stageRect.left + rect.width / 2;
+        const relativeCenterY = rect.top - stageRect.top + rect.height / 2;
+        const centerX = stageRect.left + relativeCenterX;
+        const centerY = stickyTop + relativeCenterY;
+
+        nextTargets[principle.key] = {
+          x: clampNdc((centerX / window.innerWidth) * 2 - 1 + principle.focusOffset.x),
+          y: clampNdc(1 - (centerY / window.innerHeight) * 2 + principle.focusOffset.y),
+        };
+      }
+
+      focusTargetsRef.current = nextTargets;
+    };
+
+    const focusStrengthScale = () => {
+      if (window.innerWidth < 620) return 0.48;
+      if (window.innerWidth < 980) return 0.82;
+      return 1;
+    };
+    const focusFor = (key: string) => focusTargetsRef.current[key] ?? { x: 0, y: 0 };
+    const focusTween = (key: string, strength: number, duration: number) => ({
+      principleFocusX: () => focusFor(key).x,
+      principleFocusY: () => focusFor(key).y,
+      principleFocusStrength: () => strength * focusStrengthScale(),
+      duration,
+    });
+    const resetFocus = () => {
+      motion.principleFocusStrength = 0;
+      motion.principleFocusX = 0;
+      motion.principleFocusY = 0;
+    };
+    const onResize = () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        measureFocusTargets();
+        timeline?.invalidate();
       });
     };
 
-    updateProgress();
+    measureFocusTargets();
+    window.addEventListener("resize", onResize);
 
-    window.addEventListener("scroll", updateProgress, { passive: true });
-    window.addEventListener("resize", updateProgress);
+    if (reduceMotionQuery.matches) {
+      gsap.set([headingKicker, heading, ...lines, ...symbols, ...words, ...descriptions], { clearProps: "all" });
+      resetFocus();
+      return () => {
+        cancelAnimationFrame(resizeFrame);
+        window.removeEventListener("resize", onResize);
+      };
+    }
+
+    gsap.set([headingKicker, heading, ...lines, ...symbols, ...words, ...descriptions], { autoAlpha: 1 });
+    gsap.set(headingKicker, { autoAlpha: 0, y: 8 });
+    gsap.set(heading, { autoAlpha: 0, y: 22, scale: 0.995 });
+    gsap.set(lines, { autoAlpha: 0, scale: 0.985 });
+    gsap.set(symbols, { autoAlpha: 0, y: 10, scale: 0.96 });
+    gsap.set(words, { autoAlpha: 0, y: 20, scale: 0.985 });
+    gsap.set(descriptions, { autoAlpha: 0, y: 14 });
+
+    timeline = gsap.timeline({
+      defaults: { ease: "none" },
+      scrollTrigger: {
+        trigger: root,
+        start: "top 78%",
+        end: "bottom 18%",
+        scrub: 0.72,
+        invalidateOnRefresh: true,
+        refreshPriority: 1,
+        onRefresh: () => {
+          measureFocusTargets();
+          timeline?.invalidate();
+        },
+        onLeaveBack: resetFocus,
+      },
+    });
+
+    timeline
+      .to({}, { duration: 0.04 }, 0)
+      .to(headingKicker, { autoAlpha: 1, y: 0, duration: 0.12 }, 0.04)
+      .to(heading, { autoAlpha: 1, y: 0, scale: 1, duration: 0.14 }, 0.08);
+
+    const activatePrinciple = (index: number, start: number, peakStrength: number) => {
+      const principle = principles[index];
+      const line = lines[index];
+      const symbol = symbols[index];
+      const word = words[index];
+      const description = descriptions[index];
+      if (!line || !symbol || !word || !description) return;
+
+      const previous = lines.slice(0, index);
+      if (previous.length) {
+        timeline?.to(previous, { autoAlpha: 0.66, scale: 0.99, duration: 0.1 }, start + 0.035);
+      }
+
+      timeline
+        ?.to(motion, focusTween(principle.key, peakStrength, 0.12), start)
+        .to(line, { autoAlpha: 1, scale: 1, duration: 0.08 }, start)
+        .fromTo(
+          symbol,
+          { autoAlpha: 0, x: principle.entryX * 0.35, y: 10, scale: 0.96 },
+          { autoAlpha: 1, x: 0, y: 0, scale: 1, duration: 0.1 },
+          start,
+        )
+        .fromTo(
+          word,
+          { autoAlpha: 0, x: principle.entryX, y: 20, scale: 0.985 },
+          { autoAlpha: 1, x: 0, y: 0, scale: 1, duration: 0.12 },
+          start + 0.02,
+        )
+        .fromTo(
+          description,
+          { autoAlpha: 0, x: principle.entryX * 0.45, y: 14 },
+          { autoAlpha: 1, x: 0, y: 0, duration: 0.11 },
+          start + 0.055,
+        )
+        .to(line, { autoAlpha: 1, scale: 1, duration: 0.1 }, start + 0.08)
+        .to(motion, { principleFocusStrength: () => 0.22 * focusStrengthScale(), duration: 0.11 }, start + 0.135);
+    };
+
+    activatePrinciple(0, 0.18, 0.78);
+    activatePrinciple(1, 0.34, 0.82);
+    activatePrinciple(2, 0.5, 0.76);
+    activatePrinciple(3, 0.66, 0.82);
+
+    timeline
+      .to(lines, { autoAlpha: 0.94, scale: 1, duration: 0.1, stagger: 0.01 }, 0.86)
+      .to(descriptions, { autoAlpha: 1, duration: 0.08 }, 0.86)
+      .to(motion, { principleFocusStrength: () => 0.16 * focusStrengthScale(), duration: 0.08 }, 0.88)
+      .to({}, { duration: 0.18 }, 0.94);
 
     return () => {
-      window.removeEventListener("scroll", updateProgress);
-      window.removeEventListener("resize", updateProgress);
-      cancelAnimationFrame(progressFrame);
+      cancelAnimationFrame(resizeFrame);
+      window.removeEventListener("resize", onResize);
+      resetFocus();
     };
-  }, []);
-
-  const getMotionStyle = (start: number, end: number, offset: number) => {
-    const reveal = easeOutQuad(getReveal(progress, start, end));
-    return {
-      opacity: reveal,
-      transform: `translate3d(0, ${offset * (1 - reveal)}px, 0)`,
-    };
-  };
+  }, { scope: rootRef });
 
   return (
-    <div className="principle-scroll" ref={sectionRef} aria-label="TripSync core product principles">
+    <div className="principle-scroll" aria-label="TripSync core product principles" ref={rootRef}>
       <div className="principle-stage">
-        <div className="principle-map" aria-hidden="true">
-          <div className="principle-map-motion" style={getMotionStyle(0.0, 0.26, headingOffset)}>
-            <div className="principle-map-land" />
-            <svg className="principle-route" viewBox="0 0 1200 660" preserveAspectRatio="xMidYMid meet">
-              <path className="principle-route-guide" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
-              <path className="principle-route-line" pathLength="1" d="M154 174 C252 150 304 206 390 230 S548 252 630 324 S768 412 862 420 S992 456 1052 510" />
-              <g className="principle-route-points">
-                {[
-                  [154, 174], [232, 166], [310, 206], [390, 230], [474, 242], [554, 274], [630, 324],
-                  [694, 378], [770, 412], [862, 420], [940, 442], [1004, 474], [1052, 510],
-                ].map(([x, y], index) => (
-                  <circle className="principle-route-point" cx={x} cy={y} r="5" key={`${x}-${y}`}>
-                    <animate
-                      attributeName="opacity"
-                      dur="8s"
-                      repeatCount="indefinite"
-                      values="0;0;.62;.62;0"
-                      keyTimes={`0;${(0.1 + index * 0.056).toFixed(3)};${(0.12 + index * 0.056).toFixed(3)};.88;1`}
-                    />
-                  </circle>
-                ))}
-              </g>
-            </svg>
-          </div>
-        </div>
         <header className="principle-heading">
-          <div className="principle-heading-position">
-            <div className="principle-heading-motion" style={getMotionStyle(0.0, 0.26, headingOffset)}>
-              <p className="eyebrow"><span>01</span><span>PRODUCT CORE</span></p>
-              <h2><span>Built for real group</span><strong>decisions.</strong></h2>
-            </div>
-          </div>
+          <p className="eyebrow"><span>01</span><span>PRODUCT CORE</span></p>
+          <h2><span>Built for real</span> <strong>group decisions.</strong></h2>
         </header>
 
-        {principles.map((principle, index) => (
-          <div className={`principle-line ${principle.tone}`} key={principle.key}>
-            <div className="principle-mask">
-              <div className="principle-item-position">
-                <div
-                  className="principle-word principle-item-motion"
-                  style={getMotionStyle(principle.range[0], principle.range[1], itemOffsets[index])}
-                >
-                  <span>{principle.symbol}</span>
-                  <strong>{principle.word}</strong>
-                </div>
+        <div className="principle-anchor-field">
+          {principles.map((principle) => (
+            <article
+              className={`principle-line principle-line--${principle.tone}`}
+              data-principle={principle.key}
+              key={principle.key}
+            >
+              <div className="principle-word">
+                <span className="principle-symbol" aria-hidden="true">{principle.symbol}</span>
+                <h3>{principle.word}</h3>
+                <p>{principle.description}</p>
               </div>
-            </div>
-          </div>
-        ))}
-
+            </article>
+          ))}
+        </div>
       </div>
     </div>
   );

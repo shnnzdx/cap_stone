@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type MutableRefObject } from "react";
-import IdeaSphereCanvas, { type IdeaSphereStoryMotion } from "./IdeaSphereCanvas";
+import { useState, type CSSProperties, type Ref } from "react";
 
 const heroInputs = [
   {
@@ -132,17 +131,16 @@ export function HeroInputCluster() {
 }
 
 type BrandConstellationProps = {
-  storyMotionRef?: MutableRefObject<IdeaSphereStoryMotion>;
+  anchorRef?: Ref<HTMLDivElement>;
 };
 
-export function BrandConstellation({ storyMotionRef }: BrandConstellationProps) {
+export function BrandConstellation({ anchorRef }: BrandConstellationProps) {
   return (
     <div
-      className="constellation idea-sphere-stage"
+      className="constellation idea-sphere-anchor"
+      ref={anchorRef}
       aria-label="Different traveler ideas gather into one shared planning space"
-    >
-      <IdeaSphereCanvas storyMotionRef={storyMotionRef} />
-    </div>
+    />
   );
 }
 
