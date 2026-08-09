@@ -3,7 +3,7 @@
 Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、决策流水账。
 
 产品逻辑以 [`../README.md`](../README.md) 和 [`../trip/BACKEND.md`](../trip/BACKEND.md) 为准。
-今天做了什么、接下来怎么接着做,见 [`../trip/交接.md`](../trip/交接.md)。
+今天做了什么、接下来怎么接着做,见 [`../交接.md`](../交接.md)。
 
 ---
 
@@ -11,22 +11,53 @@ Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、
 
 需要 PostgreSQL(本机已装 `postgresql@15`)和 Python 3.13。
 
+第一次从 fresh 包启动,先开后端。前端登录页只是页面,真正登录会请求
+`http://localhost:8000/api/auth/login`;如果后端没开,同学会看到
+`Could not reach the backend. Make sure the API is running.`。
+
 ```bash
-cd backend
+cd /Users/carina/Desktop/main_sync_fresh/backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp .env.example .env          # 填 DATABASE_URL 和 OPENAI_API_KEY
-createdb tripsync && createdb tripsync_test
-.venv/bin/python -m app.db.seed      # 建表 + 灌演示数据
-.venv/bin/uvicorn app.api.main:app --port 8000 --reload
+cp .env.example .env
+createdb tripsync
+createdb tripsync_test
+MOCK_AI=1 .venv/bin/python -m app.db.seed
+MOCK_AI=1 .venv/bin/uvicorn app.api.main:app --port 8000 --reload
 ```
 
 打开 http://localhost:8000/docs —— 所有接口都能直接点着试。
 
+后端这条 `uvicorn` 命令要一直开着,不要关终端。另开一个终端跑前端:
+
+```bash
+cd /Users/carina/Desktop/main_sync_fresh/frontend
+npm install
+npm run dev
+```
+
+打开 http://localhost:3000/login,用演示账号登录:
+
+```text
+email: organizer@cadensy.local
+password: 12345678
+```
+
+如果前端不是跑在 `3000`,要把实际地址加到后端 `.env` 的 `CORS_ORIGINS`,然后重启后端。
+
+### 登录不上时先看这里
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `Could not reach the backend` | 后端没启动,或不是 `8000` 端口 | 运行 `MOCK_AI=1 .venv/bin/uvicorn app.api.main:app --port 8000 --reload` |
+| `Invalid email or password` | 数据库没灌演示账号,或密码列还没补 | 跑 `MOCK_AI=1 .venv/bin/python -m app.db.seed`;已有数据不想删时跑 `.venv/bin/python -m app.db.enable_auth` |
+| 后端启动时报数据库连接错误 | PostgreSQL 没开,或库没建 | 先启动 PostgreSQL,再跑 `createdb tripsync` |
+| AI 相关接口报 key 问题 | 没有配置 OpenAI key | 开发演示用 `MOCK_AI=1`,不用真实 key |
+
 跑测试:
 
 ```bash
-DISABLE_SCHEDULER=1 .venv/bin/python -m pytest -q
+DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
 ```
 
 `.venv/bin/python -m app.db.seed` 会**先删表再建表**,里面的数据全没。只在开发时用。
@@ -40,8 +71,13 @@ DISABLE_SCHEDULER=1 .venv/bin/python -m pytest -q
 | `DATABASE_URL` | 数据库地址 | `postgresql+psycopg://localhost/tripsync` |
 | `TEST_DATABASE_URL` | 测试库,和上面必须是两个库 | `…/tripsync_test` |
 | `OPENAI_API_KEY` | AI 用 | 无 |
+| `OPENAI_BASE_URL` | 换 DeepSeek 等兼容 OpenAI 协议供应商时用 | 无 |
+| `OPENAI_MODEL` | AI 模型名 | `gpt-4o-mini` |
+| `MOCK_AI` | 设成 `1` 用本地 mock,演示不用真实 key | `1` |
 | `SETTLE_TICK_SECONDS` | 多久检查一次到期的投票 | `60` |
 | `DISABLE_SCHEDULER` | 设成 `1` 关掉定时任务(测试时用) | 无 |
+| `FRONTEND_BASE_URL` | 邀请/登录跳转用的前端地址 | `http://localhost:5173` |
+| `CORS_ORIGINS` | 允许访问后端的前端地址 | `http://localhost:5173,http://localhost:3000` |
 
 **任何真实的 key 都不能写进代码。** 代码里只出现变量名。
 
@@ -63,7 +99,7 @@ app/
 │   └── seed.py              演示数据（Mia's 30th in Chicago）
 ├── api/main.py              HTTP 接口。薄层，不写业务判断
 └── jobs/scheduler.py        定时结算
-tests/                       58 条
+tests/                       153 条
 ```
 
 **依赖方向是单向的**:`api` → `domain` → `db`。`domain/constraints` 谁也不依赖。
@@ -107,7 +143,8 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 
 只做三件事:收参数、调 domain、转 JSON。**一条业务判断都不写。**
 
-身份目前靠请求头 `X-Membership-Id` 假装。真做登录时**只需要改 `current_membership()` 一个函数**,其余不动。
+身份现在优先走登录 session bearer token。为了本地开发和老接口兼容,仍保留
+`X-Membership-Id` 作为 dev fallback。
 
 ---
 
@@ -141,14 +178,14 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 
 `plan_change` 只追加,不修改,不删除。一个条目"现在长什么样"= 原始状态叠加所有改动。
 
-`origin` 记着每次改动怎么来的(`notice` / `round` / `reopen_round` / `confirm` / `ai_generate`)。
+`origin` 记着每次改动怎么来的(`notice` / `round` / `reopen_round` / `confirm` / `ai_generate` / `rule_generate`)。
 `GET /api/plans/{id}/changes` 把它摊开——**这是答辩时最有说服力的一屏**。
 
 ---
 
 ## 测试
 
-58 条,`pytest -q` 半秒跑完。分四组:
+153 条,`pytest -q` 很快跑完。主要分这些组:
 
 | 文件 | 守什么 |
 |---|---|
@@ -156,6 +193,10 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 | `test_schema.py` | 数据库自己守的那几条 |
 | `test_paths.py` | 三条路径从提出到落地的真实流程 |
 | `test_jobs.py` | 定时结算 + 地图坐标 |
+| `test_auth.py` | 登录、登出、session 和 bearer token |
+| `test_agent*.py` | Chat Agent 的规则命中、追问、委托选择和可执行变更 |
+| `test_plan_generation.py` | planner stub、AI 失败降级、生成计划写入流水账 |
+| `test_comments.py` / `test_booking.py` | 评论、预订状态和组织者动作 |
 
 有几条测试守的是**产品承诺**,不是代码细节——改它们之前先确认产品真的改了主意:
 
