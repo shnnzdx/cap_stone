@@ -41,8 +41,14 @@ DISABLE_SCHEDULER=1 .venv/bin/python -m pytest -q
 | `DATABASE_URL` | 数据库地址 | `postgresql+psycopg://localhost/tripsync` |
 | `TEST_DATABASE_URL` | 测试库,和上面必须是两个库 | `…/tripsync_test` |
 | `OPENAI_API_KEY` | AI 用 | 无 |
+| `OPENAI_BASE_URL` | 换 DeepSeek 等兼容 OpenAI 协议供应商时用 | 无 |
+| `OPENAI_MODEL` | AI 模型名 | `gpt-4o-mini` |
+| `MOCK_AI` | 设成 `1` 用本地 mock,演示不用真实 key | `1` |
 | `SETTLE_TICK_SECONDS` | 多久检查一次到期的投票 | `60` |
 | `DISABLE_SCHEDULER` | 设成 `1` 关掉定时任务(测试时用) | 无 |
+| `DEV_ALLOW_MEMBERSHIP_HEADER` | 本地保留 `X-Membership-Id` 调试入口 | `1` |
+| `FRONTEND_BASE_URL` | 邀请/登录跳转用的前端地址 | `http://localhost:5173` |
+| `CORS_ORIGINS` | 允许访问后端的前端地址 | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` |
 
 **任何真实的 key 都不能写进代码。** 代码里只出现变量名。
 
@@ -64,7 +70,7 @@ app/
 │   └── seed.py              演示数据（Mia's 30th in Chicago）
 ├── api/main.py              HTTP 接口。薄层，不写业务判断
 └── jobs/scheduler.py        定时结算
-tests/                       58 条
+tests/                       153 条
 ```
 
 **依赖方向是单向的**:`api` → `domain` → `db`。`domain/constraints` 谁也不依赖。
@@ -108,7 +114,8 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 
 只做三件事:收参数、调 domain、转 JSON。**一条业务判断都不写。**
 
-身份目前靠请求头 `X-Membership-Id` 假装。真做登录时**只需要改 `current_membership()` 一个函数**,其余不动。
+身份现在优先走登录 session bearer token。为了本地开发和老接口兼容,仍保留
+`X-Membership-Id` 作为 dev fallback。`DEV_ALLOW_MEMBERSHIP_HEADER=1` 时这个调试入口可用。
 
 ---
 
@@ -142,14 +149,14 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 
 `plan_change` 只追加,不修改,不删除。一个条目"现在长什么样"= 原始状态叠加所有改动。
 
-`origin` 记着每次改动怎么来的(`notice` / `round` / `reopen_round` / `confirm` / `ai_generate`)。
+`origin` 记着每次改动怎么来的(`notice` / `round` / `reopen_round` / `confirm` / `ai_generate` / `rule_generate`)。
 `GET /api/plans/{id}/changes` 把它摊开——**这是答辩时最有说服力的一屏**。
 
 ---
 
 ## 测试
 
-58 条,`pytest -q` 半秒跑完。分四组:
+153 条,`pytest -q` 很快跑完。主要分这些组:
 
 | 文件 | 守什么 |
 |---|---|
@@ -157,6 +164,10 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 | `test_schema.py` | 数据库自己守的那几条 |
 | `test_paths.py` | 三条路径从提出到落地的真实流程 |
 | `test_jobs.py` | 定时结算 + 地图坐标 |
+| `test_auth.py` | 登录、登出、session 和 bearer token |
+| `test_agent*.py` | Chat Agent 的规则命中、追问、委托选择和可执行变更 |
+| `test_plan_generation.py` | planner stub、AI 失败降级、生成计划写入流水账 |
+| `test_comments.py` / `test_booking.py` | 评论、预订状态和组织者动作 |
 
 有几条测试守的是**产品承诺**,不是代码细节——改它们之前先确认产品真的改了主意:
 

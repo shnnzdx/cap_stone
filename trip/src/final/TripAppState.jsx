@@ -5,7 +5,7 @@ const TripAppContext = createContext(null)
 
 export const useTripApp = () => useContext(TripAppContext)
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 const TRIP_ID = import.meta.env.VITE_TRIP_ID
 const MEMBERSHIP_ID = import.meta.env.VITE_MEMBERSHIP_ID
 const DEV_ALLOW_MEMBERSHIP_HEADER = import.meta.env.VITE_DEV_ALLOW_MEMBERSHIP_HEADER === '1'
