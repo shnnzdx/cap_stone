@@ -5,3 +5,5 @@ __pycache__/
 
 # 真实的 key 和数据库地址放这里,永远不提交
 .env
+backend-dev.log
+backend-dev.err.log

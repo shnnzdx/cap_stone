@@ -3,6 +3,7 @@
 Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、决策流水账。
 
 产品逻辑以 [`../README.md`](../README.md) 和 [`../trip/BACKEND.md`](../trip/BACKEND.md) 为准。
+本地后端、PostgreSQL、`.env` 和启动步骤见 [`LOCAL_DEV.md`](LOCAL_DEV.md)。
 今天做了什么、接下来怎么接着做,见 [`../trip/交接.md`](../trip/交接.md)。
 
 ---
