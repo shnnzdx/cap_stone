@@ -1032,11 +1032,11 @@ A future scale-out architecture should separate API tasks and scheduled work.
 
 ---
 
-# 16. Preferred Candidate AWS Architecture, Pending Frontend Hosting Proof
+# 16. Preferred Candidate AWS Architecture, Pending Final Frontend Hosting Decision
 
 This is the preferred candidate architecture, not yet the final approved deployment architecture.
 
-The frontend hosting decision is not locked until Vinext / Nitro / Amplify compatibility is validated in AWS Phase 3.
+AWS Phase 3 proved that the current frontend build is not a pure static hosting artifact. It emits both `dist/client` and `dist/server`, so the final frontend hosting decision still requires an SSR-compatible compute path.
 
 Candidate architecture:
 
@@ -1050,9 +1050,10 @@ GitHub
 AWS us-east-1
 
 Frontend:
-Preferred candidate: Amplify Hosting
+Preferred candidate before Phase 3: Amplify Hosting
   -> main frontend
   -> embedded trip static output
+Current status: SSR hosting path still undecided
 
 Backend:
 Internet
@@ -1085,7 +1086,7 @@ Final hosting decision:
 NOT YET LOCKED
 
 Required before approval:
-Vinext / Nitro / Amplify compatibility validation
+SSR hosting path decision for Vinext / Nitro / Next.js 16.x output
 ```
 
 Codex must not skip the AWS Phase 3 frontend hosting proof simply because Amplify is listed as the preferred candidate.
@@ -1478,7 +1479,7 @@ mutate AWS
 
 ## Phase 3 — Frontend Hosting Proof
 
-Status: local proof implemented; awaiting manual GitHub Actions run.
+Status: completed.
 
 Investigate/validate:
 
@@ -1515,7 +1516,9 @@ Do not attempt to absorb `trip/src/final/*` pages into `frontend/app` during AWS
 
 ## Phase 4 — Database
 
-Create minimal RDS PostgreSQL only after the schema migration approach is safe.
+Status: database readiness validation completed.
+
+Create minimal RDS PostgreSQL only after the schema migration approach is approved for AWS.
 
 Required:
 
@@ -1529,7 +1532,11 @@ no destructive automatic seed
 
 ## Phase 5 — Backend
 
-Resources:
+Status: plan-only completed in `AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md`.
+
+No AWS resources have been created for Phase 5.
+
+Proposed resources after explicit approval:
 
 ```text
 ECR
@@ -1540,11 +1547,46 @@ ALB
 CloudWatch log group
 ```
 
-Initial:
+Initial service shape:
 
 ```text
+launch type=Fargate
+networkMode=awsvpc
 desiredCount=1
+cpu=256
+memory=512 MiB
 health path=/api/health
+deployment circuit breaker rollback=enabled
+healthCheckGracePeriodSeconds=60
+```
+
+Preferred first network option for the Capstone proof:
+
+```text
+ALB public
+Fargate task in public subnets with assignPublicIp enabled
+task security group accepts inbound 8000 only from ALB security group
+no NAT Gateway in the first proof unless explicitly approved
+```
+
+Reason:
+
+```text
+This avoids NAT Gateway cost and avoids requiring all private-subnet ECR/logs VPC endpoints for the first backend proof.
+```
+
+Production-hardening path:
+
+```text
+move Fargate tasks to private subnets
+use NAT Gateway or required VPC endpoints for ecr.dkr, ecr.api, s3, and logs
+add ssmmessages endpoint if ECS Exec is enabled
+```
+
+Phase 5 approval gate:
+
+```text
+Do not create ECR, ECS, ALB, CloudWatch, IAM roles, or networking resources until the user explicitly approves Phase 5 backend resource creation.
 ```
 
 ## Phase 6 — Runtime Secrets
