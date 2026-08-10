@@ -15,6 +15,12 @@ Workflow:
 .github/workflows/backend-ai-runtime-config.yml
 ```
 
+Supporting secret/bootstrap workflow:
+
+```text
+.github/workflows/backend-ai-secret-provision.yml
+```
+
 ## Why This Exists
 
 The current deployed backend still uses:
@@ -83,6 +89,37 @@ Expected sensitive SSM parameter name:
 This workflow checks only the parameter metadata path. It does not print the
 secret value.
 
+Expected GitHub `Main` environment secret used to provision that SSM parameter:
+
+```text
+TRIPSYNC_OPENAI_API_KEY
+```
+
+The provisioning workflow writes the SSM SecureString and updates the ECS
+execution role inline policy so the backend task can read both runtime
+parameters:
+
+```text
+/tripsync/backend/prod/database-url
+/tripsync/backend/prod/openai-api-key
+```
+
+## Provision Secret First
+
+In GitHub:
+
+```text
+Actions
+-> Backend AI Secret Provision
+-> Run workflow
+```
+
+Typical input:
+
+```text
+openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
+```
+
 ## Manual Run
 
 In GitHub:
@@ -137,8 +174,9 @@ when `mock_ai=false`.
 `SSM parameter /tripsync/backend/prod/openai-api-key was not found`
 
 ```text
-The AI provider key parameter does not exist yet, or the workflow name is wrong.
-Create or correct the SSM SecureString before re-running the workflow.
+The AI provider key parameter does not exist yet, or the workflow input name is
+wrong. Run Backend AI Secret Provision first, then re-run Backend AI Runtime
+Config.
 ```
 
 `DATABASE_URL secret is not present on the current backend task definition`

@@ -27,7 +27,8 @@ Use `CLOUD_DEMO_SEED_RUNBOOK.md` when the private cloud RDS database needs the
 full demo dataset without running the destructive local `seed.py` flow.
 
 Use `BACKEND_AI_RUNTIME_RUNBOOK.md` when the deployed backend should switch from
-`MOCK_AI=1` demo mode to a real OpenAI-compatible provider.
+`MOCK_AI=1` to a real provider and the AI runtime secret may need to be
+provisioned first.
 
 ## Current Root Files
 
