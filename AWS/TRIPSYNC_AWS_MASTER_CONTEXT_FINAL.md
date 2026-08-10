@@ -1430,6 +1430,14 @@ The workflow may build generated assets inside CI, but it should not commit them
 
 The workflow is validation-only and uses no AWS credentials. It does not call STS, ECR, ECS, RDS, Amplify, CloudFormation, Terraform, or any other AWS mutation path.
 
+Phase 2 container note:
+
+```text
+The backend image must include backend/data because plan generation imports data.poi_chicago at API import time.
+Do not exclude backend/data from the Docker build context.
+The CI container health job keeps the container available for logs on failure instead of using docker run --rm.
+```
+
 It must not:
 
 ```text

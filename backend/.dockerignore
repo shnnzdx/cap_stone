@@ -13,6 +13,5 @@ __pycache__/
 Dockerfile
 .dockerignore
 
-data/
 tests/
 README.md

@@ -97,13 +97,16 @@ jobs:
 
       - name: Run backend container
         run: |
-          docker run --rm -d \
+          docker rm -f tripsync-backend-ci >/dev/null 2>&1 || true
+          docker run -d \
             --name tripsync-backend-ci \
             -p 8000:8000 \
             -e DISABLE_SCHEDULER=1 \
             -e MOCK_AI=1 \
             -e DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5432/tripsync_ci \
             tripsync-backend:ci
+
+          docker ps -a --filter name=tripsync-backend-ci
 
       - name: Verify backend health endpoint
         run: |
@@ -115,6 +118,7 @@ jobs:
             fi
 
             echo "Waiting for backend container health check, attempt ${attempt}/30..."
+            docker ps -a --filter name=tripsync-backend-ci
             sleep 2
           done
 
