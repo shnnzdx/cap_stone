@@ -1,6 +1,6 @@
 # TripSync AWS Phase 5 Backend Deployment Plan
 
-Status: plan-only, no AWS resources created.
+Status: provisioned and verified.
 
 Date: 2026-08-10
 
@@ -16,6 +16,12 @@ Provisioning entrypoint:
 
 This workflow is `workflow_dispatch` only and uses the GitHub Environment `Main` AWS credentials.
 
+Provision result:
+
+```text
+AWS/PHASE5_BACKEND_PROVISION_RESULT.md
+```
+
 Completed prerequisites:
 
 ```text
@@ -29,7 +35,17 @@ Phase 4: database readiness completed
 
 ## 1. Hard Scope Boundary
 
-Do not perform any of these actions during Phase 5 plan-only work:
+These actions were approved with:
+
+```text
+Approve Phase 5 backend resource creation
+```
+
+Do not repeat provisioning, modify IAM, delete resources, or create additional billable resources without a fresh explicit approval.
+
+The approved first proof created or reused the Phase 5 resource set through GitHub Actions.
+
+Original hard-scope list from the pre-approval plan:
 
 ```text
 aws ecr create-repository

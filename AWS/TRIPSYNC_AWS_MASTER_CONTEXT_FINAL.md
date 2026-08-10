@@ -1532,12 +1532,23 @@ no destructive automatic seed
 
 ## Phase 5 — Backend
 
-Status: approved for first backend provisioning proof.
+Status: provisioned and verified.
 
 Provisioning entrypoint:
 
 ```text
 .github/workflows/phase5-backend-provision.yml
+```
+
+Provision result:
+
+```text
+AWS/PHASE5_BACKEND_PROVISION_RESULT.md
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31349402435
+deployed commit: 9ff14d1fa7f5a4babf4b5a50107287c69fde1d21
+backend ALB URL: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+health endpoint: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/api/health
+verified response: {"ok":true}
 ```
 
 Reason for GitHub Actions provisioning:
@@ -1584,6 +1595,14 @@ production frontend/backend integration
 ```
 
 Do not describe the full TripSync backend as production-functional until RDS, runtime secrets, frontend API base URL, and production CORS are connected later.
+
+Cost warning:
+
+```text
+Phase 5 resources now exist and may incur charges while running.
+Main cost drivers are ALB, Fargate runtime, public IPv4 addresses, CloudWatch Logs, and ECR storage.
+Use the cleanup order in AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md when the proof is no longer needed.
+```
 
 Exact initial VPC topology:
 
