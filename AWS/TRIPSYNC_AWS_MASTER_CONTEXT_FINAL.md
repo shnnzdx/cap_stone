@@ -379,6 +379,32 @@ This does not make IAM users Root-equivalent; it only delegates Billing console 
 
 Each human must have independent credentials.
 
+Phase 4 readiness status:
+
+```text
+code-level readiness implemented
+awaiting manual GitHub Actions run
+no AWS database resources created
+```
+
+Current Phase 4 proof files:
+
+```text
+AWS/PHASE4_DATABASE_READINESS.md
+.github/workflows/database-readiness.yml
+backend/app/db/init_schema.py
+backend/tests/test_db_safety.py
+```
+
+Current rule:
+
+```text
+Do not create RDS yet.
+Do not run demo seed automatically against RDS.
+Use backend/app/db/init_schema.py for non-destructive empty-database schema proof.
+Use Alembic or another real migration system before production-style schema evolution.
+```
+
 Required:
 
 ```text

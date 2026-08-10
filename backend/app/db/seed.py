@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 import os
 
 from sqlalchemy import delete
+from sqlalchemy.engine import make_url
 
 from .models import (
     AuthSession,
@@ -32,6 +33,8 @@ from ..domain.auth import hash_password
 U = "https://images.unsplash.com/photo-{}?auto=format&fit=crop&w=900&q=75"
 PHOTOS = [U.format("1494522358652-f30e61a60313"), U.format("1500530855697-b586d89ba3ee"),
           U.format("1486911278844-a81c5267e227"), U.format("1514893011-72dfa15c5ab3")]
+
+LOCAL_DATABASE_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
 
 MEMBERS = [
     ("Mia Chen", "organizer@cadensy.local", "organizer"),
@@ -56,7 +59,31 @@ ITEMS = [
 ]
 
 
+def is_local_database_url(database_url: str) -> bool:
+    try:
+        host = make_url(database_url).host or ""
+    except Exception:
+        return False
+    return host in LOCAL_DATABASE_HOSTS
+
+
+def require_destructive_seed_allowed() -> None:
+    if os.getenv("ALLOW_DESTRUCTIVE_SEED") == "1":
+        return
+
+    database_url = os.getenv("DATABASE_URL", "postgresql+psycopg://localhost/tripsync")
+    if is_local_database_url(database_url):
+        return
+
+    raise RuntimeError(
+        "Refusing to run destructive demo seed against a non-local DATABASE_URL. "
+        "Use migrations/schema initialization for shared or cloud databases. "
+        "Set ALLOW_DESTRUCTIVE_SEED=1 only for an explicitly approved disposable database."
+    )
+
+
 def reset_schema() -> None:
+    require_destructive_seed_allowed()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
 
