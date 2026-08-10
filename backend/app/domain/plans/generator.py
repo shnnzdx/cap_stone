@@ -33,9 +33,34 @@ from ..constraints.types import (
 )
 
 SLOTS = (10.0, 14.0, 19.0)
-BLOCKED_REASON = (
-    "At least one member's budget ceiling cannot be met with the places available."
+
+# 排不出行程的原因不止一种,**必须分开说**。
+# 以前这里只有一句"预算太低",于是天数太多、时间窗太窄都被报成预算问题 ——
+# 用户照着提示去调预算,怎么调都没用,因为问题根本不在钱上。
+BLOCKED_BUDGET = "The required budget limit is too low for the available places."
+BLOCKED_NOT_ENOUGH_PLACES = (
+    "This trip is longer than the places we can fill without repeating. "
+    "Shorten the trip or allow repeat visits."
 )
+BLOCKED_TOO_CONSTRAINED = (
+    "The required constraints leave no legal slot on at least one day. "
+    "Try relaxing a time window or a walking limit."
+)
+# 兼容以前引用这个名字的地方。
+BLOCKED_REASON = BLOCKED_BUDGET
+
+# 一趟旅行最多能排几天 —— 景点库排不满就别让用户白等。
+# 每个景点整趟只用一次(见 generate_plan 里的 `used`),所以上限由库存决定。
+MAX_TRIP_DAYS = len(POIS) // len(SLOTS)
+
+
+def _blocked_reason(dates: tuple, constraints: tuple) -> str:
+    """排不出来的时候,说**这一次**真正的原因。"""
+    if len(dates) > MAX_TRIP_DAYS:
+        return BLOCKED_NOT_ENOUGH_PLACES
+    if _budget_headroom(constraints, 0.0) is not None:
+        return BLOCKED_BUDGET
+    return BLOCKED_TOO_CONSTRAINED
 
 
 class TripNotFound(Exception):
@@ -143,15 +168,16 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             interests=interests,
         )
         if day is None:
+            reason = _blocked_reason(dates, constraints)
             plan.status = "blocked"
-            plan.blocked_reason = BLOCKED_REASON
+            plan.blocked_reason = reason
             plan.estimated_total_per_person = 0
             db.flush()
             return GenerationResult(
                 plan=plan,
                 status="blocked",
                 days=_days_out(dates, ()),
-                blocked_reason=BLOCKED_REASON,
+                blocked_reason=reason,
                 generated_by="rules",
             )
         draft.extend(day.items)
@@ -160,15 +186,16 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             generated_by = "rules"
 
     if not _is_complete(dates, tuple(draft)):
+        reason = _blocked_reason(dates, constraints)
         plan.status = "blocked"
-        plan.blocked_reason = BLOCKED_REASON
+        plan.blocked_reason = reason
         plan.estimated_total_per_person = 0
         db.flush()
         return GenerationResult(
             plan=plan,
             status="blocked",
             days=_days_out(dates, ()),
-            blocked_reason=BLOCKED_REASON,
+            blocked_reason=reason,
             generated_by="rules",
         )
 

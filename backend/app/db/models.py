@@ -87,8 +87,11 @@ class Trip(Base, TimestampMixin):
     expected_group_size: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(8), default="USD")
     preferences_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # planning | upcoming | traveling | completed —— 按日期自动流转,没有 locked
+    # planning | upcoming | traveling | completed —— 展示/查询缓存。
+    # 业务判断用 domain.trips.service.trip_status 按日期派生,没有 locked。
     status: Mapped[str] = mapped_column(String(20), default="planning")
+    # 归档只是从 My Trips 隐藏,不能改 status,否则会影响投票时限判断。
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("user_account.id"))
 
     memberships: Mapped[list["TripMembership"]] = relationship(back_populates="trip")
@@ -355,6 +358,7 @@ class ChangeProposal(Base, TimestampMixin):
     # 到期通过等于把沉默当同意，那是这个产品最不能破的一条。
     # 作废是安全的：行程一个字不变，想改的人重新提一次就行。
     deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

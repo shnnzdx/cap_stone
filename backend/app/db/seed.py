@@ -35,6 +35,8 @@ PHOTOS = [U.format("1494522358652-f30e61a60313"), U.format("1500530855697-b586d8
           U.format("1486911278844-a81c5267e227"), U.format("1514893011-72dfa15c5ab3")]
 
 LOCAL_DATABASE_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+DEMO_START = date.today() - timedelta(days=1)
+DEMO_END = date.today() + timedelta(days=2)
 
 MEMBERS = [
     ("Mia Chen", "organizer@cadensy.local", "organizer"),
@@ -47,15 +49,15 @@ MEMBERS = [
 
 # (第几天, 日期, 几点, 时长, 标题, 地点, 每人多少钱, 是不是吃饭, 结实程度, 纬度, 经度)
 ITEMS = [
-    (1, date(2026, 8, 14), 16.0, 60, "Hotel check-in", "River North hotel", 0, False, "loose", 41.8925, -87.6345),
-    (1, date(2026, 8, 14), 18.0, 90, "Riverwalk sunset", "Chicago Riverwalk", 0, False, "loose", 41.8879, -87.6270),
-    (1, date(2026, 8, 14), 19.5, 120, "Welcome dinner", "River North", 45, True, "booked", 41.8930, -87.6330),
-    (2, date(2026, 8, 15), 10.0, 90, "Architecture cruise", "Chicago River dock", 52, False, "booked", 41.8880, -87.6244),
-    (2, date(2026, 8, 15), 14.0, 150, "Art Institute of Chicago", "Michigan Avenue", 32, False, "loose", 41.8796, -87.6237),
-    (2, date(2026, 8, 15), 19.0, 150, "Birthday dinner", "River North", 78, True, "booked", 41.8935, -87.6320),
-    (3, date(2026, 8, 16), 10.5, 90, "Late brunch", "Near the hotel", 28, True, "loose", 41.8920, -87.6350),
-    (3, date(2026, 8, 16), 13.0, 180, "Wicker Park food walk", "Wicker Park", 40, True, "loose", 41.9088, -87.6796),
-    (3, date(2026, 8, 16), 18.5, 120, "Group meetup", "West Loop", 35, True, "loose", 41.8836, -87.6500),
+    (1, DEMO_START, 16.0, 60, "Hotel check-in", "River North hotel", 0, False, "loose", 41.8925, -87.6345),
+    (1, DEMO_START, 18.0, 90, "Riverwalk sunset", "Chicago Riverwalk", 0, False, "loose", 41.8879, -87.6270),
+    (1, DEMO_START, 19.5, 120, "Welcome dinner", "River North", 45, True, "booked", 41.8930, -87.6330),
+    (2, DEMO_START + timedelta(days=1), 10.0, 90, "Architecture cruise", "Chicago River dock", 52, False, "booked", 41.8880, -87.6244),
+    (2, DEMO_START + timedelta(days=1), 14.0, 150, "Art Institute of Chicago", "Michigan Avenue", 32, False, "loose", 41.8796, -87.6237),
+    (2, DEMO_START + timedelta(days=1), 19.0, 150, "Birthday dinner", "River North", 78, True, "booked", 41.8935, -87.6320),
+    (3, DEMO_START + timedelta(days=2), 10.5, 90, "Late brunch", "Near the hotel", 28, True, "loose", 41.8920, -87.6350),
+    (3, DEMO_START + timedelta(days=2), 13.0, 180, "Wicker Park food walk", "Wicker Park", 40, True, "loose", 41.9088, -87.6796),
+    (3, DEMO_START + timedelta(days=2), 18.5, 120, "Group meetup", "West Loop", 35, True, "loose", 41.8836, -87.6500),
 ]
 
 
@@ -109,8 +111,8 @@ def seed() -> dict:
         trip = Trip(
             name="Mia's 30th in Chicago",
             destination="Chicago",
-            preferred_start_date=date(2026, 8, 14),
-            preferred_end_date=date(2026, 8, 17),
+            preferred_start_date=DEMO_START,
+            preferred_end_date=DEMO_END,
             expected_group_size=6,
             status="traveling",
             created_by_user_id=users[0].id,
@@ -165,10 +167,10 @@ def seed() -> dict:
         db.add_all(
             Preference(
                 trip_membership_id=m.id,
-                preferred_start_date=date(2026, 8, 14),
-                preferred_end_date=date(2026, 8, 17),
-                available_start_date=date(2026, 8, 13),
-                available_end_date=date(2026, 8, 18),
+                preferred_start_date=DEMO_START,
+                preferred_end_date=DEMO_END,
+                available_start_date=DEMO_START,
+                available_end_date=DEMO_END,
                 ideal_budget=500.0,
                 maximum_budget=650.0,
                 top_interests=["Food", "Culture", "Relaxed"],

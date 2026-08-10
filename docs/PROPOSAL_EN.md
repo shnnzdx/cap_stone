@@ -2,15 +2,15 @@
 
 **Version** 2.0 · 2026-08-07
 **Supersedes** the four proposal documents dated 2026-08-01 (see Appendix B)
-**Chinese edition** [`PROPOSAL.md`](PROPOSAL.md) — the two are kept in sync
+**Main proposal** [`PROPOSAL.md`](PROPOSAL.md) — kept in English for submission
 
 > **Positioning.** This is not an AI that generates itineraries. It is a **group decision engine**
 > that facilitates negotiation among several people, enforces hard constraints, explains
 > trade-offs, and drives the group to an actual decision.
 
 This document is the single authoritative source for **product rationale and business case**.
-The technical contract lives in [`../trip/BACKEND.md`](../trip/BACKEND.md); current implementation
-status in [`../trip/交接.md`](../trip/交接.md). The three do not overlap: this one says
+The technical contract lives in [`../backend/README.md`](../backend/README.md); current implementation
+status in the handoff notes. The three do not overlap: this one says
 *why* and *what*, the other two say *how*.
 
 ---
@@ -289,11 +289,11 @@ hypotheses:
 | Original | Disposition |
 |---|---|
 | `capstone-project-proposal-revised-zh.md` | Primary source; workflow sections replaced |
-| `群体旅行决策引擎_中文方案.docx` | Differentiation argument merged into Section 2 |
-| `多人协作式 AI 旅行规划平台——完整项目想法.docx` | Earliest full draft; fully superseded |
+| Legacy decision-engine source document | Differentiation argument merged into Section 2 |
+| Legacy collaborative AI travel-platform draft | Earliest full draft; fully superseded |
 | `Capstone_Project_Proposal_and_Business_Case.docx/.pdf` | **Retained** — the formal English submission finalised 2026-08-01 |
-| `群体旅行决策引擎_功能优先级.xlsx` | **Retained** — feature priority table |
-| `产品介绍页面.md` | **Retained** — landing-page planning; belongs to `frontend/`, unrelated to this document |
+| Legacy feature-priority spreadsheet | **Retained** — feature priority table |
+| `PRODUCT_LANDING_PAGE.md` | **Retained** — landing-page planning; unrelated to this proposal |
 
 The first three were moved to `_archive/`. Nothing was deleted.
 

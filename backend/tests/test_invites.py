@@ -16,6 +16,7 @@ from app.db.models import (
     MemberConstraintPrivate,
     Plan,
     PlanItem,
+    Preference,
     Trip,
     TripMembership,
     User,
@@ -211,6 +212,30 @@ def test_guest_join_creates_participant_without_user(client: TestClient, api_ses
     assert membership.join_method == "invite_guest"
 
 
+def test_guest_join_returns_existing_membership_on_repeat(client: TestClient, api_session: Session):
+    trip, organizer, _ = _trip(api_session)
+    invite = _create_invite(client, organizer, trip)
+
+    first = client.post(
+        f"/api/invites/{invite['token']}/join",
+        json={"display_name": "Guest Lee"},
+    ).json()
+    second = client.post(
+        f"/api/invites/{invite['token']}/join",
+        json={"display_name": " guest lee "},
+    ).json()
+
+    memberships = api_session.scalars(
+        select(TripMembership).where(
+            TripMembership.trip_id == trip.id,
+            TripMembership.user_id.is_(None),
+            TripMembership.join_method == "invite_guest",
+        )
+    ).all()
+    assert second["membership_id"] == first["membership_id"]
+    assert len(memberships) == 1
+
+
 def test_account_join_reuses_existing_user(client: TestClient, api_session: Session):
     trip, organizer, _ = _trip(api_session)
     existing_user = _user(api_session, "Alex", email="alex@example.com")
@@ -256,3 +281,69 @@ def test_non_organizer_cannot_create_invite(client: TestClient, api_session: Ses
     )
 
     assert response.status_code == 403
+
+
+def test_trip_summary_exposes_active_invite_and_onboarding_status(
+    client: TestClient, api_session: Session
+):
+    trip, organizer, _ = _trip(api_session)
+    invite = _create_invite(client, organizer, trip)
+
+    response = client.get(f"/api/trips/{trip.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["active_invite"] == {
+        "id": invite["invite_id"],
+        "invite_id": invite["invite_id"],
+        "status": "active",
+        "expires_at": None,
+    }
+    assert body["organizer_preference"]["status"] == "missing"
+    assert body["planning_readiness"] == {
+        "can_generate_itinerary": False,
+        "blocking_reasons": ["organizer_preference_missing"],
+        "next_action": "fill_organizer_preferences",
+    }
+
+
+def test_trip_summary_hides_revoked_invite(client: TestClient, api_session: Session):
+    trip, organizer, _ = _trip(api_session)
+    invite = _create_invite(client, organizer, trip)
+
+    revoke = client.post(
+        f"/api/invites/{invite['invite_id']}/revoke",
+        headers={"X-Membership-Id": organizer.id},
+    )
+    assert revoke.status_code == 200
+
+    body = client.get(f"/api/trips/{trip.id}").json()
+
+    assert body["active_invite"] is None
+
+
+def test_trip_summary_marks_organizer_preferences_complete(
+    client: TestClient, api_session: Session
+):
+    trip, organizer, _ = _trip(api_session)
+    organizer.status = "preferences_submitted"
+    api_session.add(
+        Preference(
+            trip_membership_id=organizer.id,
+            preferred_start_date=trip.preferred_start_date,
+            preferred_end_date=trip.preferred_end_date,
+            available_start_date=trip.preferred_start_date,
+            available_end_date=trip.preferred_end_date,
+            ideal_budget=500,
+            maximum_budget=650,
+            travel_style="Relaxed",
+            top_interests=["Food"],
+            submitted_at=datetime.now(timezone.utc),
+        )
+    )
+    api_session.flush()
+
+    body = client.get(f"/api/trips/{trip.id}").json()
+
+    assert body["organizer_preference"]["status"] == "complete"
+    assert body["planning_readiness"]["can_generate_itinerary"] is True

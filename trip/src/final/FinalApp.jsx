@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { TripAppProvider, useTripApp } from './TripAppState.jsx'
-import { otherTrips, trip, tripMembers, tripStyles } from './tripContent.js'
+import { trip, tripMembers, tripStyles } from './tripContent.js'
 import TripMap from './TripMap.jsx'
 
 const visibleStatus = status => ['Booked', 'Updated'].includes(status) ? status : ''
 const statusTone = status => status === 'Booked' ? 'purple' : status === 'Updated' ? 'green' : 'blue'
+const tripStatusLabel = status => (status || 'planning').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+const tripStatusTone = status => {
+  const value = String(status || '').toLowerCase()
+  if (value === 'completed') return 'green'
+  if (value === 'traveling') return 'purple'
+  if (value === 'upcoming') return 'blue'
+  return 'orange'
+}
 
 const calendarMonths = [
   { label: 'August 2026', month: 7 },
@@ -125,8 +133,21 @@ function useCurrentTrip() {
   return app.trips.find(item => item.id === tripId) || app.trip || trip
 }
 
-function DateRangePicker({ value, onChange }) {
+function TripRouteSync() {
+  const { tripId } = useParams()
+  const app = useTripApp()
+  useEffect(() => {
+    if (tripId && tripId !== app.activeTripId) app.activateTrip(tripId)
+  }, [app, tripId])
+  return null
+}
+
+const inviteUrlFromToken = token => token ? `${window.location.origin}${window.location.pathname}#/join/${token}` : ''
+
+function DateRangePicker({ value, onChange, minDate = null, maxDate = null }) {
+  const isDisabled = day => (minDate && isBefore(day, minDate)) || (maxDate && isBefore(maxDate, day))
   const chooseDay = day => {
+    if (isDisabled(day)) return
     if (!value.start || value.end) return onChange({ start: day, end: null })
     if (isBefore(day, value.start)) return onChange({ start: day, end: value.start })
     onChange({ start: value.start, end: day })
@@ -138,16 +159,21 @@ function DateRangePicker({ value, onChange }) {
       const count = new Date(2026, month.month + 1, 0).getDate()
       return <section className="calendarMonth" key={month.label}><h3>{month.label}</h3><div className="weekdayRow">{['S','M','T','W','T','F','S'].map((d,i) => <span key={`${d}-${i}`}>{d}</span>)}</div><div className="calendarGrid">
         {Array.from({ length: first }, (_, i) => <span className="calendarBlank" key={`b-${i}`}/>) }
-        {Array.from({ length: count }, (_, i) => { const day = new Date(2026, month.month, i + 1); return <button type="button" key={dayKey(day)} className={cx(sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
+        {Array.from({ length: count }, (_, i) => { const day = new Date(2026, month.month, i + 1); const disabled = isDisabled(day); return <button type="button" key={dayKey(day)} disabled={disabled} className={cx(disabled && 'rangeDisabled', sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
       </div></section>
     })}</div>
   </div>
 }
 
 const cx = (...classes) => classes.filter(Boolean).join(' ')
+const BRAND_MARK_SRC = '/images/cadensy-mark.png'
+const BRAND_WORDMARK_SRC = '/images/cadensy-wordmark.png'
 
 function Logo() {
-  return <Link to="/" className="logo"><span className="logoMark">C</span><span>Cadensy</span></Link>
+  return <Link to="/" className="logo" aria-label="Cadensy">
+    <img className="brand-logo-mark" src={BRAND_MARK_SRC} alt="" />
+    <img className="brand-logo-wordmark" src={BRAND_WORDMARK_SRC} alt="Cadensy" />
+  </Link>
 }
 
 function Badge({ children, tone = 'neutral' }) {
@@ -228,19 +254,28 @@ function ProfileMenu() {
   </div>
 }
 
-const cardPhotos = ['photoLake', 'photoMountain', 'photoNight', 'photoChicago']
+const assetUrl = path => `${import.meta.env.BASE_URL}${path}`
+const cardPhotos = ['chicago-skyline.jpg', 'cruise.jpg', 'hotel.jpg', 'dinner.jpg', 'riverwalk.jpg'].map(
+  name => assetUrl(`images/trip-photos/${name}`)
+)
 
-function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to }) {
+function DashboardCard({ trip: dashboardTrip, imageUrl, onArchive }) {
   const app = useTripApp()
-  const currentTrip = app.trip || trip
-  return <Link className="dashboardTripCard" to={to || `/trip/${currentTrip.id}/plan`}>
-    <div className={`tripPhoto ${imageClass}`}><Badge tone={tone}>{status}</Badge></div>
-    <div className="dashboardTripBody">
-      <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
-      <p>{location} · {dates}</p>
-      <div className="cardFooter"><span>{detail || 'Open current plan'}</span><strong>Open →</strong></div>
-    </div>
-  </Link>
+  const detail = dashboardTrip.nextItemTitle
+    ? `Next: ${dashboardTrip.nextItemTitle}`
+    : `${dashboardTrip.memberCount || 0} ${(dashboardTrip.memberCount || 0) === 1 ? 'member' : 'members'}`
+  const photoStyle = imageUrl ? { backgroundImage: `linear-gradient(rgba(10,25,45,.08),rgba(10,25,45,.2)), url("${imageUrl}")` } : undefined
+  return <article className="dashboardTripCard">
+    <Link className="dashboardTripMain" to={`/trip/${dashboardTrip.id}/plan`} onClick={() => app.activateTrip(dashboardTrip.id)}>
+      <div className="tripPhoto" style={photoStyle}><Badge tone={tripStatusTone(dashboardTrip.status)}>{tripStatusLabel(dashboardTrip.status)}</Badge></div>
+      <div className="dashboardTripBody">
+        <div className="tripTitle"><h2>{dashboardTrip.name}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
+        <p>{dashboardTrip.destination} · {dashboardTrip.dates || 'Dates to be set'}</p>
+        <div className="cardFooter"><span>{detail}</span><strong>Open →</strong></div>
+      </div>
+    </Link>
+    {dashboardTrip.myRole === 'organizer' && <button className="archiveTripButton" type="button" onClick={() => onArchive(dashboardTrip)}>Archive</button>}
+  </article>
 }
 
 function ActivityPhoto({ item }) {
@@ -257,6 +292,10 @@ function Home() {
   if (currentUser.role === 'guest') return <Navigate to={`/trip/${currentTrip.id}/plan`} replace/>
   const roundOpen = app.activeRounds?.some(round => round.status === 'open')
   const proposalPending = app.activeProposals?.some(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
+  const handleArchiveTrip = async dashboardTrip => {
+    if (!window.confirm(`Archive "${dashboardTrip.name}"? It will disappear from My Trips, but plans and decisions stay saved.`)) return
+    await app.archiveTrip(dashboardTrip.id).catch(() => null)
+  }
   return <main className="homePage">
     <header className="editorialNav"><Logo/><nav><Link className="active" to="/">MY TRIPS</Link><Link to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
     <section className="homeContent">
@@ -267,9 +306,9 @@ function Home() {
       {roundOpen && <Link className="dashboardAlert" to={`/trip/${currentTrip.id}/updates`}><span>◇</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option — it closes on its own.</p></div><b>Choose →</b></Link>}
       {proposalPending && <Link className="dashboardAlert" to={`/trip/${currentTrip.id}/updates`}><span>!</span><div><strong>A proposal is waiting for confirmation</strong><p>The current plan stays active until the affected members accept.</p></div><b>Review →</b></Link>}
       <section className="dashboardGrid">
-        {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Ready to plan" to={`/trip/${created.id}/plan`}/>)}
-        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Aug 14–17'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Awaiting confirmation' : 'Current plan'} to={`/trip/${currentTrip.id}/plan`} />
-        {otherTrips.map(other => <DashboardCard key={other.id} title={other.name} location={other.destination} dates={other.dates} status={other.status} tone={other.tone} imageClass={other.photo} detail={other.detail}/>)}
+        {app.trips.length > 0
+          ? app.trips.map((dashboardTrip, index) => <DashboardCard key={dashboardTrip.id} trip={dashboardTrip} imageUrl={cardPhotos[index % cardPhotos.length]} onArchive={handleArchiveTrip}/>)
+          : <div className="emptyState quietEmptyState dashboardEmptyState"><span></span><h2>No trips yet</h2><p>Create a trip to start collecting preferences and building the first itinerary.</p><Link className="btn" to="/create">Create new trip</Link></div>}
       </section>
     </section>
   </main>
@@ -289,12 +328,13 @@ function TripShell({ children }) {
   const isOrganizer = currentUser.role === 'organizer'
   const isGuest = currentUser.role === 'guest'
   return <div className="tripPage">
+    <TripRouteSync/>
     <header className="tripUnifiedHeader">
       {/* trip 页里 logo 和「My Trips」原本是两个指向同一处的链接,合并成一个返回入口 */}
       <div className="tripUnifiedBrand">
         {isGuest
-          ? <span className="brandBack" aria-label="Cadensy"><span className="logoMark">C</span><span>Cadensy</span></span>
-          : <Link className="brandBack" to="/"><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
+          ? <span className="brandBack" aria-label="Cadensy"><img className="brand-logo-mark" src={BRAND_MARK_SRC} alt="" /><span>Cadensy</span></span>
+          : <Link className="brandBack" to="/" aria-label="Back to My Trips"><img className="brand-logo-mark" src={BRAND_MARK_SRC} alt="" /><span className="backArrow">←</span><span>My Trips</span></Link>}
       </div>
       <div className="tripUnifiedCenter">
         <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
@@ -423,7 +463,7 @@ function MembersPage() {
 }
 
 // 倒计时环:剩余时间占整个窗口的比例
-function DeadlineRing({ round, closed }) {
+function DeadlineRing({ round, closed, closedCaption = 'Round', closedLabel = 'Applied' }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (closed) return
@@ -434,7 +474,7 @@ function DeadlineRing({ round, closed }) {
   const fraction = closed ? 0 : Math.max(0, Math.min(1, remaining / round.windowMs))
   const hours = Math.floor(remaining / 3600000)
   const minutes = Math.floor((remaining % 3600000) / 60000)
-  const label = closed ? 'Applied' : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+  const label = closed ? closedLabel : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
   const radius = 15
   const circumference = 2 * Math.PI * radius
   return <div className={cx('deadlineRing', closed && 'done')}>
@@ -442,7 +482,7 @@ function DeadlineRing({ round, closed }) {
       <circle className="ringTrack" cx="18" cy="18" r={radius}/>
       <circle className="ringFill" cx="18" cy="18" r={radius} strokeDasharray={circumference} strokeDashoffset={circumference * (1 - fraction)}/>
     </svg>
-    <div><small>{closed ? 'Round' : 'Closes in'}</small><strong>{label}</strong></div>
+    <div><small>{closed ? closedCaption : 'Closes in'}</small><strong>{label}</strong></div>
   </div>
 }
 
@@ -459,6 +499,7 @@ function DecisionRoundCard({ round, compact }) {
   const tally = round.tally || {}
   const leading = Math.max(1, ...Object.values(tally))
   const isReopen = round.kind === 'reopen'
+  const alreadyExtended = Boolean(round.extendedAt)
   const planTarget = `/trip/${currentTrip.id}/plan${round.itemId ? `?focus=${round.itemId}` : ''}`
   const extend = async () => {
     try {
@@ -501,7 +542,7 @@ function DecisionRoundCard({ round, compact }) {
     {!closed && <div className="roundFooter">
       <span>Anonymous — nobody sees who picked what.</span>
       <div className="roundFooterActions">
-        {isOrganizer && <button type="button" className="roundDiscuss" disabled={app.loading.action} onClick={extend}>{app.loading.action ? 'Extending...' : 'Extend'}</button>}
+        {isOrganizer && <button type="button" className="roundDiscuss" disabled={app.loading.action || alreadyExtended} onClick={extend}>{alreadyExtended ? 'Extended' : app.loading.action ? 'Extending...' : 'Extend'}</button>}
         <button type="button" className="roundDiscuss" onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>None of these work — discuss instead</button>
       </div>
     </div>}
@@ -519,6 +560,8 @@ function NewTripPlan({ currentTrip }) {
   const [generateError, setGenerateError] = useState('')
   const [blockedReason, setBlockedReason] = useState('')
   const isOrganizer = app.currentUser.role === 'organizer'
+  const onboarding = currentTrip.onboarding || {}
+  const organizerPreferenceStatus = currentTrip.organizerPreference?.status || onboarding.organizer_preference?.status
   useEffect(() => {
     let cancelled = false
     app.loadMembers()
@@ -539,49 +582,81 @@ function NewTripPlan({ currentTrip }) {
   const total = Math.max(1, progress?.total || currentTrip.people || 1)
   const submitted = Math.min(total, progress?.submitted || 0)
   const missing = Math.max(0, total - submitted)
-  const meSubmitted = Boolean(progress?.meSubmitted)
+  const meSubmitted = Boolean(progress?.meSubmitted) || (isOrganizer && organizerPreferenceStatus === 'complete')
   const canGenerate = isOrganizer && meSubmitted && !app.loading.action
   const progressText = `${submitted} of ${total} people have shared what they need.`
+  const generationBlocked = Boolean(blockedReason)
+  const headline = generationBlocked
+    ? 'The requirements blocked this itinerary'
+    : isOrganizer
+      ? meSubmitted ? 'Ready to generate' : 'Share your preferences first'
+      : meSubmitted ? 'You are ready' : 'Share your preferences first'
+  const body = generationBlocked
+    ? 'Cadensy could not build a valid plan from the current requirements.'
+    : isOrganizer
+      ? meSubmitted
+        ? missing > 0
+          ? `${progressText} You can generate now, but missing hard requirements will not be checked.`
+          : 'Everyone has shared preferences. You can generate the first itinerary.'
+        : 'Your own requirements need to be included before Cadensy creates the group plan.'
+      : meSubmitted
+        ? 'Your preferences are saved. The organizer will generate the itinerary when the group is ready.'
+        : 'Add your preferences so the organizer can generate a plan that checks your requirements.'
+  const statusLabel = generationBlocked ? 'Blocked' : missing === 0 ? 'Ready' : `${missing} waiting`
+  const primaryAction = isOrganizer
+    ? meSubmitted
+      ? { kind: 'generate', label: app.loading.action ? 'Generating...' : 'Generate itinerary' }
+      : { kind: 'preferences', label: 'Fill my preferences' }
+    : { kind: 'preferences', label: meSubmitted ? 'Review preferences' : 'Fill my preferences' }
   const generate = async () => {
     setGenerateError('')
     setBlockedReason('')
     try {
       const result = await app.generatePlan()
       if (result.status === 'blocked') {
-        setBlockedReason(result.blocked_reason || 'The itinerary is blocked.')
+        setBlockedReason(result.blocked_reason || 'The required budget limit is too low for the available places.')
         return
       }
       app.notify('Itinerary generated')
     } catch (err) {
-      if (err.status === 422) setGenerateError('Share your own preferences first.')
+      if (err.code === 'organizer_preference_missing' || err.status === 422) setGenerateError('Fill your preferences before generating the first itinerary.')
       else if (err.status === 409) setGenerateError('An itinerary already exists.')
       else setGenerateError('Could not generate the itinerary. Try again in a moment.')
     }
   }
   return <>
-    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Current Plan</span><h1>No itinerary yet</h1><p>Waiting for preferences.</p></div></div>
-    <div className="planEmptyPanel">
-      <section className="collectPanel">
-        <div className="collectHead">
-          <div><span className="eyebrow">Collecting preferences</span><h3>{progressText}</h3></div>
-          <span className="collectCount">{missing === 0 ? 'All set' : `${missing} waiting`}</span>
-        </div>
-        <div className="collectBar"><i style={{ width: `${Math.min(100, (submitted / total) * 100)}%` }}/></div>
-        {!isOrganizer && <p className="fieldHint">Waiting for the organizer to generate the itinerary.</p>}
-        {isOrganizer && !meSubmitted && <p className="fieldHint">Share your own preferences first; the itinerary should be checked against what you need too. <Link className="inlineAction" to={`/trip/${currentTrip.id}/preferences`}>Open preferences →</Link></p>}
-        {isOrganizer && meSubmitted && missing > 0 && <div className="generateCopy"><p>{progressText}</p><p>{missing} {missing === 1 ? 'person has' : 'people have'} not shared theirs; their hard limits will not be taken into account.</p></div>}
-        {isOrganizer && meSubmitted && missing === 0 && <p className="fieldHint">Everyone's requirements will be checked.</p>}
-        {blockedReason && <div className="generationError"><strong>{blockedReason}</strong><p>You can loosen requirements or adjust the dates.</p></div>}
-        {generateError && <p className="formError">{generateError}</p>}
-        {currentTrip.deadline && <div className="collectDeadline"><span>◷</span><div><strong>Preferences deadline</strong><p>{currentTrip.deadline}</p></div></div>}
-      </section>
-      <div className="proposalCard tripFrameLine"><span>Trip frame</span><h3>{currentTrip.destination} · {currentTrip.dates}</h3><p>{currentTrip.assumptions || 'Share the invite link.'}</p></div>
-      <div className="btnRow">
-        {isOrganizer && <Button disabled={!canGenerate} onClick={generate}>{app.loading.action ? 'Generating...' : 'Generate itinerary'}</Button>}
-        {isOrganizer && <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/members`}>See who's in →</Link>}
-        <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/preferences`}>{submitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
+    <div className="pageHeading setupPageHeading compactSetupHeading">
+      <div>
+        <span className="eyebrow">Current Plan</span>
+        <h1>No itinerary yet</h1>
       </div>
     </div>
+    <section className="setupCompactPanel">
+      <div className="setupCompactTop">
+        <div>
+          <Badge tone={generationBlocked ? 'orange' : missing === 0 ? 'green' : 'blue'}>{isOrganizer ? 'Organizer step' : 'Waiting for organizer'}</Badge>
+          <h2>{headline}</h2>
+          <p>{submitted} of {total} preferences in</p>
+        </div>
+        <span className={cx('setupCompactCount', missing === 0 && !generationBlocked && 'done', generationBlocked && 'blocked')}>{statusLabel}</span>
+      </div>
+
+      <p className="compactLead">{body}</p>
+
+      <div className="compactActionRow">
+        {primaryAction.kind === 'generate'
+          ? <Button disabled={!canGenerate} onClick={generate}>{primaryAction.label}</Button>
+          : <Link className="btn" to={`/trip/${currentTrip.id}/preferences`}>{primaryAction.label}</Link>}
+        {isOrganizer && <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/invite`}>Invite people</Link>}
+        {isOrganizer && meSubmitted && <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/members`}>Check members</Link>}
+      </div>
+
+      {isOrganizer && !meSubmitted && <p className="compactHint">Only the organizer can generate the first itinerary, but your preferences must be in first.</p>}
+      {(blockedReason || generateError) && <div className="setupError compactError">
+        {blockedReason && <><strong>{blockedReason}</strong><p>Raise the maximum budget, remove the budget ceiling, or choose cheaper places.</p></>}
+        {generateError && <p className="formError">{generateError}</p>}
+      </div>}
+    </section>
   </>
 }
 
@@ -1050,12 +1125,12 @@ function TradeoffThread() {
   const app = useTripApp()
   const currentTrip = useCurrentTrip()
   const isOrganizer = app.currentUser.role === 'organizer'
-  const [reply, setReply] = useState('')
-  const [threadMessages, setThreadMessages] = useState([])
+  const [confirmDecline, setConfirmDecline] = useState(false)
   const proposal = app.activeProposal
   if (!proposal) return null
   const { before, after, affectedMembers } = proposal
   const planTarget = `/trip/${currentTrip.id}/plan${proposal.sourceItemId ? `?focus=${proposal.sourceItemId}` : ''}`
+  const chatTarget = `/trip/${currentTrip.id}/chat`
   const applied = app.decisionResolved || proposal.status === 'applied'
   const unchanged = ['declined', 'withdrawn', 'expired'].includes(proposal.status)
   const escalated = proposal.status === 'escalated'
@@ -1076,29 +1151,59 @@ function TradeoffThread() {
       app.notify('Could not resolve this block.')
     }
   }
-  const sendReply = () => {
-    if (!reply.trim()) return
-    setThreadMessages(current => [...current,
-      { from: 'you', text: reply.trim() },
-      { from: 'tripSync', text: 'Noted. The Current Plan stays unchanged until every affected member confirms.' },
-    ])
-    setReply('')
+  const decline = async () => {
+    try {
+      await app.resolveProposal(proposal.id, 'declined')
+      app.notify('Proposal ended — current plan kept')
+    } catch {
+      app.notify('Could not decline this proposal.')
+    }
   }
-  return <section className="chatPanel">
-    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>{affectedMembers.length} affected members · anonymous</p></div></div><Badge tone={applied ? 'green' : unchanged ? 'blue' : 'orange'}>{applied ? 'Resolved' : unchanged ? 'Closed' : escalated ? 'With organizer' : 'Awaiting confirmation'}</Badge></header>
+  const extendConfirmation = async () => {
+    try {
+      await app.extendProposal(proposal.id)
+      app.notify('Confirmation extended')
+    } catch {
+      app.notify('Could not extend this confirmation.')
+    }
+  }
+  return <section className="chatPanel tradeoffPanel">
+    <header>
+      <div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>{affectedMembers.length} affected members · anonymous confirmation</p></div></div>
+      <div className="tradeoffHeaderMeta">
+        {!applied && !unchanged && <DeadlineRing round={proposal} closed={false}/>}
+        {(applied || unchanged) && <DeadlineRing round={proposal} closed closedCaption="Confirm" closedLabel={applied ? 'Applied' : 'Closed'}/>}
+        <Badge tone={applied ? 'green' : unchanged ? 'blue' : 'orange'}>{applied ? 'Resolved' : unchanged ? 'Closed' : escalated ? 'With organizer' : 'Awaiting confirmation'}</Badge>
+      </div>
+    </header>
     <div className="messages conflictMessages">
       <div className="anonBanner"><span>◍</span><p>{proposal.privacyNote}</p></div>
-      <div className="message ai"><span>✦</span><div><p>{proposal.headline}. {proposal.detail}</p><p>This could not be settled by picking an option, so it comes to the affected members directly. The person who proposed it counts as accepted.</p></div></div>
-      <div className="changeCompare conflictCompare"><div><small>Current{before.dayLabel ? ` · ${before.dayLabel}` : ''}</small><strong>{before.time} · {before.title}</strong><span>{before.place}</span></div><b>→</b><div className="new"><small>Proposed{after.dayLabel ? ` · ${after.dayLabel}` : ''}</small><strong>{after.time} · {after.title}</strong><span>{after.place}</span></div></div>
-      <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{applied || member.status === 'accepted' ? `${member.label}: accepted` : unchanged ? `${member.label}: closed` : `${member.label}: needs decision`}{member.proposer ? ' (proposer)' : ''}</span>)}<span>Names hidden</span><span>Personal reasons hidden</span></div>
-      {pending && <div className="message ai"><span>✦</span><div><p>The Current Plan does not move until every affected member confirms.</p><div className="messageActions"><Button secondary onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost onClick={async () => { await app.resolveProposal(proposal.id, 'declined'); app.notify('Current plan kept') }}>Decline</Button><Button ghost disabled={app.loading.action} onClick={escalate}>{app.loading.action ? 'Sending...' : 'Escalate to organizer'}</Button></div></div></div>}
-      {escalated && isOrganizer && <div className="message ai"><span>✦</span><div><p>The affected members could not agree. Choose how to leave this block undecided.</p><div className="messageActions"><Button secondary disabled={app.loading.action} onClick={() => resolveDeadlock('split')}>Split the block</Button><Button ghost disabled={app.loading.action} onClick={() => resolveDeadlock('clear')}>Clear the block</Button></div></div></div>}
-      {escalated && !isOrganizer && <div className="message ai"><span>✦</span><div><p>Waiting for the organizer to handle this block.</p></div></div>}
-      {threadMessages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
-      {applied && <div className="message ai resolvedMessage"><span>✓</span><div><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={planTarget}>Back to updated plan →</Link></div></div>}
-      {unchanged && <div className="message ai resolvedMessage"><span>↩</span><div><p>The proposal is closed. The Current Plan did not change.</p><Link className="inlineAction" to={planTarget}>Back to Current Plan →</Link></div></div>}
+      <div className="tradeoffCard">
+        <div className="tradeoffDecision">
+          <Badge tone="orange">Confirmation required</Badge>
+          <h3>{proposal.headline}</h3>
+          <p>{proposal.detail}</p>
+          <p>This cannot be settled by choosing an option. The Current Plan changes only if every affected member confirms; if time runs out, the proposal is void and the plan stays as it is.</p>
+        </div>
+        <div className="changeCompare conflictCompare"><div><small>Current{before.dayLabel ? ` · ${before.dayLabel}` : ''}</small><strong>{before.time} · {before.title}</strong><span>{before.place}</span></div><b>→</b><div className="new"><small>Proposed{after.dayLabel ? ` · ${after.dayLabel}` : ''}</small><strong>{after.time} · {after.title}</strong><span>{after.place}</span></div></div>
+        <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{applied || member.status === 'accepted' ? `${member.label}: accepted` : unchanged ? `${member.label}: closed` : `${member.label}: needs decision`}</span>)}<span>Names hidden</span><span>Personal reasons hidden</span></div>
+      </div>
+      <div className="tradeoffActions">
+        {pending && <>
+          <p>The Current Plan does not move until every affected member confirms.</p>
+          {!confirmDecline ? <div className="messageActions"><Button secondary disabled={app.loading.action} onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost disabled={app.loading.action} onClick={() => setConfirmDecline(true)}>Decline</Button><Button ghost disabled={app.loading.action} onClick={escalate}>{app.loading.action ? 'Sending...' : 'Escalate to organizer'}</Button>{isOrganizer && <Button ghost disabled={app.loading.action || proposal.extendedAt} onClick={extendConfirmation}>{proposal.extendedAt ? 'Extended' : 'Extend confirmation'}</Button>}</div>
+            : <div className="declineConfirm"><strong>Declining directly ends this proposal.</strong><p>The Current Plan stays unchanged, and the proposed change is void for everyone.</p><div className="messageActions"><Button secondary disabled={app.loading.action} onClick={decline}>{app.loading.action ? 'Ending...' : 'End proposal'}</Button><Button ghost disabled={app.loading.action} onClick={() => setConfirmDecline(false)}>Keep reviewing</Button></div></div>}
+        </>}
+        {escalated && isOrganizer && <>
+          <p>The affected members could not agree. Choose how to leave this block undecided.</p>
+          <div className="messageActions"><Button secondary disabled={app.loading.action} onClick={() => resolveDeadlock('split')}>Split the block</Button><Button ghost disabled={app.loading.action} onClick={() => resolveDeadlock('clear')}>Clear the block</Button></div>
+        </>}
+        {escalated && !isOrganizer && <p>Waiting for the organizer to handle this block.</p>}
+        {applied && <div className="resolvedMessage"><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={planTarget}>Back to updated plan →</Link></div>}
+        {unchanged && <div className="resolvedMessage"><p>The proposal is closed. The Current Plan did not change.</p><Link className="inlineAction" to={planTarget}>Back to Current Plan →</Link></div>}
+        <div className="cadensyExit"><Link className="inlineAction" to={chatTarget}>Want to say something? Talk with Cadensy →</Link><p>This is private. It is not sent to the other person or the group.</p></div>
+      </div>
     </div>
-    <div className="chatComposer"><button>＋</button><input value={reply} onChange={event => setReply(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendReply()} placeholder="Reply anonymously in this conversation..."/><button className="sendBtn" onClick={sendReply}>↑</button></div>
   </section>
 }
 
@@ -1126,7 +1231,7 @@ function UpdatesPage() {
           <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can split or clear this block.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
           <div className="changeCompare"><div><small>Current{proposal.before.dayLabel ? ` · ${proposal.before.dayLabel}` : ''}</small><strong>{proposal.before.time} · {proposal.before.title}</strong><span>{proposal.before.place}</span></div><b>→</b><div className="new"><small>Proposed{proposal.after.dayLabel ? ` · ${proposal.after.dayLabel}` : ''}</small><strong>{proposal.after.time} · {proposal.after.title}</strong><span>{proposal.after.place}</span></div></div>
           <div className="impactRow">{proposal.affectedMembers.map(member => <span key={member.id}>{member.label}: {member.status === 'accepted' ? 'accepted' : 'needs decision'}</span>)}<span>Names hidden</span></div>
-          <div className="decisionActions"><Button onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>Open the conversation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
+          <div className="decisionActions"><Button onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>Open confirmation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
         </article>)}
       </>}
       {app.updateFilter === 'all' && <>
@@ -1157,8 +1262,8 @@ const DIET_TAGS = ['vegetarian', 'vegan', 'halal', 'gluten_free']
 const AVOID_TAGS = ['nightlife', 'outdoor', 'shopping', 'family', 'music']
 const VISIBILITY_OPTIONS = [
   { value: 'planning_only', label: 'Only Cadensy' },
-  { value: 'organizer', label: 'Organizer too' },
-  { value: 'everyone', label: 'Whole group' },
+  { value: 'organizer', label: 'Organizer can see it' },
+  { value: 'everyone', label: 'Whole group can see it' },
 ]
 
 const defaultParams = kind => ({
@@ -1203,7 +1308,7 @@ function ConstraintParams({ kind, params, onChange }) {
     set(key, list.includes(tag) ? list.filter(item => item !== tag) : [...list, tag])
   }
   if (kind === 'time_window') return <div className="constraintParams">
-    <label>Not before<input type="number" min="0" max="23" value={params.earliest_hour ?? ''} onChange={e => set('earliest_hour', e.target.value === '' ? null : Number(e.target.value))}/></label>
+    <label>Not before<input type="number" min="6" max="23" value={params.earliest_hour ?? ''} onChange={e => set('earliest_hour', e.target.value === '' ? null : Math.max(6, Number(e.target.value)))}/></label>
     <label>Not after<input type="number" min="0" max="24" value={params.latest_hour ?? ''} onChange={e => set('latest_hour', e.target.value === '' ? null : Number(e.target.value))}/></label>
   </div>
   if (kind === 'budget_ceiling') return <div className="constraintParams">
@@ -1226,8 +1331,24 @@ function ConstraintParams({ kind, params, onChange }) {
 
 function PreferencesPage() {
   const app = useTripApp()
+  const navigate = useNavigate()
   const currentTrip = useCurrentTrip()
-  const [form, setForm] = useState(app.preferences)
+  const tripWindow = useMemo(() => ({
+    start: fromISODate(currentTrip.preferredStartDate),
+    end: fromISODate(currentTrip.preferredEndDate),
+  }), [currentTrip.preferredStartDate, currentTrip.preferredEndDate])
+  const tripDefaultForm = useMemo(() => {
+    const defaultRange = {
+      start: tripWindow.start || app.preferences.preferredRange?.start || null,
+      end: tripWindow.end || app.preferences.preferredRange?.end || null,
+    }
+    return {
+      ...app.preferences,
+      preferredRange: defaultRange,
+      availableRange: defaultRange,
+    }
+  }, [app.preferences, tripWindow.end, tripWindow.start])
+  const [form, setForm] = useState(tripDefaultForm)
   const [constraints, setConstraints] = useState([])
   const [conflicts, setConflicts] = useState([])
   const [picking, setPicking] = useState(false)
@@ -1236,6 +1357,11 @@ function PreferencesPage() {
 
   useEffect(() => {
     let cancelled = false
+    setLoaded(false)
+    setConflicts([])
+    setPicking(false)
+    setDraft(null)
+    setForm(tripDefaultForm)
     app.loadMyPreferences()
       .then(data => {
         if (cancelled) return
@@ -1261,7 +1387,7 @@ function PreferencesPage() {
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoaded(true) })
     return () => { cancelled = true }
-  }, [app.loadMyPreferences])
+  }, [app.loadMyPreferences, currentTrip.id, tripDefaultForm])
 
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const toggleStyle = style => setForm(current => {
@@ -1310,6 +1436,7 @@ function PreferencesPage() {
       })
       app.submitPreferencesFor(currentTrip.id)
       app.notify('Preferences saved · shared anonymously')
+      navigate(`/trip/${currentTrip.id}/plan`)
     } catch { /* handled upstream */ }
   }
 
@@ -1317,22 +1444,23 @@ function PreferencesPage() {
     <div className="preferenceWrap editorialForm">
       <div className="pageHeading"><div><span className="eyebrow">My preferences</span><h1>Share only what matters.</h1></div></div>
       <section className="preferenceCard preferenceFlow">
-        <div className="wide dateField"><label>Preferred dates — the trip you would ideally join</label><DateRangePicker value={form.preferredRange} onChange={range => set('preferredRange', range)}/></div>
-        <details className="wide optionalPanel"><summary>Available date range — the widest window that still works for you</summary><div className="dateField" style={{ marginTop: 12 }}><DateRangePicker value={form.availableRange} onChange={range => set('availableRange', range)}/></div></details>
+        <div className="wide dateField"><label>Preferred dates — the trip you would ideally join</label><DateRangePicker value={form.preferredRange} onChange={range => set('preferredRange', range)} minDate={tripWindow.start} maxDate={tripWindow.end}/></div>
+        <details className="wide optionalPanel"><summary>Available date range — the widest window that still works for you</summary><div className="dateField" style={{ marginTop: 12 }}><DateRangePicker value={form.availableRange} onChange={range => set('availableRange', range)} minDate={tripWindow.start} maxDate={tripWindow.end}/></div></details>
         <div className="wide fieldPair">
           <label>Ideal total budget<input value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
           <label>Maximum acceptable budget<input value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
         </div>
-        <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Only Cadensy' }, { value: 'organizer', label: 'Organizer too' }, { value: 'everyone', label: 'Whole group' }]}/>
+        <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Only Cadensy' }, { value: 'organizer', label: 'Organizer can see it' }, { value: 'everyone', label: 'Whole group can see it' }]}/>
+        <p className="wide fieldHint">Private means other members and the organizer cannot read the original amount. Cadensy still checks the plan against your budget limit.</p>
         <CustomSelect className="wide" label="Preferred pace" value={form.pace} onChange={value => set('pace', value)} options={['Relaxed', 'Balanced', 'Full schedule'].map(option => ({ value: option, label: option }))}/>
         <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={() => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small></button>)}</div></div>
 
         <div className="wide needsPanel">
           <label>Things that are not negotiable</label>
-          <p className="needsHint">Only these are checked against the plan. Anything else, say it to the group.</p>
+          <p className="needsHint">Only these are checked against the plan. Anything else belongs in a group note.</p>
           {/* 隐私承诺只说一次，放在最私密的东西正上方 —— 说三遍反而像在极力保证。
               最后半句主动说破预算那个例外：承诺得比做到的多，是最伤信任的一种错。 */}
-          <div className="privacyBox"><div><strong>Private by default</strong><p>Nobody sees this — not even the organizer.</p></div><Badge tone="green">Protected</Badge></div>
+          <div className="privacyBox"><div><strong>Private by default</strong><p>Other members and the organizer cannot read your original words. Cadensy only uses the structured rule when checking the plan.</p></div><Badge tone="green">Protected</Badge></div>
           {constraints.map(entry => <div className="needRow savedNeed" key={entry.id}>
             <div><strong>{labelFor(entry.kind)}</strong><small>{constraintSummary(entry)}</small><small className="needVisibility">Visible to: {visibilityLabel(entry.visibility)}</small></div>
             <Badge tone={entry.importance === 'required' ? 'orange' : 'blue'}>{entry.importance}</Badge>
@@ -1343,7 +1471,7 @@ function PreferencesPage() {
             <strong>{labelFor(draft.kind)}</strong>
             <ConstraintParams kind={draft.kind} params={draft.params} onChange={params => setDraft(current => ({ ...current, params }))}/>
             <label>In your own words
-              <input value={draft.original_text} placeholder="Optional" onChange={e => setDraft(current => ({ ...current, original_text: e.target.value }))}/>
+              <input value={draft.original_text} placeholder="Optional note only you can revisit" onChange={e => setDraft(current => ({ ...current, original_text: e.target.value }))}/>
             </label>
             <CustomSelect label="How strict is this?" value={draft.importance} onChange={value => setDraft(current => ({ ...current, importance: value }))} options={[{ value: 'required', label: 'Not negotiable' }, { value: 'flexible', label: 'Prefer, but flexible' }]}/>
             <CustomSelect label="Who can see this?" value={draft.visibility} onChange={value => setDraft(current => ({ ...current, visibility: value }))} options={VISIBILITY_OPTIONS}/>
@@ -1368,7 +1496,7 @@ function PreferencesPage() {
           </li>)}</ul>
         </div>}
 
-        <div className="formFooter"><span>{loaded ? '' : 'Loading your preferences...'}</span><Button disabled={app.loading.action} onClick={save}>{app.loading.action ? 'Saving...' : 'Save preferences'}</Button></div>
+        <div className="formFooter"><span>{loaded ? '' : 'Loading your preferences...'}</span><Button disabled={app.loading.action} onClick={save}>{app.loading.action ? 'Saving...' : 'Save and continue'}</Button></div>
       </section>
     </div>
   </TripShell>
@@ -1500,11 +1628,15 @@ function InvitePage() {
   const app = useTripApp()
   const navigate = useNavigate()
   const currentTrip = useCurrentTrip()
-  const [invite, setInvite] = useState(null)
+  const [invite, setInvite] = useState(app.activeInvite || null)
   const [loadingInvite, setLoadingInvite] = useState(false)
   const [inviteError, setInviteError] = useState('')
-  const inviteUrl = invite ? `${window.location.origin}${window.location.pathname}#/join/${invite.token}` : ''
+  const inviteUrl = inviteUrlFromToken(invite?.token) || invite?.url || ''
   useEffect(() => {
+    if (app.activeInvite?.token) setInvite(app.activeInvite)
+  }, [app.activeInvite])
+  useEffect(() => {
+    if (invite?.token) return undefined
     let cancelled = false
     setLoadingInvite(true)
     setInviteError('')
@@ -1521,7 +1653,7 @@ function InvitePage() {
     return () => {
       cancelled = true
     }
-  }, [app.createInvite, currentTrip.id])
+  }, [app.createInvite, currentTrip.id, invite?.token])
   const copyLink = () => {
     if (!inviteUrl) return
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(inviteUrl).catch(() => {})
@@ -1564,6 +1696,13 @@ function JoinInvitePage() {
   const [invalid, setInvalid] = useState(false)
   const [error, setError] = useState('')
   const dateText = preview ? [formatInviteDate(preview.preferred_start_date), formatInviteDate(preview.preferred_end_date)].filter(Boolean).join(' – ') : ''
+  const memberText = preview ? `${preview.member_count} ${preview.member_count === 1 ? 'member' : 'members'}` : ''
+  const inviteMetaText = preview ? [
+    preview.destination || null,
+    dateText || null,
+    memberText,
+    preview.organizer_name ? `Organized by ${preview.organizer_name}` : null,
+  ].filter(Boolean).join(' · ') : ''
   useEffect(() => {
     const saved = readInviteSession(token)
     let cancelled = false
@@ -1649,15 +1788,28 @@ function JoinInvitePage() {
   return <div className="invitePage">
     <header className="inviteGlass"><Logo/><div><strong>{preview?.name || 'Cadensy invite'}</strong></div></header>
     <main className="inviteLayout">
-      <section className="invitePhoto"><div><Badge tone="blue">{dateText || 'Trip invite'}</Badge><h1>{preview?.destination || 'Join the group trip'} with the group.</h1></div></section>
-      <section className="invitePanel">
-        <span className="eyebrow">Join Cadensy</span><h2>{loadingInvite ? 'Loading invite' : preview?.name || 'You have been invited'}</h2>
-        {preview && <p>{preview.destination} · {dateText || 'Dates to be confirmed'} · {preview.member_count} members · Organized by {preview.organizer_name}</p>}
-        <label>Your name<input value={name} onChange={event => setName(event.target.value)} placeholder="Name shown in this trip"/></label>
-        <Button disabled={joining || loadingInvite || !preview} onClick={() => join(false)}>{joining ? 'Joining...' : 'Continue as guest'}</Button>
+      <section className="invitePhoto">
+        <div>
+          <Badge tone="blue">{dateText || 'Trip invite'}</Badge>
+          <h1>{loadingInvite ? 'Opening your invite.' : 'Plan with the group.'}</h1>
+        </div>
+      </section>
+      <section className="invitePanel inviteJoinCard">
+        <div className="inviteCardIntro">
+          <span className="eyebrow">Join Cadensy</span>
+          <h2>{loadingInvite ? 'Loading invite' : preview?.name || 'You have been invited'}</h2>
+          {preview && <p className="inviteMetaLine">{inviteMetaText}</p>}
+        </div>
+        <div className="joinChoiceBlock">
+          <label>Your name<input value={name} onChange={event => setName(event.target.value)} placeholder="Name shown in this trip"/></label>
+          <Button disabled={joining || loadingInvite || !preview} onClick={() => join(false)}>{joining ? 'Joining...' : 'Continue as guest'}</Button>
+          <p className="joinHelper">Guest access works for this trip only.</p>
+        </div>
         <div className="dividerText">or</div>
-        <label>Email<input value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com"/></label>
-        <Button secondary disabled={joining || loadingInvite || !preview} onClick={() => join(true)}>Join with an account</Button>
+        <div className="joinChoiceBlock secondaryJoin">
+          <label>Email<input value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com"/></label>
+          <Button secondary disabled={joining || loadingInvite || !preview} onClick={() => join(true)}>Join with an account</Button>
+        </div>
         {error && <p className="formError">{error}</p>}
       </section>
     </main>

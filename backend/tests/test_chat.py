@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api import main as api
 from app.agents import base
+from app.agents import chat as chat_agent
 from app.db.models import ChangeProposal, DecisionRound, PlanItem
 
 
@@ -64,6 +65,44 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
     assert body["proposed_change"]["patch"]["title"] == "Magnificent Mile shopping"
     assert body["proposed_change"]["patch"]["place"] == "Magnificent Mile"
     assert body["proposed_change"]["verdict"]["path"] == "notice"
+
+
+def test_chat_reads_bare_chinese_twelve_as_noon(monkeypatch, db: Session, full_trip: dict):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "把这个改到12点",
+                "item_id": full_trip["art"].id,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["proposed_change"]["patch"]["start_hour"] == 12.0
+
+
+def test_change_api_rejects_midnight_plan_times(db: Session, full_trip: dict):
+    before = full_trip["art"].start_hour
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/plans/items/{full_trip['art'].id}/changes",
+            headers=_headers(full_trip["me"].id),
+            json={"start_hour": 0.0, "request": "Move it to midnight"},
+        )
+
+    assert response.status_code == 422
+    db.refresh(full_trip["art"])
+    assert full_trip["art"].start_hour == before
+
+
+def test_hour_parser_treats_bare_twelve_as_noon():
+    assert chat_agent._hour_from_text("move this to 12点") == 12.0
+    assert chat_agent._hour_from_text("move this to noon") == 12.0
+    assert chat_agent._hour_from_text("move this at 12") == 12.0
 
 
 def test_chat_resolves_delegated_downtown_cafe_replacement_from_history(

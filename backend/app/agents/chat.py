@@ -100,7 +100,7 @@ UNDERSTAND_SCHEMA = {
             "properties": {
                 "title": {"type": ["string", "null"]},
                 "place": {"type": ["string", "null"]},
-                "start_hour": {"type": ["number", "null"], "minimum": 0, "maximum": 24},
+                "start_hour": {"type": ["number", "null"], "minimum": 6, "maximum": 24},
                 "day_date": {"type": ["string", "null"]},
                 "price_per_person": {"type": ["number", "null"], "minimum": 0},
                 "lat": {"type": ["number", "null"], "minimum": -90, "maximum": 90},
@@ -355,6 +355,19 @@ def _hour_from_text(message: str) -> float | None:
         if suffix == "am" and hour == 12:
             hour = 0
         return hour + minute / 60
+    if "noon" in message or "中午" in message:
+        return 12.0
+    match = re.search(r"(?<!\d)(\d{1,2})(?::(\d{2}))?\s*点", message)
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2) or 0)
+        # 中文里单说"12点"在旅行改时间语境下更常指中午;别让模型落成凌晨。
+        if hour == 12 and not any(word in message for word in ("凌晨", "半夜", "午夜", "上午")):
+            return 12 + minute / 60
+        return hour + minute / 60
+    match = re.search(r"\b(?:at|around|by|to)\s+12(?::(\d{2}))?\b", message)
+    if match:
+        return 12 + int(match.group(1) or 0) / 60
     if "afternoon" in message:
         return 15.0
     if "morning" in message:

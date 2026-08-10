@@ -59,8 +59,10 @@ def parse_cors_origins(raw: str | None = None) -> list[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """后端一启动,定时结算就在后台转起来了 —— 不用另外开一个进程。"""
+    from ..db.ensure_schema import ensure_dev_schema
     from ..jobs import scheduler
 
+    ensure_dev_schema()
     task = None
     if os.getenv("DISABLE_SCHEDULER") != "1":
         task = scheduler.start(app)
@@ -134,7 +136,8 @@ def _bearer_token(authorization: str | None) -> str | None:
 class ChangeRequest(BaseModel):
     title: str | None = None
     place: str | None = None
-    start_hour: float | None = Field(default=None, ge=0, le=24)
+    # 旅行安排不能被 AI 或客户端写成凌晨;12 点未标明时按中午由理解层处理。
+    start_hour: float | None = Field(default=None, ge=6, le=24)
     day_date: date | None = None
     price_per_person: float | None = Field(default=None, ge=0)
     # 换地点时把新坐标一起带上,地图跟着动
@@ -277,14 +280,25 @@ def _comment_out(db: Session, comment: PlanItemComment, me: TripMembership) -> d
 
 
 def _plan_out(db: Session, trip_id: str) -> dict:
-    plan = db.scalar(select(Plan).where(Plan.trip_id == trip_id))
-    if plan is None:
-        raise HTTPException(404, "No plan yet")
-    items = db.scalars(
-        select(PlanItem)
-        .where(PlanItem.plan_id == plan.id)
-        .order_by(PlanItem.day_index, PlanItem.start_hour)
+    plans = db.scalars(
+        select(Plan)
+        .where(Plan.trip_id == trip_id)
+        .order_by(Plan.created_at, Plan.id)
     ).all()
+    if not plans:
+        raise HTTPException(404, "No plan yet")
+    plan = plans[0]
+    items: list[PlanItem] = []
+    for candidate in plans:
+        candidate_items = db.scalars(
+            select(PlanItem)
+            .where(PlanItem.plan_id == candidate.id)
+            .order_by(PlanItem.day_index, PlanItem.start_hour)
+        ).all()
+        if candidate_items:
+            plan = candidate
+            items = candidate_items
+            break
     days: dict[int, list] = {}
     for item in items:
         days.setdefault(item.day_index, []).append(_item_out(item))
@@ -360,6 +374,7 @@ def _round_out(db: Session, round_: DecisionRound, me: TripMembership | None = N
         "options": round_.options,
         "reason": round_.reason,
         "deadline": round_.deadline.isoformat(),
+        "extended_at": round_.extended_at.isoformat() if round_.extended_at else None,
         "status": round_.status,
         "winning_option_id": round_.winning_option_id,
         "responded": len(votes),
@@ -380,6 +395,8 @@ def _proposal_out(db: Session, proposal: ChangeProposal) -> dict:
         "id": proposal.id,
         "status": proposal.status,
         "plan_item_id": proposal.plan_item_id,
+        "deadline": proposal.deadline.isoformat() if proposal.deadline else None,
+        "extended_at": proposal.extended_at.isoformat() if proposal.extended_at else None,
         "before": proposal.before_json,
         "after": proposal.after_json,
         "members": [
@@ -467,14 +484,22 @@ def get_trip(trip_id: str, db: Session = Depends(get_session)) -> dict:
     trip = db.get(Trip, trip_id)
     if trip is None:
         raise HTTPException(404, "Trip not found")
+    onboarding = trip_service.onboarding_summary(db, trip_id)
     return {
         "id": trip.id,
         "name": trip.name,
         "destination": trip.destination,
-        "status": trip.status,
+        "preferred_start_date": trip.preferred_start_date.isoformat() if trip.preferred_start_date else None,
+        "preferred_end_date": trip.preferred_end_date.isoformat() if trip.preferred_end_date else None,
+        "status": trip_service.trip_status(trip),
         "member_count": len(
             db.scalars(select(TripMembership).where(TripMembership.trip_id == trip_id)).all()
         ),
+        "active_invite": onboarding["active_invite"],
+        "organizer_preference": onboarding["organizer_preference"],
+        "preference_collection": onboarding["preference_collection"],
+        "planning_readiness": onboarding["planning_readiness"],
+        "onboarding": onboarding,
     }
 
 
@@ -512,6 +537,7 @@ def get_updates(
     A notice with a recipient is private to that member -- reminders are a
     nudge, not a public callout. Everything else is group-wide and anonymous.
     """
+    _same_trip(me, trip_id)
     notices = db.scalars(
         select(UpdateNotice)
         .where(
@@ -680,17 +706,57 @@ def create_trip(
         )
     except trip_service.GuestTripAccessDenied as exc:
         raise HTTPException(403, str(exc)) from exc
+    except trip_service.TripDatesInvalid as exc:
+        raise HTTPException(422, str(exc)) from exc
     db.commit()
     return {
         "id": created.trip.id,
         "name": created.trip.name,
         "destination": created.trip.destination,
-        "status": created.trip.status,
+        "preferred_start_date": created.trip.preferred_start_date.isoformat() if created.trip.preferred_start_date else None,
+        "preferred_end_date": created.trip.preferred_end_date.isoformat() if created.trip.preferred_end_date else None,
+        "status": trip_service.trip_status(created.trip),
+        "member_count": 1,
+        "next_item_title": None,
+        "my_role": "organizer",
+        "my_membership_id": created.membership.id,
         "plan_id": created.plan.id,
         # 创建者在新 trip 里是另一个 membership。不返回它，前端就没法把身份切过去，
         # 之后调这趟旅行的任何接口都会因为"身份属于别的旅行"被拒。
         "membership_id": created.membership.id,
     }
+
+
+@app.post("/api/trips/{trip_id}/archive")
+def archive_trip(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    try:
+        trip_service.archive_trip(db, trip_id, me)
+    except trip_service.OrganizerRequired as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except trip_service.InviteNotFound as exc:
+        raise HTTPException(404, "Trip not found") from exc
+    db.commit()
+    return {"archived": True}
+
+
+@app.post("/api/trips/{trip_id}/unarchive")
+def unarchive_trip(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    try:
+        trip_service.unarchive_trip(db, trip_id, me)
+    except trip_service.OrganizerRequired as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except trip_service.InviteNotFound as exc:
+        raise HTTPException(404, "Trip not found") from exc
+    db.commit()
+    return {"archived": False}
 
 
 @app.post("/api/trips/{trip_id}/invite")
@@ -767,7 +833,13 @@ def generate_trip_plan(
     except plan_generator.OrganizerRequired as exc:
         raise HTTPException(403, str(exc)) from exc
     except plan_generator.OrganizerPreferencesRequired as exc:
-        raise HTTPException(422, str(exc)) from exc
+        raise HTTPException(
+            422,
+            {
+                "message": "Organizer preferences are required before generating the itinerary.",
+                "code": "organizer_preference_missing",
+            },
+        ) from exc
     except plan_generator.PlanAlreadyHasItems as exc:
         raise HTTPException(409, str(exc)) from exc
     except plan_generator.TripNotFound as exc:
@@ -982,6 +1054,7 @@ def get_my_preferences(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _same_trip(me, trip_id)
     return pref_service.read_mine(db, me)
 
 
@@ -992,9 +1065,13 @@ def save_my_preferences(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
-    result = pref_service.save_mine(
-        db, me, pref_service.PreferenceData(**body.model_dump())
-    )
+    _same_trip(me, trip_id)
+    try:
+        result = pref_service.save_mine(
+            db, me, pref_service.PreferenceData(**body.model_dump())
+        )
+    except pref_service.PreferenceOutsideTripWindow as exc:
+        raise HTTPException(422, str(exc)) from exc
     db.commit()
     return result
 
@@ -1102,7 +1179,29 @@ def extend_round(
     except Exception as exc:
         raise _organizer_error(exc) from exc
     db.commit()
-    return {"id": round_.id, "deadline": round_.deadline.isoformat()}
+    return {
+        "id": round_.id,
+        "deadline": round_.deadline.isoformat(),
+        "extended_at": round_.extended_at.isoformat() if round_.extended_at else None,
+    }
+
+
+@app.post("/api/proposals/{proposal_id}/extend")
+def extend_proposal(
+    proposal_id: str,
+    me: TripMembership = Depends(current_membership),
+    db: Session = Depends(get_session),
+) -> dict:
+    try:
+        proposal = org_actions.extend_proposal(db, me, proposal_id)
+    except Exception as exc:
+        raise _organizer_error(exc) from exc
+    db.commit()
+    return {
+        "id": proposal.id,
+        "deadline": proposal.deadline.isoformat() if proposal.deadline else None,
+        "extended_at": proposal.extended_at.isoformat() if proposal.extended_at else None,
+    }
 
 
 @app.post("/api/proposals/{proposal_id}/escalate")
