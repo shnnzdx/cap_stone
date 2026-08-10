@@ -10,6 +10,12 @@ GitHub Actions run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31349402435
 ```
 
+Central URL index:
+
+```text
+AWS/TRIPSYNC_AWS_URLS.md
+```
+
 Deployed commit:
 
 ```text
