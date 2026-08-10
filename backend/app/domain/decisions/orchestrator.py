@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import re
 
 from sqlalchemy import select
@@ -46,7 +46,6 @@ from ..constraints.types import (
     ProposedChange,
     Settledness,
 )
-from ..trips import service as trip_service
 
 KEEP_CURRENT = "keep"
 SPLIT_UP = "split"
@@ -56,10 +55,8 @@ TRAVELING_WINDOW = timedelta(hours=2)
 
 # 确认也要有截止时间，否则一个人不点头就能把一个时段无限期占住。
 # 比投票短，因为确认只涉及受影响的那几个人，不是全组。
-PROPOSAL_PLANNING_WINDOW = timedelta(hours=48)
-PROPOSAL_TRAVELING_WINDOW = timedelta(hours=4)
-MIN_WINDOW = timedelta(minutes=30)
-ITEM_BUFFER = timedelta(minutes=30)
+PROPOSAL_PLANNING_WINDOW = timedelta(days=7)
+PROPOSAL_TRAVELING_WINDOW = timedelta(days=2)
 
 
 class ReasonRequired(Exception):
@@ -131,49 +128,20 @@ def _member_count(db: Session, trip_id: str) -> int:
     return len(db.scalars(select(TripMembership).where(TripMembership.trip_id == trip_id)).all())
 
 
-def _item_start_datetime(item: PlanItem) -> datetime | None:
-    if item.day_date is None or item.start_hour is None:
-        return None
-    whole_hours = int(item.start_hour)
-    minutes = int(round((float(item.start_hour) - whole_hours) * 60))
-    if minutes == 60:
-        whole_hours += 1
-        minutes = 0
-    # The app has no trip timezone yet. Combine day_date + start_hour as UTC;
-    # for Chicago demo trips this is slightly loose, not prematurely short.
-    return datetime.combine(item.day_date, time(tzinfo=timezone.utc)) + timedelta(
-        hours=whole_hours,
-        minutes=minutes,
-    )
-
-
-def deadline_for_window(
-    window: timedelta, item: PlanItem, current: datetime | None = None
-) -> datetime:
-    now = _now()
-    deadline = max(current or now, now + window)
-    start = _item_start_datetime(item)
-    if start is not None:
-        deadline = min(deadline, start - ITEM_BUFFER)
-    return max(deadline, now + MIN_WINDOW)
-
-
-def _deadline_for(trip: Trip, item: PlanItem) -> datetime:
+def _deadline_for(trip: Trip) -> datetime:
     """人在街上的时候不跑 24 小时的异步投票。"""
-    status = trip_service.trip_status(trip, _now().date())
-    window = TRAVELING_WINDOW if status == "traveling" else PLANNING_WINDOW
-    return deadline_for_window(window, item)
+    window = TRAVELING_WINDOW if trip.status == "traveling" else PLANNING_WINDOW
+    return _now() + window
 
 
-def _proposal_deadline_for(trip: Trip, item: PlanItem) -> datetime:
+def _proposal_deadline_for(trip: Trip) -> datetime:
     """确认的截止时间。旅行一开始，等待时间减半 —— 和投票同一条规矩。"""
-    status = trip_service.trip_status(trip, _now().date())
     window = (
         PROPOSAL_TRAVELING_WINDOW
-        if status == "traveling"
+        if trip.status == "traveling"
         else PROPOSAL_PLANNING_WINDOW
     )
-    return deadline_for_window(window, item)
+    return _now() + window
 
 
 def _options_for(item: PlanItem, request: str, patch: dict | None = None) -> list[dict]:
@@ -201,7 +169,7 @@ def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None
             plan_id=item.plan_id,
             plan_item_id=item.id,
             origin=origin,
-            patch=_json_patch(patch),
+            patch=patch,
             **extra,
         )
     )
@@ -209,29 +177,9 @@ def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None
 
 def _apply(db: Session, item: PlanItem, patch: dict) -> dict:
     applied = _patch_with_poi_metadata(item, patch)
-    _sync_day_index(db, item, applied)
     for field, value in applied.items():
         setattr(item, field, value)
     return applied
-
-
-def _sync_day_index(db: Session, item: PlanItem, patch: dict) -> None:
-    day_date = patch.get("day_date")
-    if day_date is None or "day_index" in patch:
-        return
-    trip = db.get(Trip, item.plan.trip_id)
-    if trip is None:
-        return
-    start_date = trip.preferred_start_date
-    if start_date is None:
-        first_existing_date = db.scalar(
-            select(PlanItem.day_date)
-            .where(PlanItem.plan_id == item.plan_id)
-            .order_by(PlanItem.day_date)
-            .limit(1)
-        )
-        start_date = min(day_date, first_existing_date) if first_existing_date else day_date
-    patch["day_index"] = (day_date - start_date).days + 1
 
 
 def _patch_with_poi_metadata(item: PlanItem, patch: dict) -> dict:
@@ -444,7 +392,7 @@ def set_booking_status(
 
 
 _VIEW_FIELDS = {
-    "day_date", "day_index", "start_hour", "duration_min", "price_per_person",
+    "day_date", "start_hour", "duration_min", "price_per_person",
     "tags", "dietary_tags", "is_meal",
 }
 
@@ -499,7 +447,7 @@ def _do_round(db, item, trip, request, verdict, *, kind, reason=None, patch=None
         kind=kind,
         options=_options_for(item, request, patch),
         reason=reason,
-        deadline=_deadline_for(trip, item),
+        deadline=_deadline_for(trip),
         status="open",
     )
     db.add(round_)
@@ -653,7 +601,7 @@ def _do_confirm(
         after_json=_json_patch(after_patch),
         requested_by_membership_id=actor_membership_id,
         status="waiting_affected_members",
-        deadline=_proposal_deadline_for(trip, item),
+        deadline=_proposal_deadline_for(trip),
     )
     db.add(proposal)
     db.flush()

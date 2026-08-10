@@ -6,7 +6,7 @@
 **Scope:** homepage Hero only  
 **Current implementation:** `frontend/app/IdeaSphereCanvas.tsx`, `frontend/app/ui.tsx`, `frontend/app/globals.css`  
 **Design language:** pale blue, soft spatial data, collaborative intelligence  
-**Reference:** Auros-style volumetric particle presence, adapted into Cadensy's calm travel-product identity. Do not copy Auros colors, typography, shader, or source behavior.
+**Reference:** Auros-style volumetric particle presence, adapted into TripSync's calm travel-product identity. Do not copy Auros colors, typography, shader, or source behavior.
 
 ---
 
@@ -25,7 +25,7 @@ Each particle is one independent idea, constraint, preference, or concern:
 - privacy note
 - transportation preference
 
-The whole sphere is not the final plan. It is the group's uncoordinated idea space: many voices coexisting before Cadensy resolves them into one plan.
+The whole sphere is not the final plan. It is the group's uncoordinated idea space: many voices coexisting before TripSync resolves them into one plan.
 
 The visual should communicate:
 
@@ -708,7 +708,7 @@ The current sphere design is acceptable when:
 - [ ] Hero height is natural content height.
 - [ ] CTA remains normal-flow content.
 - [ ] Sphere remains visually dominant.
-- [ ] The design still feels like Cadensy travel collaboration, not a generic tech demo.
+- [ ] The design still feels like TripSync travel collaboration, not a generic tech demo.
 
 ---
 

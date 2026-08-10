@@ -1,95 +1,100 @@
-# Cadensy AI Agent Guide
+# 做 AI Agent 需要的一切
 
-Read this before building or changing an agent. Product responsibilities are in
-[`PRODUCT.md`](PRODUCT.md); this document explains how to implement agents safely.
+动手前把这份读完。产品上每个 agent 负责什么见 [`PRODUCT.md`](PRODUCT.md) 第七节;
+本文是**怎么做**:环境、数据形状、接口、红线、目录、测试。
 
 ---
 
-## 1. Prerequisites
+## 一、动手前先有这些
 
-| Item | Status | Notes |
+| | 状态 | 怎么弄 |
 |---|---|---|
-| Python environment | Done | `backend/.venv` |
-| PostgreSQL and seed data | Done | `.venv/bin/python -m app.db.seed` |
-| Deterministic classifier | Done | `app/domain/constraints/engine.py` |
-| Decision execution | Done | `app/domain/decisions/orchestrator.py` |
-| Curated POI catalog | Done | `backend/data/poi_chicago.py` |
-| OpenAI key | Local only | Put it in `.env` as `OPENAI_API_KEY` |
-| `openai` package | Add if needed | Add to `requirements.txt` |
+| Python 环境 | ✅ | `backend/.venv` |
+| PostgreSQL + 数据 | ✅ | `.venv/bin/python -m app.db.seed` |
+| 判定引擎 | ✅ | `app/domain/constraints/engine.py`,0.03 秒,不花钱 |
+| 三条路径的执行 | ✅ | `app/domain/decisions/orchestrator.py` |
+| **策展景点库(49 个)** | ✅ | `backend/data/poi_chicago.py` |
+| **OpenAI key** | ⬜ | **你填** —— `cp .env.example .env`,写进 `OPENAI_API_KEY` |
+| `openai` 依赖 | ⬜ | `.venv/bin/pip install openai`,并加进 `requirements.txt` |
 
-Never commit a real API key. `.env` is already ignored.
-
----
-
-## 2. Red Lines
-
-Breaking any of these means the change is wrong:
-
-1. Agent context must never include another member's private raw wording. Use only safe summaries such as `code`, `safe_text`, and `affected_count`.
-2. AI does not decide the decision path. `engine.classify()` always decides Notice, Round, Reopen Round, or Confirm.
-3. AI does not submit, confirm, or vote for users. A user action must trigger `/changes` or `/decisions`.
-4. Trust labels are assigned by code or data source, not by AI self-assessment.
-5. Compromise must not pressure users. It proposes candidates; it never argues.
-6. **Any agent that reads the whole group's constraints must emit schema-locked output.**
-   Compromise is the one agent with visibility into every member's hard limits — that is
-   exactly what makes it useful, and exactly where D3 can break. It may return a patch and
-   a `safe_reason` chosen from the fixed `SAFE_TEXT` set. It may never write free-form
-   prose about *why*. The model reasons; it does not phrase.
-7. **Strip constraints before they enter a prompt.** `Constraint` carries `membership_id`
-   and `private_note`. Pass only `kind` + `params`. An agent that cannot tell whose limit
-   it is cannot attribute it to anyone.
-
-Engineering rule: AI failure must not break the core product. Classification, voting, and confirmations cannot depend on OpenAI availability.
+⚠️ **key 绝不能进代码,也绝不能提交。** `.env` 已经在 `.gitignore` 里。
+充了钱的 key 传上 GitHub,几分钟内会被爬虫刷爆——这不是理论风险。
 
 ---
 
-## 3. `MOCK_AI`
+## 二、五条红线
 
-Every agent must support:
+违反任何一条,这次改动就是错的。
+
+1. **上下文里永远不含别人的私密原话。**
+   只能给脱敏结论(`code` + `safe_text` + `affected_count`)。
+   这一条同时挡住隐私泄露和 prompt 注入——prompt 里根本没有私密数据,套也套不出来。
+
+2. **AI 不判定走哪条路。** 判定永远是 `engine.classify()`。
+   模型同一个问题问两次可能给不同答案,而这个产品卖的是公平。
+
+3. **AI 不替任何人提交或确认。** 用户点了才调 `/changes` 或 `/decisions`。
+
+4. **可信度标签由代码打,不由 AI 自称。**
+   景点来自策展库 = `verified`,AI 编的价格时长 = `ai_estimate`。
+   让模型给自己的可信度打分等于没打。
+
+5. **Mediator 不许施压。** 不得输出「就差你一个」这类话。
+
+### 还有一条工程上的
+
+**AI 挂了不能影响主流程。** 判定、投票、确认这三条不依赖 AI。
+OpenAI 超时、限流、报错,这三个接口的行为必须一个字不变——写测试守住。
+
+---
+
+## 三、MOCK_AI 不是可选项
 
 ```bash
-MOCK_AI=1
+MOCK_AI=1    # 返回固定假回复，不发任何网络请求
 ```
 
-Mock mode returns deterministic fake responses with the same shape as real responses and makes no network request.
+**必须实现。** 答辩现场断网、超额度、OpenAI 抽风的时候,demo 照样要能走完。
 
-All tests should run under `MOCK_AI=1` so tests are free, offline, and stable.
+约定:每个 agent 都要有一份固定的假返回,形状和真返回**完全一致**。
+测试全部在 `MOCK_AI=1` 下跑,所以跑测试不花钱、不联网、不会因为模型改版而变红。
 
 ---
 
-## 4. Directory Shape
+## 四、目录与形状
 
-```text
+```
 app/agents/
-├── base.py          shared client, mock switch, safe context
-├── chat.py          natural language change -> patch -> explanation
-├── explainer.py     verdict -> user-facing explanation
-├── preference.py    natural language -> six constraint kinds
-├── mediator.py      conflict conversation support
-├── planner.py       curated POIs -> itinerary
-└── options.py       contested slot -> Round options
+├── base.py          ✅ 客户端 + MOCK_AI 开关 + 脱敏上下文构造
+├── chat.py          ✅ 私聊：听懂改动 → 试算 → 说人话（已实现）
+├── explainer.py     ✅ 判定结果 → 人话（已实现，是最好的模板）
+├── preference.py    ⬜ 人话 → 六种约束
+├── mediator.py      ⬜ 冲突对话里的斡旋
+├── planner.py       ⬜ 景点库 → 行程（dataclass/stub 已留，函数体待填）
+└── options.py       ⬜ 争议时段 → 三个选项
 
 app/domain/plans/
-└── generator.py     candidate filtering -> Planner -> fallback -> validation -> write
+└── generator.py      ✅ 生成管道：过滤合法 candidates → Planner → 规则兜底 → 验证 → 写库
 ```
 
-Each agent should behave like a pure function: dataclass input to dataclass output. Agents should not write to the database, call FastAPI, or create side effects. Callers perform side effects.
+**每个 agent 都是纯函数**:输入 dataclass → 输出 dataclass。
+不碰数据库、不碰 FastAPI、不自己发起副作用。和判定引擎同样的纪律——
+这样才能单测,也才能在 `MOCK_AI=1` 下跑。
+
+副作用(写库、建提案)由调用方做,不在 agent 里。
+
+### 全部输出走结构化 schema
+
+用 OpenAI 的 `response_format={"type":"json_schema", "json_schema":{..., "strict": True}}`。
+**不要解析自由文本。** 模型少写一个括号就崩,而且没法测。
 
 ---
 
-## 5. Structured Output
+## 五、你能拿到的东西
 
-Use strict JSON schema output. Do not parse free text.
+### 判定结果(Explainer / Mediator / Options 的输入)
 
-Model output that is not machine-validated becomes hard to test and easy to break.
-
----
-
-## 6. Safe Inputs
-
-### Classification Input
-
-Agents may receive classification output like this:
+`engine.classify()` 返回,或者 `POST /api/plans/items/{id}/classify` 拿到:
 
 ```json
 {
@@ -98,203 +103,148 @@ Agents may receive classification output like this:
   "detail": "...",
   "needs_reason": false,
   "checks": [
-    {
-      "id": "required",
-      "label": "Required constraint of a member",
-      "hit": true,
-      "privateNote": "One member has a required constraint here. Who they are and why stays private."
-    }
+    {"id":"booking","label":"Confirmed booking on this item","hit":false,"privateNote":""},
+    {"id":"required","label":"Required constraint of a member","hit":true,
+     "privateNote":"One member has a required constraint here. Who they are and why stays private."},
+    {"id":"settled","label":"...","hit":false,"privateNote":""},
+    {"id":"contested","label":"...","hit":false,"privateNote":""}
   ],
   "findings": [
-    {
-      "code": "TIME_WINDOW",
-      "text": "This time falls outside a required time window.",
-      "affected_count": 1
-    }
+    {"code":"TIME_WINDOW","text":"This time falls outside a required time window.","affected_count":1}
   ]
 }
 ```
 
-This is safe because it contains no membership ID, no name, and no private raw wording.
+**这就是能给 AI 的全部。** 里面没有 membership_id、没有姓名、没有原话——
+类型上就装不下,所以你不需要额外过滤。
 
-### Supported Constraint Kinds
+### 六种约束(Preference 的输出)
 
-| Kind | Params | Example |
+| kind | params | 例子 |
 |---|---|---|
-| `time_window` | `earliest_hour`, `latest_hour` | no earlier than 9 AM |
-| `budget_ceiling` | `max_total_per_person` | maximum $650 |
-| `date_range` | `start`, `end` | only available Aug 13-18 |
-| `walk_limit` | `max_km_per_day` | no more than 3 km walking per day |
-| `dietary` | `required_tags` | vegetarian required |
-| `avoid_tag` | `tags` | avoid nightclubs |
+| `time_window` | `earliest_hour` / `latest_hour` | 不早于 9 点 |
+| `budget_ceiling` | `max_total_per_person` | 最多 $650 |
+| `date_range` | `start` / `end` | 只有 13–18 号有空 |
+| `walk_limit` | `max_km_per_day` | 每天走路不超过 3 公里 |
+| `dietary` | `required_tags` | 必须有素食 |
+| `avoid_tag` | `tags` | 不去夜店 |
 
-`importance` is either `required` or `flexible`. Required can force Confirm; flexible does not change the decision path.
+`importance`: `required`(违反 → Confirm)| `flexible`(不改变判定)
 
-If text cannot map to these six kinds, return `kind: null` with a short explanation. Do not force it into the wrong type.
+**翻不进这六种就返回 `kind: null` + 一句说明**,不许硬塞。
+系统会老实告诉用户"这条我保护不了,请写进公开说明"——假装保护比不保护更糟。
 
-### POI Catalog
+### 景点库(Planner 的输入)
 
-`backend/data/poi_chicago.py` contains curated Chicago points of interest. Each record includes name, area, coordinates, price estimate, duration, opening hours, walking intensity, access tags, diet tags, and interest tags.
+`backend/data/poi_chicago.py`,49 条。每条:
 
-Walking, diet, access, and tags are what make deterministic validation possible.
+```
+名字 · 区域 · lat · lng · 每人$ · 分钟 · 开 · 关
+walk(low|medium|high) · access[] · diet[] · tags[]
+```
+
+`access` / `diet` / `walk` 这三栏是给约束判定用的——用户填了"走不了太多路",
+只有景点上有 `walk` 这一栏,程序才判断得出来。
+
+⚠️ 库里价格和营业时间是估算,`source` 一律 `ai_estimate`。人工核实过的才能改 `verified`。
 
 ---
 
-## 7. Agent Specs
+## 六、五个 Agent 各自的规格
 
-| Agent | Trigger | Input | Output | Failure |
+| | 触发 | 输入 | 输出 | 失败怎么办 |
 |---|---|---|---|---|
-| Preference | User writes a preference | One natural-language sentence | `{kind, params, importance, restated, confidence}` | Return `kind: null` |
-| Explainer | Classification or plan item explanation | Verdict + before/after | Human-readable reason and tradeoff | Hide explanation if unsure |
-| Compromise | A change hits a hard limit (Confirm) or a slot is contested (Round) | Feasible slots/POIs computed by rules + anonymous constraint kinds + group interests | `{patch, safe_reason}` — a third option nobody had to ask for | Return the rules' first feasible candidate; if none exists, say so honestly |
-| Planner | Initial generation or repair | Anonymous constraints + POI catalog | `PlanItem[]`, one day at a time | Retry once, then mark blocked |
-| Options | Round path | Contested slot + public intent | Three options | Fall back to keep/split template |
-| Chat | User asks for a change | Message + optional item ID | `reply` and optional `proposed_change` | Apologize and ask for a clearer request |
+| **Preference** | 用户在偏好页/私聊里说了一句要求 | 一句自然语言 | `{kind, params, importance, restated, confidence}` | 翻不进六种 → `kind: null` |
+| **Explainer** | 每次判定完 · 每条行程条目 | 判定结果 + 改动前后 | 为什么这么排 / 牺牲了什么 / `+$12 · 步行 +15min` | 没把握就不显示,不要编 |
+| **Mediator** | 有人被拉进匿名对话 | 脱敏结论 + 双方公开诉求 + 景点库 | 开场说明 · 2–3 个替代方案 · 谈崩时的升级建议 | 退回到只描述现状 |
+| **Planner** | 生成初始行程 / 修连锁影响 | 匿名约束集 + 景点库 | `PlanItem[]`,**一天一批** | 重生成一次 → 还不行标 `blocked` |
+| **Options** | 判定结果是 Round | 被争的时段 + 双方诉求 | 3 个选项 | 退回「保持原样 / 分头行动」两个 |
 
-### `restated`
+### `restated` 是干什么的
 
-Preference Agent must restate the understood rule before anything is saved.
+Preference 的输出里,`restated` 是给用户看的人话:
 
-Example:
+> **你**:我腰不好,走不了太多路
+> **AI**:我把它记成「每天走路不超过 3 公里」,对吗?  ← 这句就是 restated
+> **你**:对 → 才写库
 
-```text
-User: My back hurts, so I cannot walk too much.
-AI: I will remember this as: keep walking under 3 km per day. Is that right?
-User: Yes.
-Backend: write MemberConstraint and MemberConstraintPrivate.
-```
+**没有这一步就是 AI 替用户做了决定。**
 
-Without this step, AI would be deciding for the user.
+### Planner 为什么一天一批
 
-### Compromise — why this agent exists
-
-This is the most important agent in the product, and the reason is structural, not
-technical.
-
-**A human cannot propose a compromise without someone disclosing.** To offer "how about
-16:00 instead", you must first know what blocks 09:00 — and knowing that means somebody
-told you. That is the deadlock at the centre of this product: you cannot negotiate without
-exposing, and you cannot protect without blocking negotiation.
-
-**The agent is the only participant that can see every constraint at once.** So it is the
-only one that can compute a plan satisfying everyone's hard limits **while nobody says a
-word**. That is not "AI for efficiency" — it is the only way "negotiation" and "privacy"
-can both be true at the same time.
-
-Before this agent exists, a member's whole vocabulary is *yes* or *no*. The system
-adjudicates fairly but offers nothing. Compromise turns choosing into creating.
-
-### Compromise — split it in two
-
-**The feasible set is computed by rules, not by AI.** Which slots satisfy every
-`time_window`, stay under the tightest budget ceiling, and respect walk limits is a
-constraint-satisfaction problem, and the code already exists:
-
-| Helper | Where | Does |
-|---|---|---|
-| `_legal_slots()` | `plans/generator.py` | slots a POI may legally occupy |
-| `_candidate_valid_after()` | `plans/generator.py` | still legal once this is inserted |
-| `_budget_headroom()` | `plans/generator.py` | money left under the tightest ceiling |
-| `violates()` | `constraints/engine.py` | one constraint against one change |
-
-**The AI only does two things inside that feasible set:** pick which candidate best matches
-the group's interests, and select the `safe_reason` code. Nothing else.
-
-Two consequences worth knowing:
-
-- **This ships without an API key.** The rules half alone already produces a real third
-  option. AI only makes the pick smarter. Given that the current blocker is a missing key,
-  build the rules half first.
-- **"No compromise exists" is a valid, valuable answer** — and it is *provable*, not
-  guessed, because the feasible set is computed. Say it plainly (D2's spirit).
-
-### Compromise — output contract
-
-```json
-{ "patch": { "start_hour": 16.0 }, "safe_reason": "TIME_WINDOW" }
-```
-
-`safe_reason` is a key into `SAFE_TEXT` (`constraints/engine.py`). The model picks the key;
-the product renders the sentence. There is no field the model can put prose into — same
-discipline as `AnonymizedFinding`, which structurally cannot hold an identity.
-
-**The agent proposes; the rules dispose.** Every generated patch goes through
-`engine.classify()` like any human-submitted change, and enters the existing Round or
-Confirm flow. The agent never applies anything. This is D13's pattern
-("Planner only picks") applied a second time.
-
-### Planner By Day
-
-Generate one day at a time. If day 2 fails, redo day 2 rather than throwing away day 1. Pass previous days into the next day so the plan does not repeat places.
+失败只重做那一天,不用整个推倒;用户也能看着进度一天天出来。
+生成第 2 天时把第 1 天的结果一起给它看,避免两天安排重复的地方。
 
 ---
 
-## 8. AI Uses the Same Change Door
+## 七、AI 想改行程,走和人一样的门
 
-AI has no privileged change path.
+**没有后门,也不需要后门。**
 
-```text
+```
 POST /api/plans/items/{item_id}/changes
-X-Membership-Id: <AI membership>
+X-Membership-Id: <给 AI 建一个 membership>
 ```
 
-Returned `path` controls the result:
+返回里 `path` 告诉你后端把它判成了哪条路:
 
-| Path | Meaning | Applied immediately |
+| path | 意思 | `applied` |
 |---|---|---|
-| `notice` | Change applies and sends an anonymous notice | Yes |
-| `round` / `reopen_round` | Opens a vote; plan unchanged | No |
-| `confirm` | Creates a proposal; plan unchanged | No |
+| `notice` | **当场就改了** | `true` |
+| `round` / `reopen_round` | 开了一轮投票,行程没变 | `false` |
+| `confirm` | 建了一个待确认,行程没变 | `false` |
 
-Use `/classify` for read-only trial calculation. It accepts the same body and rolls back after classification.
+试算用 `/classify`,**同一个 body、同一套判定,跑完回滚**——所以试算和真做永远不会不一致。
+不花钱、不慢,可以随便试。
 
-AI-authored changes should be attributed to Cadensy, not anonymous. Also add brakes: the same item should not be edited repeatedly, and one repair cycle should not change more than a small number of items.
+### 两条给自动改动的约束
 
----
-
-## 9. Build Order
-
-1. Preference
-2. Explainer
-3. **Compromise (rules half first — no API key needed)**
-4. Planner
-5. Options
-
-Do not follow architecture diagrams left to right. Explainer is cheap because it explains data that already exists. Preference is first because it unlocks enforceable constraints.
-
-Compromise moved up because its rules half needs no model at all, and because without it a
-member's only vocabulary is yes/no — the product adjudicates but never creates. It is the
-piece that makes "negotiation" true.
+- **AI 改的东西要署名,不能匿名。** 匿名是为了保护人,AI 不需要保护。
+  通知写「TripSync 调整了这里」,不写「一位成员改了」。
+- **要有刹车。** 同一个条目不能连着改、一轮不能改超过 2–3 条。
+  不然出 bug 会疯狂重排整个行程。
 
 ---
 
-## 10. Minimum Tests
+## 八、做的顺序
 
-Every agent needs tests for:
-
-```text
-MOCK_AI=1 works and makes no network request
-Output matches schema
-Preference kind is one of six supported kinds or null
-Prompt/context contains no membership ID, name, or private raw wording
-OpenAI failure does not change classify / changes / votes behavior
+```
+1. Preference   ← 先做。没有它用户填不了约束，后面全是空转
+2. Explainer    ← 最便宜，而且立刻能演示（卖点终于看得见）
+3. Mediator     ← 「AI 协调」这个定位唯一能被看见的地方，不依赖景点库
+4. Planner      ← 依赖景点库
+5. Options      ← 前三个能演之后再做
 ```
 
-The privacy prompt test matters most. Capture the constructed prompt/context and assert that it does not contain `MemberConstraintPrivate.original_text`.
+**别按架构图从左到右做。** Explainer 只是把已经算好的结果说成人话,
+不需要景点库、不需要用户确认流程,半天就能看到效果。
 
-Run:
+---
+
+## 九、每个 agent 至少要有这些测试
+
+```
+MOCK_AI=1 下能跑通，且不发任何网络请求
+输出一定符合 schema（Preference 的 kind 一定在六种之内，否则是 null）
+传给模型的 prompt 里不含任何 membership_id、姓名、私密原话   ← 断言这条
+OpenAI 报错时，classify / changes / votes 三个接口行为不变
+```
+
+第三条最重要。写法:把构造好的 prompt 字符串抓出来,断言里面找不到
+数据库里那条 `MemberConstraintPrivate.original_text`。
+
+跑测试:
 
 ```bash
-cd backend
-DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
+cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
 ```
+
+现在是 143 passed。**加 agent 之后只能变多,不能变少。**
 
 ---
 
-## 11. Update After Changes
+## 十、做完更新这几处
 
-After changing agents, update:
-
-- [`PRODUCT.md`](PRODUCT.md): product-level agent status.
-- The handoff notes: implementation progress.
-- [`../backend/README.md`](../backend/README.md): API surface or backend behavior changes.
+- [`PRODUCT.md`](PRODUCT.md) 第七节 —— 每个 agent 的实现状态
+- [`../trip/交接.md`](../trip/交接.md) 第五节 —— 进度表
+- [`../trip/BACKEND.md`](../trip/BACKEND.md) 第四节 —— 新增的接口

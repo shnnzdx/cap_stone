@@ -25,7 +25,6 @@ from ...db.models import (
     Plan,
     PlanItem,
     Preference,
-    Trip,
     TripMembership,
     User,
 )
@@ -49,10 +48,6 @@ class NotYours(Exception):
 
 class UnknownConstraintKind(Exception):
     """只有六种。填不进去的,系统会老实说保护不了,而不是硬塞一个。"""
-
-
-class PreferenceOutsideTripWindow(Exception):
-    """参与者偏好日期必须落在组织者设置的 trip date window 内。"""
 
 
 def _now() -> datetime:
@@ -150,32 +145,9 @@ class PreferenceData:
     top_interests: tuple[str, ...] = ()
 
 
-def _validate_within_trip_window(
-    db: Session, membership: TripMembership, data: PreferenceData
-) -> None:
-    trip = db.get(Trip, membership.trip_id)
-    if trip is None or trip.preferred_start_date is None or trip.preferred_end_date is None:
-        return
-    for label, value in (
-        ("preferred_start_date", data.preferred_start_date),
-        ("preferred_end_date", data.preferred_end_date),
-        ("available_start_date", data.available_start_date),
-        ("available_end_date", data.available_end_date),
-    ):
-        if value is None:
-            continue
-        if value < trip.preferred_start_date or value > trip.preferred_end_date:
-            raise PreferenceOutsideTripWindow(
-                f"{label} must be between "
-                f"{trip.preferred_start_date.isoformat()} and "
-                f"{trip.preferred_end_date.isoformat()}"
-            )
-
-
 def save_mine(
     db: Session, membership: TripMembership, data: PreferenceData
 ) -> dict:
-    _validate_within_trip_window(db, membership, data)
     pref = db.scalar(
         select(Preference).where(Preference.trip_membership_id == membership.id)
     )

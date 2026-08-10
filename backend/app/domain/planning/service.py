@@ -40,7 +40,6 @@ class GeneratedPlan:
 
 @dataclass(frozen=True)
 class _PlanningLimits:
-    # 生成器的默认日程从白天开始,低于 9 点的偏好不能把活动拖到凌晨。
     earliest_hour: float = 9.0
     latest_hour: float = 22.0
     maximum_budget: float | None = None

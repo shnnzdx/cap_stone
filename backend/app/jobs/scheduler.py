@@ -16,7 +16,6 @@ import os
 
 from ..db.session import SessionLocal
 from ..domain.decisions.orchestrator import expire_due_proposals, settle_due_rounds
-from ..domain.trips.service import sync_trip_statuses
 
 log = logging.getLogger("tripsync.scheduler")
 
@@ -26,17 +25,14 @@ TICK_SECONDS = int(os.getenv("SETTLE_TICK_SECONDS", "60"))
 def run_once() -> dict[str, list[str]]:
     """结算到期的投票 + 作废到期的确认。跑多少次都安全。"""
     with SessionLocal() as db:
-        synced = sync_trip_statuses(db)
         settled = settle_due_rounds(db)
         expired = expire_due_proposals(db)
         db.commit()
-    if synced:
-        log.info("同步了 %d 趟旅行状态: %s", len(synced), synced)
     if settled:
         log.info("结算了 %d 轮投票: %s", len(settled), settled)
     if expired:
         log.info("作废了 %d 个过期提案: %s", len(expired), expired)
-    return {"synced": synced, "settled": settled, "expired": expired}
+    return {"settled": settled, "expired": expired}
 
 
 async def _loop() -> None:

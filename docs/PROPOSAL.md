@@ -1,259 +1,229 @@
-# Cadensy: AI Group Travel Decision Engine
+# AI 群体旅行决策引擎 · 项目提案
 
-> Cadensy is not an AI that merely generates an itinerary. It is an AI-mediated group decision engine that helps travelers surface constraints, explain tradeoffs, and keep one shared plan moving.
+> **一句话定位**:这不是一个「帮你生成行程」的 AI,而是一个**主持多人协商、处理约束、
+> 解释妥协、并推动小组做出决定**的群体决策引擎。
 
-This is the product and business proposal. Technical details live in
-[`../backend/README.md`](../backend/README.md). Frontend behavior lives in
-[`../trip/FRONTEND.md`](../trip/FRONTEND.md).
-
----
-
-## 1. Business Problem
-
-Group travel planning usually depends on one organizer pulling scattered opinions from group chat, remembering everyone's budget and availability, comparing conflicting preferences, and rebuilding the plan whenever one condition changes.
-
-That workflow has five structural problems:
-
-- Decision fatigue slows or kills trips.
-- Hard constraints get lost in chat: budget ceilings, food requirements, accessibility needs, dates, and personal limits.
-- Loud members dominate quiet members.
-- Some people will not publicly share financial pressure or personal limitations.
-- Generic voting treats all preferences equally, even when one option is a nice-to-have and another is a hard limit.
-
-The real competitor is not another AI travel app. It is group chat plus spreadsheets plus polls plus travel websites plus one overworked organizer.
-
-Cadensy wins only if it makes group coordination materially easier, not if it simply adds another planning surface.
+**本文是产品与商业论证的唯一权威版本。** 技术契约见 [`../trip/BACKEND.md`](../trip/BACKEND.md),
+实现现状见 [`../trip/交接.md`](../trip/交接.md)。三者不重复:本文说"为什么和做什么",
+那两份说"怎么做"。
 
 ---
 
-## 2. Differentiation
+## 一、商业问题
 
-### AI Facilitator, Not AI Trip Planner
+多人旅行规划的现状:一名组织者从群聊里捞零散意见,记住每个人的预算和可用时间,
+比较相互冲突的偏好,任何条件一变就重做一遍。
 
-Cadensy interviews members, structures ambiguous needs, identifies hidden conflicts, proposes compromises, and helps the group make decisions. That is a different category from itinerary generation.
+这套流程有五个结构性缺陷:
 
-### Hard Constraints and Soft Preferences Are Separate
+- **决策疲劳拖垮行程**,很多旅行最后不了了之
+- **硬约束在群聊里会丢**:预算上限、饮食限制、无障碍需求、日期限制
+- **声音大的人主导结果**,安静的人被平均掉
+- **有些人不愿公开财务压力或个人限制**,于是干脆不说
+- **普通投票把所有意见等同看待**,分不清"更想去海边"和"预算不能超 $800"
 
-Real fairness starts by respecting hard limits before optimizing average happiness. "Majority likes this" is not enough if one member cannot afford or access the plan.
+**真正的竞争对手不是别的 AI 产品**,是「群聊 + 表格 + 投票工具 + 旅行网站 + 一个特别积极的组织者」。
+要赢它,必须在某一项上做到十倍改善,而不是"也能用"。
 
-### Private Input, Group Output
+## 二、这个产品特别在哪
 
-Members can share sensitive details privately with the system. Cadensy can tell the group that a plan hits one required budget or time constraint without saying who wrote it.
+四条差异化,按重要性:
 
-### Explainable Compromise
+**1. AI 是协商主持人,不是行程生成器。**
+它分别采访成员、整理模糊需求、识别隐藏冲突、提出妥协方向、推动小组做出决定。
+`AI facilitator` 和 `AI trip planner` 是两个品类。
 
-Cadensy should not only return an itinerary. It should explain what changed, why a path was chosen, what tradeoff was made, and why private details stay private.
+**2. 硬约束与软偏好分开处理。**
+先排除违反硬约束的方案,再优化整体满意度——比"少数服从多数"更接近现实。
 
----
+**3. 私人输入,群体输出。**
+成员可以把信息设为仅供 AI 计算。AI 能告诉全组"当前方案超过一名成员的必要预算",
+但不公开是谁。**隐私机制本身就是卖点。**
 
-## 3. How Changes Enter the Current Plan
+**4. 妥协是可解释的。**
+不只给结论,还说明:满足了谁、谁在让步、是否违反必要条件、为什么推荐它。
 
-Cadensy has no final publish or lock workflow. It maintains a living Current Plan.
+## 三、核心机制:改动怎么进入 Current Plan
 
-Every change goes through deterministic routing:
+> ⚠️ **这一节是 2.0 相对 1.0 最大的改动。**
+> 1.0 的七阶段流程和最终锁定已经**整体废弃**,原因见附录 A。
 
-| Question | If yes | User experience |
+**没有 Lock,没有 Final 发布。** 系统维护一份持续更新的 Current Plan。
+
+每个改动先问三个问题,答案决定它走哪条路。**默认走最便宜的那条。**
+
+| 问 | 是 → 走哪条 | 用户体验 |
 |---|---|---|
-| Does it hit a hard limit: booked item, required constraint, budget ceiling, or date range? | Confirm | Only affected members enter anonymous confirmation; all must accept. |
-| Is the slot already settled? | Reopen Round | Requester must give a reason; majority of the whole group must explicitly support change. |
-| Has the slot been touched before? | Round | All members vote in parallel; deadline settles the result. |
-| None of the above | Notice | Change applies immediately and sends an anonymous notice. |
+| ① 碰硬底线了吗?(已订 / 违反谁的必须条件 / 超预算上限 / 超日期) | **Confirm** | 只拉受影响的人进匿名对话,全部点头才改 |
+| ② 这个时段已经投票定过了吗? | **Round(高门槛)** | 必须写理由;要过半数明确支持才能推翻 |
+| ③ 这个时段有人碰过吗? | **Round** | 全员一键表态,有截止时间,到点按票数落地 |
+| ④ 都不是 | **Notice** | 当场生效,只发一条匿名通知,**没有人需要做任何事** |
 
-Expected split: most changes should be Notice, some should become Rounds, and only a small minority should need Confirm.
+约八成的改动落在 Notice,约一成半落在 Round,只有约半成需要真的对话。
 
-Design rules:
+### 四条防乱规则
 
-1. Silence means different things by path. In Notice, silence is default acceptance because objection is one click. In Round and Confirm, silence is not consent. In Reopen Round, silence favors the existing settled decision.
-2. One person's new preference cannot casually overturn a settled slot. Reopening needs a reason and majority support.
-3. During travel, decisions need shorter deadlines because the group is already on the road.
-4. No path exposes private wording or identity.
+1. **沉默的含义按路径分档。** Notice 的沉默 = 默认接受(反对只要点一下,成本极低);
+   Round 的沉默 = 没表态,**不算同意也不阻塞**;重开轮的沉默 = 维持原决定。
+2. **已定的时段,单个人的想法不足以直接推翻。** 必须写理由并过半数。
+   ~~多人联署~~ 已删除——它要求私下拉票,而拉票正是本产品要消灭的行为。
+3. **旅行中整体降级。** Round 截止时间从 24 小时缩到 2 小时;
+   六个人站在街上时不跑异步投票。
+4. **任何路径都不暴露偏好原文。** 永远只说 "one private constraint",不出现姓名和原因。
 
-Chat is intentionally not the default. Chat is serial, unbounded, expensive for participants, and easy to miss. Structured decision cards are faster and fairer for most cases.
+### 为什么不默认用聊天
 
----
+聊天是这套工具里最贵的东西:串行、无截止、参与成本高、没被拉进去的人不知道发生过。
+而回合是并行的、有 deadline 的、一键完成的。
 
-## 4. Privacy and Roles
+**把选择题塞进聊天,等于用最贵的工具解决最便宜的问题,而且会漏人。**
 
-Three rules cannot be broken:
+## 四、隐私与角色
 
-1. Organizer preferences have no higher weight.
-2. Organizers cannot read private preferences.
-3. No role can make decisions for another member.
+### 三条不可妥协的规则
 
-If Confirm deadlocks, the organizer can only choose neutral exits:
+1. **组织者的偏好不享有更高权重。** 在约束求解里和其他人完全等权。
+2. **组织者读不到私密偏好。** 对组织者和普通成员一视同仁。
+   这不是界面上的隐藏,是数据层就分开存。
+3. **任何角色都不能替别人做决定。** 不能替填偏好、不能替确认、不能把"未回复"当同意。
 
-- split the block, so different members do different activities and regroup later;
-- clear the block, so the slot becomes free time.
+### 僵局出口
 
-The organizer cannot adopt one side's proposal over the other.
+Confirm 谈不拢时升级给组织者。**组织者唯一能做的是"不做决定"**:
+把这个时段拆成分头行动,或者空出来变自由活动。他不能选择任何一方的方案。
 
-Known limitation: anonymity is fragile in a small group. Cadensy should not claim perfect anonymity. It should claim that the system does not directly disclose private wording or identity.
+### 已知弱点(需主动承认)
 
----
+**6 人小组里的匿名是脆的。**"有一条时间要求不能早于 9 点"——组里的人可能一猜就中。
+对外不宣称"完全匿名",只宣称"不主动暴露"。
 
-## 5. AI Agent Responsibilities
+## 五、AI Agent 的职责
 
-Cadensy uses the same model capability in different workflow roles.
+同一个底层模型,不同 Prompt 和工作流阶段。五个活:
 
-| Agent | Job | Requirement |
+| 活 | 干什么 | 硬性要求 |
 |---|---|---|
-| Preference | Convert natural language into enforceable constraints | User confirmation before save |
-| Planner | Generate an itinerary from curated POIs | Deterministic validation before publish |
-| Explainer | Explain tradeoffs, decision paths, and trust labels | Read-only |
-| Options | Suggest choices for contested slots | Must include split-up option |
-| Mediator | Support anonymous conflict conversations | No pressure and no decision authority |
-| Chat | Turn a user message into a proposed plan patch | User applies manually |
+| **翻译约束** | 把用户随口一句话变成可判定的结构化条件 | **必须用户确认**才生效 |
+| **生成行程** | 从策展景点库排出完整方案 | 过规则检查才能上线,失败重生成一次,仍失败标 `blocked` |
+| **解释** | Why this works / Trade-offs / 可信度标签 | 只读,不改行程 |
+| **出候选项** | 被争夺的时段给 3 个选项 | **必须包含「分头行动」** |
+| **私聊** | 一对一沟通、试算改动代价 | 上下文里不含别人的私密原文 |
 
-AI cannot:
+### AI 不能做的事
 
-- raise a member's budget without consent;
-- expose private information;
-- accept a proposal for a member;
-- bypass deterministic classification.
+- 未经允许提高成员预算
+- 泄露私密信息或其所属成员
+- **代替成员接受方案**
+- 直接改写已经定下的时段(它和人走同一道门,一样要被判定)
 
-Fairness-sensitive routing uses fixed code, not model judgment. AI can translate and explain; code decides.
+### 判定用死规则,不用 AI
 
----
+大模型同一个问题问两次可能给不同答案。**一个以"公平"为卖点的产品,规则本身不能是飘的。**
+AI 只在用户写下约束的那一刻出场,翻译结果存下来,以后判定只看存下来的规则。
 
-## 6. Fairness Logic
+## 六、公平性逻辑
 
-Recommended priority order:
+推荐按此优先顺序:
 
-1. Minimize unresolved hard-constraint violations.
-2. Improve the lowest individual satisfaction.
-3. Improve average group satisfaction.
-4. Reduce satisfaction gaps between members.
-5. Avoid concentrating major sacrifice on one person.
+1. **最小化硬约束违反**——最终方案必须不存在未解决的硬约束违反
+2. 提高**最低**个人满意度
+3. 提高团队平均满意度
+4. 缩小成员之间的满意度差距
+5. 减少集中在某一名成员身上的重大妥协
 
-Highest average score is not necessarily fair. A plan can look good on average while making one member unable to participate.
+> 平均分最高 ≠ 公平。第 5 个人可能根本去不了。
 
-Do not claim that a plan is objectively fairest. Say that, based on confirmed inputs and available data, it is the best-balanced compromise.
+**不要宣称某个方案"客观上最公平"**,而应描述为:基于当前已确认的输入和现有数据,
+**兼顾程度最高**的妥协方案。
 
----
+## 七、数据可信度
 
-## 7. Data Trust
+MVP 不接实时预订库存,所有旅行信息必须打标签:
 
-MVP does not connect to live booking inventory. Every travel fact needs a trust label:
+`verified`(人工验证)· `ai_estimate`(AI 估算)· `mock`(人工整理)· `not_verified`
 
-- `verified`
-- `ai_estimate`
-- `mock`
-- `not_verified`
+**标签由代码打,不由 AI 自称。** 让模型自己标可信度等于没标。
 
-Trust labels must come from code or source provenance, not from AI self-confidence.
+除非事实已被实际验证,否则**不得暗示某家酒店、餐厅、价格或活动当前可直接预订**。
 
-Do not imply that a hotel, restaurant, price, or activity is directly bookable unless that fact has been verified.
+## 八、范围
 
----
+### MVP 演示边界
 
-## 8. MVP Scope
+3–5 名活跃成员 · 一个目的地城市(Chicago)· 2–5 天 · 策展景点库,非实时库存
 
-Demo boundary:
+### 做
 
-- 3-5 active members
-- one destination city, Chicago
-- 2-5 days
-- curated POI catalog
-- no live booking inventory
+创建旅行与邀请 · 偏好提交与 AI 结构化 · 硬约束/软偏好分类 · 私密可见性 ·
+冲突分析 · AI 生成完整方案 · 四条路径的改动流程 · 匿名协商 · 决策流水账 ·
+妥协解释与可信度标签 · 地图与路线顺序 · 费用估算
 
-In scope:
+### 不做(明确排除)
 
-- trip creation and invite flow
-- preference submission and AI structuring
-- hard-constraint versus soft-preference handling
-- private visibility
-- conflict analysis
-- initial plan generation
-- Notice / Round / Reopen Round / Confirm paths
-- anonymous confirmation
-- decision history
-- compromise explanation and trust labels
-- map and route order
-- cost estimates
+多城市优化 · 不同出发城市的交通协调 · 实时航班/酒店库存 · 预订与支付 ·
+突发情况自动重规划 · 陌生人旅行搭子匹配 · 生产级通知系统 · 签证法律医疗判断 ·
+复杂费用分摊
 
-Out of scope:
+### 可砍(时间紧时先砍这些,答辩看不出来)
 
-- multi-city optimization
-- coordination across different departure cities
-- live flight or hotel inventory
-- booking and payment
-- automatic emergency replanning
-- stranger matching
-- production-grade notification delivery
-- visa, legal, medical, or safety advice
-- detailed expense splitting
+登录系统(演示时写死身份)· 邀请链接与访客加入 · 组织者的催交/延长功能 ·
+管理员界面
 
-Cuttable if time is tight:
+## 九、成功标准
 
-- full login system
-- invite links and guest join
-- organizer remind and extend tools
-- admin UI
+### 功能验收
 
----
+- [ ] 多人加入同一趟旅行,各自提交公开与私密需求
+- [ ] 系统识别出至少一个有意义的偏好冲突或预算冲突
+- [ ] 生成一份完整的单城市方案,含住宿、活动、餐饮、路线、费用估算
+- [ ] 方案能解释主要妥协,**且不泄露私密信息**
+- [ ] 一个改动能被正确分流到四条路径中的一条
+- [ ] 投票到点自动结算,未表态者不被记为同意
+- [ ] 碰到硬约束时,少一个人点头就不落地
+- [ ] 决策流水账能完整回放整趟旅行的每个决定
 
-## 9. Success Criteria
+### 衡量指标
 
-Functional acceptance:
-
-- Multiple people join one trip and submit public and private needs.
-- Cadensy identifies at least one meaningful preference, budget, or time conflict.
-- Cadensy generates a complete single-city plan with activities, meals, route order, and estimated cost.
-- The plan explains major compromises without leaking private information.
-- A change routes correctly into Notice, Round, Reopen Round, or Confirm.
-- Voting settles automatically at deadline, and silence is not counted as agreement.
-- Hard-constraint changes require all affected members to accept.
-- The change log can replay how decisions were made.
-
-Metrics:
-
-| Metric | Definition |
+| 指标 | 怎么算 |
 |---|---|
-| Preference completion rate | members who submitted preferences / joined members |
-| First-plan generation time | complete inputs -> first valid plan |
-| Group decision time | trip created -> no pending decisions |
-| Hard-constraint satisfaction rate | satisfied confirmed hard constraints / all confirmed hard constraints |
-| Decision path mix | Notice / Round / Confirm proportions |
-| Chat count | number of real conflict conversations per trip |
-| Accepted plan retention | unchanged accepted parts / previous plan |
+| 参与完成率 | 完成偏好的成员 ÷ 已加入成员 |
+| 首版方案生成时间 | 输入齐全 → 第一版方案 |
+| 团队决策总时间 | 创建旅行 → 全组不再有待决事项 |
+| **硬约束满足率** | 已满足 ÷ 已确认的硬约束,**目标 100%** |
+| 改动分流比例 | Notice / Round / Confirm 各占多少(**验证"八成走最便宜那条"**) |
+| 聊天次数 | 一趟旅行里真的开了几次对话(**越少越好**) |
+| 已接受部分保留率 | 修改后未变的部分 ÷ 修改前 |
 
-User trust questions:
+后两个是 2.0 新增的,**直接检验本产品的核心主张**。
 
-- Did AI understand my needs correctly?
-- Were explanations clear?
-- Did the process feel fair?
-- Would I use the result for a real trip?
+### 用户信任评估
 
----
+试用者需回答:AI 是否正确理解了我的需求?解释是否易懂?流程是否公平?
+是否愿意在真实旅行中采用这个结果?
 
-## 10. Risks
+## 十、风险
 
-| Risk | Mitigation |
+| 风险 | 对策 |
 |---|---|
-| Scope creep | Keep MVP to one city, small groups, curated data, and bounded decision paths. |
-| AI misunderstanding | Require confirmation, structured output, deterministic validation, and trust labels. |
-| Perceived unfairness | Show hard constraints, explain tradeoffs, and avoid exposing private data. |
-| Low participation | Keep input under three minutes, show progress, and allow reminders without converting silence into consent. |
-| Accepted plan overwritten | Use slot-level changes, settledness, and append-only change log. |
-| Anonymity inference | Acknowledge the limitation and do not overpromise. |
-| Evaluation time | Use one controlled scenario, one small test group, and consistent evaluation questions. |
+| 范围扩张 | 严格执行单城市、小团队、策展数据、有限改动轮次 |
+| AI 误解输入 | 要求用户确认、结构化输出、规则验证、置信度标签 |
+| 被认为不公平 | 展示硬约束、最低满意度、明确的妥协解释,同时不公开私密信息 |
+| 参与度不足 | 输入流程 3 分钟内、显示完成进度、允许提醒,**但不能把沉默当同意** |
+| 修改覆盖已接受内容 | 按时段改动 + 流水账 + 结实程度分档 |
+| **匿名被反推** | 主动承认弱点,不过度承诺 |
+| 评估时间有限 | 一个可控场景 + 一个小型试用团队 + 统一评估问题 |
+
+## 十一、商业模式
+
+群体旅行是低频行为,**传统年度订阅大概率不成立**。可能的方向:
+
+计划确定后的预订/Affiliate 佣金 · 单次付费 Trip Pass · 高级实时数据与动态重规划 ·
+面向公司 Retreat / 学生旅行的 B2B · 白标化的群体需求收集服务
+
+**Capstone 不需要验证收入模型**,只需验证三个产品假设:
+
+1. 成员愿意提交并确认个人需求
+2. AI 工作流能缩短形成可用共同计划的时间
+3. 用户能理解并信任妥协解释,从而接受最终结果
 
 ---
-
-## 11. Business Model
-
-Group travel is low frequency, so a standard annual consumer subscription is unlikely to fit.
-
-Possible directions:
-
-- affiliate or booking commission after plan acceptance
-- one-time Trip Pass
-- paid real-time data and dynamic replanning
-- B2B for company retreats or student trips
-- white-labeled group preference collection
-
-The capstone does not need to prove revenue. It needs to validate three product assumptions:
-
-1. Members are willing to submit and confirm personal needs.
-2. AI workflow reduces time to a usable shared plan.
-3. Users understand and trust compromise explanations enough to accept the final plan.

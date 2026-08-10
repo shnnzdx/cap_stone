@@ -208,11 +208,6 @@ def _looks_like_change_request(
         "instead",
         "later",
         "earlier",
-        "改",
-        "换",
-        "移动",
-        "调整",
-        "替换",
     )
     if any(word in text for word in change_words):
         return True

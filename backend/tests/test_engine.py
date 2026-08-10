@@ -148,16 +148,6 @@ def test_hard_constraint_beats_settledness():
     assert result.path is Path.CONFIRM
 
 
-def test_required_date_range_params_accept_iso_strings():
-    result = classify(
-        change(item(), item(day_date=date(2026, 8, 18))),
-        [required(ConstraintKind.DATE_RANGE, {"start": "2026-08-14", "end": "2026-08-17"})],
-    )
-
-    assert result.path is Path.CONFIRM
-    assert result.findings[0].code == "DATE_RANGE"
-
-
 def test_flexible_constraint_does_not_force_confirmation():
     """flexible 只是"尽量满足",违反了不该把改动顶成最贵的那条路。"""
     soft = Constraint(

@@ -61,14 +61,6 @@ const formatDayDate = value => {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-const formatTripDateRange = (start, end) => {
-  if (!start && !end) return 'Dates to be set'
-  const format = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Open'
-  return start === end ? format(start) : `${format(start)} – ${format(end)}`
-}
-
-const tripStatusFromSummary = status => status?.replace(/^\w/, c => c.toUpperCase()) || fallbackTrip.status
-
 const parseISODate = value => value ? new Date(`${value}T00:00:00`) : null
 
 const titleForDay = items => {
@@ -77,67 +69,14 @@ const titleForDay = items => {
   return `${items[0].title} and ${items[items.length - 1].title}`
 }
 
-const tripPhoto = name => `${import.meta.env.BASE_URL}images/trip-photos/${name}`
-const itemPhotoFallbacks = [
-  [/hotel|check-in/i, tripPhoto('hotel.jpg')],
-  [/riverwalk|river/i, tripPhoto('riverwalk.jpg')],
-  [/dinner|brunch|meetup/i, tripPhoto('restaurant.jpg')],
-  [/architecture|cruise/i, tripPhoto('cruise.jpg')],
-  [/art institute|museum|art/i, tripPhoto('museum.jpg')],
-  [/wicker park|food|walk/i, tripPhoto('food-walk.jpg')],
-]
-
-const photoForItem = item => {
-  const provided = item.photoUrl || item.photo_url
-  if (provided && !/^https?:\/\//i.test(provided)) return provided
-  const text = `${item.title || ''} ${item.place || ''}`
-  return itemPhotoFallbacks.find(([pattern]) => pattern.test(text))?.[1] || tripPhoto('riverwalk.jpg')
-}
-
 const normalizeTrip = raw => ({
   ...fallbackTrip,
   id: raw.id,
   name: raw.name,
   destination: raw.destination,
-  preferredStartDate: raw.preferred_start_date || fallbackTrip.preferredStartDate || null,
-  preferredEndDate: raw.preferred_end_date || fallbackTrip.preferredEndDate || null,
-  status: tripStatusFromSummary(raw.status),
+  status: raw.status?.replace(/^\w/, c => c.toUpperCase()) || fallbackTrip.status,
   people: raw.member_count || fallbackTrip.people,
-  onboarding: raw.onboarding || null,
-  activeInvite: raw.active_invite || raw.onboarding?.active_invite || null,
-  organizerPreference: raw.organizer_preference || raw.onboarding?.organizer_preference || null,
-  preferenceCollection: raw.preference_collection || raw.onboarding?.preference_collection || null,
-  planningReadiness: raw.planning_readiness || raw.onboarding?.planning_readiness || null,
 })
-
-const normalizeTripSummary = raw => ({
-  id: raw.id,
-  name: raw.name || 'Untitled trip',
-  destination: raw.destination || 'Destination to be set',
-  preferredStartDate: raw.preferred_start_date || null,
-  preferredEndDate: raw.preferred_end_date || null,
-  dates: formatTripDateRange(raw.preferred_start_date, raw.preferred_end_date),
-  status: raw.status || 'planning',
-  memberCount: raw.member_count || 0,
-  people: raw.member_count || 0,
-  nextItemTitle: raw.next_item_title || null,
-  myRole: raw.my_role || 'participant',
-  myMembershipId: raw.my_membership_id || null,
-})
-
-const buildInviteUrl = token => `${window.location.origin}${window.location.pathname}#/join/${token}`
-
-const normalizeInvite = invite => {
-  if (!invite) return null
-  const token = invite.token || ''
-  return {
-    ...invite,
-    id: invite.invite_id || invite.id,
-    invite_id: invite.invite_id || invite.id,
-    token,
-    url: token ? buildInviteUrl(token) : invite.url || '',
-  }
-}
 
 const normalizeItem = item => ({
   id: item.id,
@@ -156,7 +95,7 @@ const normalizeItem = item => ({
   durationMin: item.duration_min,
   pricePerPerson: item.price_per_person,
   settledness: item.settledness,
-  photoUrl: photoForItem(item),
+  photoUrl: item.photoUrl,
 })
 
 const normalizePlan = raw => {
@@ -220,24 +159,19 @@ const normalizeRound = (round, myVotes = {}, fallback = {}) => {
     myVote: myVotes[round.id] || round.my_vote || fallback.myVote || null,
     closesAt: deadline,
     windowMs,
-    extendedAt: round.extended_at || fallback.extendedAt || null,
   }
 }
 
 const normalizeProposal = (proposal, fallback = {}) => {
   const before = proposal.before || {}
   const after = { ...before, ...(proposal.after || {}) }
-  const deadline = proposal.deadline ? new Date(proposal.deadline).getTime() : fallback.closesAt || Date.now()
-  const windowMs = Math.max(1, deadline - Date.now())
   return {
     id: proposal.id,
     status: proposal.status,
-    sourceItemId: proposal.plan_item_id || fallback.sourceItemId,
+    sourceItemId: fallback.sourceItemId,
     headline: fallback.headline || 'Needs confirmation',
     detail: fallback.detail || 'The Current Plan stays unchanged until every affected member confirms.',
     createdAt: 'Just now',
-    closesAt: deadline,
-    windowMs,
     before: {
       title: before.title || fallback.itemTitle || 'Current plan',
       time: formatHour(before.start_hour),
@@ -255,7 +189,6 @@ const normalizeProposal = (proposal, fallback = {}) => {
       label: member.label,
       status: member.status,
     })),
-    extendedAt: proposal.extended_at || fallback.extendedAt || null,
     privacyNote: proposal.privacy_note,
   }
 }
@@ -278,22 +211,9 @@ const requestPatch = (actionType, item, request) => {
 
 const friendlyError = err => {
   if (err?.status === 409) return 'A vote is already open for this time block.'
-  if (err?.code === 'organizer_preference_missing') return 'Fill your preferences before generating the first itinerary.'
   if (err?.status === 422) return err.message || 'Reopening this block needs a written reason.'
   if (!err?.status || err.status >= 500) return 'Could not reach the backend.'
   return err.message || 'Something went wrong.'
-}
-
-const apiErrorFromResponse = async response => {
-  const body = await response.json().catch(() => ({}))
-  const detail = body.detail
-  const message = typeof detail === 'string'
-    ? detail
-    : detail?.message || body.message || `Request failed (${response.status})`
-  const error = new Error(message)
-  error.status = response.status
-  if (detail?.code || body.code) error.code = detail?.code || body.code
-  return error
 }
 
 const mergeRounds = (incoming, current) => {
@@ -316,9 +236,9 @@ const mergeProposals = (incoming, current) => {
 }
 
 export function TripAppProvider({ children }) {
-  const [authToken, setAuthToken] = useState(() => DEV_ALLOW_MEMBERSHIP_HEADER ? '' : readLocal('tripsync:authToken') || '')
-  const [membershipId, setMembershipId] = useState(() => DEV_ALLOW_MEMBERSHIP_HEADER ? (MEMBERSHIP_ID || readLocal('tripsync:membershipId') || '') : '')
-  const [activeTripId, setActiveTripId] = useState(() => DEV_ALLOW_MEMBERSHIP_HEADER ? (TRIP_ID || readLocal('tripsync:tripId') || '') : (readLocal('tripsync:tripId') || ''))
+  const [authToken, setAuthToken] = useState(() => readLocal('tripsync:authToken') || '')
+  const [membershipId, setMembershipId] = useState(() => DEV_ALLOW_MEMBERSHIP_HEADER ? (readLocal('tripsync:membershipId') || MEMBERSHIP_ID || '') : '')
+  const [activeTripId, setActiveTripId] = useState(() => readLocal('tripsync:tripId') || (DEV_ALLOW_MEMBERSHIP_HEADER ? TRIP_ID : '') || '')
   const [trip, setTrip] = useState(fallbackTrip)
   const [currentUser, setCurrentUser] = useState(null)
   const [days, setDays] = useState(fallbackDays)
@@ -335,12 +255,11 @@ export function TripAppProvider({ children }) {
   const [loading, setLoading] = useState({ initial: true, action: false })
   const [error, setError] = useState('')
   const [trips, setTrips] = useState([])
-  const [activeInvites, setActiveInvites] = useState({})
   const [inviteCopied, setInviteCopied] = useState(false)
   const [preferencesSubmittedFor, setPreferencesSubmittedFor] = useState([])
   const [preferences, setPreferences] = useState({
     preferredRange: { start: makeDefaultDate(7, 14), end: makeDefaultDate(7, 17) },
-    availableRange: { start: makeDefaultDate(7, 14), end: makeDefaultDate(7, 17) },
+    availableRange: { start: makeDefaultDate(7, 13), end: makeDefaultDate(7, 18) },
     idealBudget: '$500',
     maxBudget: '$650',
     budgetVisibility: 'organizer',
@@ -360,16 +279,6 @@ export function TripAppProvider({ children }) {
     window.setTimeout(() => setToast(''), 2400)
   }, [])
 
-  const clearStoredSession = useCallback(() => {
-    setAuthToken('')
-    setMembershipId('')
-    setActiveTripId('')
-    setCurrentUser(null)
-    removeLocal('tripsync:authToken')
-    removeLocal('tripsync:membershipId')
-    removeLocal('tripsync:tripId')
-  }, [])
-
   const publicRequestJson = useCallback(async (path, options = {}) => {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
@@ -380,7 +289,11 @@ export function TripAppProvider({ children }) {
       },
     })
     if (!response.ok) {
-      throw await apiErrorFromResponse(response)
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
+      const error = new Error(message)
+      error.status = response.status
+      throw error
     }
     return response.json()
   }, [])
@@ -399,7 +312,11 @@ export function TripAppProvider({ children }) {
       },
     })
     if (!response.ok) {
-      throw await apiErrorFromResponse(response)
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
+      const error = new Error(message)
+      error.status = response.status
+      throw error
     }
     return response.json()
   }, [activeTripId, authToken, membershipId])
@@ -407,11 +324,7 @@ export function TripAppProvider({ children }) {
   const refreshTrip = useCallback(async () => {
     if (!activeTripId) throw new Error('Missing trip session')
     const raw = await requestJson(`/api/trips/${activeTripId}`)
-    const normalized = normalizeTrip(raw)
-    setTrip(normalized)
-    setTrips(current => current.map(item => (
-      item.id === normalized.id ? { ...item, ...normalized, isCreated: false } : item
-    )))
+    setTrip(normalizeTrip(raw))
     return raw
   }, [activeTripId, requestJson])
 
@@ -419,21 +332,6 @@ export function TripAppProvider({ children }) {
     const raw = await requestJson('/api/me')
     setCurrentUser(normalizeCurrentUser(raw))
     return raw
-  }, [requestJson])
-
-  const loadTrips = useCallback(async () => {
-    try {
-      const raw = await requestJson('/api/trips')
-      const normalized = (raw || []).map(normalizeTripSummary)
-      setTrips(normalized)
-      return normalized
-    } catch (err) {
-      if (err.status === 403) {
-        setTrips([])
-        return []
-      }
-      throw err
-    }
   }, [requestJson])
 
   const refreshPlan = useCallback(async () => {
@@ -479,23 +377,10 @@ export function TripAppProvider({ children }) {
     }
     if (!background) setLoading(current => ({ ...current, initial: true }))
     try {
-      const profile = await refreshCurrentUser()
-      const isGuestProfile = profile?.is_guest || profile?.role === 'guest'
-      await Promise.all([
-        isGuestProfile ? Promise.resolve([]) : loadTrips(),
-        refreshTrip(),
-        refreshPlan(),
-        refreshUpdates(),
-        refreshActions(),
-      ])
+      await Promise.all([refreshCurrentUser(), refreshTrip(), refreshPlan(), refreshUpdates(), refreshActions()])
       setError('')
       return true
     } catch (err) {
-      if ([401, 403, 404].includes(err.status)) {
-        clearStoredSession()
-        if (!background) window.top.location.href = loginUrl()
-        return false
-      }
       // 用户主动操作失败 → 立刻告诉他。
       // 后台轮询失败 → 忍两次再说：网络抖一下就弹横幅，用户会看到它反复闪。
       if (!background || pollFailuresRef.current >= 2) {
@@ -505,7 +390,7 @@ export function TripAppProvider({ children }) {
     } finally {
       if (!background) setLoading(current => ({ ...current, initial: false }))
     }
-  }, [activeTripId, authToken, membershipId, clearStoredSession, loadTrips, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshUpdates])
+  }, [activeTripId, authToken, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshUpdates])
 
   useEffect(() => {
     refreshAll()
@@ -559,14 +444,6 @@ export function TripAppProvider({ children }) {
     setActiveTripId(nextTripId)
     writeLocal('tripsync:membershipId', nextMembershipId)
     writeLocal('tripsync:tripId', nextTripId)
-    setPlanId(null)
-    setDays([])
-    setNotices([])
-    setBaseUpdates([])
-    setActiveRounds([])
-    setActiveProposals([])
-    setMyVotes({})
-    setDecisionResolved(false)
     if (profile) {
       setCurrentUser({
         membershipId: nextMembershipId,
@@ -587,45 +464,15 @@ export function TripAppProvider({ children }) {
     }
   }, [])
 
-  const activateTrip = useCallback(nextTripId => {
-    if (!nextTripId) return
-    const summary = trips.find(item => item.id === nextTripId)
-    const nextMembershipId = summary?.myMembershipId
-    const tripChanged = nextTripId !== activeTripId
-    const membershipChanged = DEV_ALLOW_MEMBERSHIP_HEADER && !authToken && nextMembershipId && nextMembershipId !== membershipId
-    if (!tripChanged && !membershipChanged) return
-
-    setActiveTripId(nextTripId)
-    writeLocal('tripsync:tripId', nextTripId)
-    if (membershipChanged) {
-      setMembershipId(nextMembershipId)
-      writeLocal('tripsync:membershipId', nextMembershipId)
-    }
-    if (summary) {
-      setTrip(current => ({
-        ...current,
-        id: summary.id,
-        name: summary.name,
-        destination: summary.destination,
-        preferredStartDate: summary.preferredStartDate,
-        preferredEndDate: summary.preferredEndDate,
-        status: tripStatusFromSummary(summary.status),
-        people: summary.memberCount,
-      }))
-    }
-    setPlanId(null)
-    setDays([])
-    setNotices([])
-    setBaseUpdates([])
-    setActiveRounds([])
-    setActiveProposals([])
-    setMyVotes({})
-    setDecisionResolved(false)
-  }, [activeTripId, authToken, membershipId, trips])
-
   const logout = useCallback(async () => {
     const token = authToken
-    clearStoredSession()
+    setAuthToken('')
+    setMembershipId('')
+    setActiveTripId('')
+    setCurrentUser(null)
+    removeLocal('tripsync:authToken')
+    removeLocal('tripsync:membershipId')
+    removeLocal('tripsync:tripId')
     if (token) {
       await publicRequestJson('/api/auth/logout', {
         method: 'POST',
@@ -633,7 +480,7 @@ export function TripAppProvider({ children }) {
       }).catch(() => {})
     }
     window.top.location.href = loginUrl()
-  }, [authToken, clearStoredSession, publicRequestJson])
+  }, [authToken, publicRequestJson])
 
   // 真的在后端建一个 trip。以前这里造一个 draft- 开头的假 id 塞进内存，
   // 后端根本不知道这趟旅行存在 —— 所以生成行程、邀请、偏好全都点不动。
@@ -644,8 +491,7 @@ export function TripAppProvider({ children }) {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      setTrips(current => [normalizeTripSummary(created), ...current])
-      setTrip(normalizeTrip(created))
+      setTrips(current => [{ ...created, isCreated: true }, ...current])
       // 你在新 trip 里是另一个 membership。不切过去的话，
       // 邀请、生成、偏好全都会因为"身份属于别的旅行"被拒。
       if (created.membership_id) {
@@ -660,50 +506,13 @@ export function TripAppProvider({ children }) {
     }
   }, [adoptMembership, requestJson])
 
-  const archiveTrip = useCallback(async tripId => {
-    setLoading(current => ({ ...current, action: true }))
-    try {
-      const result = await requestJson(`/api/trips/${tripId}/archive`, { method: 'POST' })
-      setTrips(current => current.filter(item => item.id !== tripId))
-      notify('Trip archived.')
-      return result
-    } catch (err) {
-      setError(friendlyError(err))
-      notify(friendlyError(err))
-      throw err
-    } finally {
-      setLoading(current => ({ ...current, action: false }))
-    }
-  }, [notify, requestJson])
-
-  const unarchiveTrip = useCallback(async tripId => {
-    setLoading(current => ({ ...current, action: true }))
-    try {
-      const result = await requestJson(`/api/trips/${tripId}/unarchive`, { method: 'POST' })
-      await loadTrips()
-      return result
-    } catch (err) {
-      setError(friendlyError(err))
-      throw err
-    } finally {
-      setLoading(current => ({ ...current, action: false }))
-    }
-  }, [loadTrips, requestJson])
-
   const createInvite = useCallback(async tripId => {
-    const invite = normalizeInvite(await requestJson(`/api/trips/${tripId}/invite`, { method: 'POST' }))
-    setActiveInvites(current => ({ ...current, [tripId]: invite }))
-    return invite
+    return requestJson(`/api/trips/${tripId}/invite`, { method: 'POST' })
   }, [requestJson])
 
   const revokeInvite = useCallback(async inviteId => {
-    const result = await requestJson(`/api/invites/${inviteId}/revoke`, { method: 'POST' })
-    setActiveInvites(current => Object.fromEntries(
-      Object.entries(current).filter(([, invite]) => invite?.invite_id !== inviteId)
-    ))
-    await refreshTrip().catch(() => null)
-    return result
-  }, [refreshTrip, requestJson])
+    return requestJson(`/api/invites/${inviteId}/revoke`, { method: 'POST' })
+  }, [requestJson])
 
   const getInvite = useCallback(async token => {
     return publicRequestJson(`/api/invites/${token}`)
@@ -908,24 +717,8 @@ export function TripAppProvider({ children }) {
       const result = await requestJson(`/api/rounds/${roundId}/extend`, { method: 'POST' })
       const deadline = result.deadline ? new Date(result.deadline).getTime() : Date.now()
       setActiveRounds(current => current.map(round => round.id === roundId
-        ? { ...round, closesAt: deadline, windowMs: Math.max(1, deadline - Date.now()), extendedAt: result.extended_at || new Date().toISOString() }
+        ? { ...round, closesAt: deadline, windowMs: Math.max(1, deadline - Date.now()) }
         : round))
-      await refreshUpdates()
-      return result
-    } finally {
-      setLoading(current => ({ ...current, action: false }))
-    }
-  }, [refreshUpdates, requestJson])
-
-  const extendProposal = useCallback(async proposalId => {
-    setLoading(current => ({ ...current, action: true }))
-    setError('')
-    try {
-      const result = await requestJson(`/api/proposals/${proposalId}/extend`, { method: 'POST' })
-      const deadline = result.deadline ? new Date(result.deadline).getTime() : Date.now()
-      setActiveProposals(current => current.map(proposal => proposal.id === proposalId
-        ? { ...proposal, closesAt: deadline, windowMs: Math.max(1, deadline - Date.now()), extendedAt: result.extended_at || new Date().toISOString() }
-        : proposal))
       await refreshUpdates()
       return result
     } finally {
@@ -1107,7 +900,6 @@ export function TripAppProvider({ children }) {
 
   const activeRound = activeRounds.find(round => round.status === 'open') || activeRounds[0] || null
   const activeProposal = activeProposals.find(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)) || activeProposals[0] || null
-  const activeInvite = activeInvites[activeTripId] || null
 
   const value = useMemo(() => ({
     trip, currentUser, days, planId,
@@ -1123,7 +915,6 @@ export function TripAppProvider({ children }) {
     activeProposals,
     activeRound,
     activeProposal,
-    activeInvite,
     decisionResolved,
     conflictCreated: activeProposals.some(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)),
     classify,
@@ -1136,7 +927,6 @@ export function TripAppProvider({ children }) {
     generateDraftPlan,
     remindMember,
     extendRound,
-    extendProposal,
     escalateProposal,
     resolveDeadlock,
     withdrawProposal,
@@ -1144,14 +934,10 @@ export function TripAppProvider({ children }) {
     resetDemo,
     refreshAll,
     adoptMembership,
-    activateTrip,
     createInvite,
     revokeInvite,
     getInvite,
     joinInvite,
-    loadTrips,
-    archiveTrip,
-    unarchiveTrip,
     loading,
     error,
     clearError: () => setError(''),
@@ -1175,7 +961,7 @@ export function TripAppProvider({ children }) {
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activateTrip, activeInvite, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptMembership, archiveTrip, authToken, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, inviteCopied, joinInvite, loadTrips, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, setItemBooked, generatePlan, remindMember, extendRound, extendProposal, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, unarchiveTrip, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptMembership, authToken, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')

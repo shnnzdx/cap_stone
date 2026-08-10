@@ -19,7 +19,6 @@ from app.db.models import (
 )
 from app.domain.constraints.types import Path, Settledness
 from app.domain.decisions import orchestrator as orch
-from app.domain.trips import service as trip_service
 
 
 # ————————————————————— 路径 A:直接改 —————————————————————
@@ -51,20 +50,6 @@ def test_every_path_writes_one_line_to_the_log(db, full_trip):
     entry = db.query(PlanChange).filter_by(plan_item_id=full_trip["art"].id).one()
     assert entry.origin == "notice"
     assert entry.patch == {"start_hour": 15.5}
-
-
-def test_cross_day_notice_change_logs_a_json_safe_patch(db, full_trip):
-    target = date(2026, 8, 14)
-
-    outcome = orch.propose_change(
-        db, full_trip["art"], {"day_date": target}, full_trip["me"].id
-    )
-    entry = db.query(PlanChange).filter_by(plan_item_id=full_trip["art"].id).one()
-
-    assert outcome.classification.path is Path.NOTICE
-    assert full_trip["art"].day_date == target
-    assert full_trip["art"].day_index == 1
-    assert entry.patch == {"day_date": "2026-08-14", "day_index": 1}
 
 
 def test_objecting_to_a_notice_opens_a_round(db, full_trip):
@@ -304,10 +289,7 @@ def test_a_required_constraint_forces_confirmation_too(db, full_trip):
 def test_deadlines_shrink_once_the_trip_starts(db, full_trip):
     """人都在街上了,不跑 24 小时的异步投票。"""
     full_trip["art"].settledness = Settledness.TOUCHED.value
-    today = date.today()
-    full_trip["trip"].preferred_start_date = today - timedelta(days=1)
-    full_trip["trip"].preferred_end_date = today + timedelta(days=2)
-    full_trip["art"].day_date = today + timedelta(days=1)
+    full_trip["trip"].status = "traveling"
     db.flush()
 
     outcome = orch.propose_change(db, full_trip["art"], {"title": "购物"}, full_trip["me"].id)
@@ -315,75 +297,6 @@ def test_deadlines_shrink_once_the_trip_starts(db, full_trip):
     hours = (round_.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
 
     assert 1.5 < hours < 2.5
-
-
-def test_deadline_is_before_a_nearby_item_start(db, full_trip):
-    full_trip["art"].settledness = Settledness.TOUCHED.value
-    soon = datetime.now(timezone.utc) + timedelta(hours=6)
-    full_trip["art"].day_date = soon.date()
-    full_trip["art"].start_hour = soon.hour + soon.minute / 60
-    db.flush()
-
-    outcome = orch.propose_change(db, full_trip["art"], {"title": "Shopping"}, full_trip["me"].id)
-    round_ = db.get(DecisionRound, outcome.round_id)
-
-    assert round_.deadline <= soon - timedelta(minutes=29)
-
-
-def test_deadline_lower_bound_prevents_a_past_deadline(db, full_trip):
-    full_trip["art"].settledness = Settledness.TOUCHED.value
-    soon = datetime.now(timezone.utc) + timedelta(minutes=10)
-    full_trip["art"].day_date = soon.date()
-    full_trip["art"].start_hour = soon.hour + soon.minute / 60
-    db.flush()
-
-    outcome = orch.propose_change(db, full_trip["art"], {"title": "Shopping"}, full_trip["me"].id)
-    decision = (
-        db.get(DecisionRound, outcome.round_id)
-        if outcome.round_id
-        else db.get(ChangeProposal, outcome.proposal_id)
-    )
-    minutes = (decision.deadline - datetime.now(timezone.utc)).total_seconds() / 60
-
-    assert 29 <= minutes <= 31
-
-
-def test_far_future_item_keeps_the_full_round_window(db, full_trip):
-    full_trip["art"].settledness = Settledness.TOUCHED.value
-    full_trip["art"].day_date = date.today() + timedelta(days=90)
-    full_trip["art"].start_hour = 14.0
-    db.flush()
-
-    outcome = orch.propose_change(db, full_trip["art"], {"title": "Shopping"}, full_trip["me"].id)
-    round_ = db.get(DecisionRound, outcome.round_id)
-    hours = (round_.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
-
-    assert 23.5 < hours < 24.5
-
-
-def test_trip_status_is_derived_from_dates(full_trip):
-    trip = full_trip["trip"]
-    today = date(2026, 8, 10)
-
-    trip.preferred_start_date = None
-    trip.preferred_end_date = None
-    assert trip_service.trip_status(trip, today) == "planning"
-
-    trip.preferred_start_date = today + timedelta(days=20)
-    trip.preferred_end_date = today + timedelta(days=23)
-    assert trip_service.trip_status(trip, today) == "planning"
-
-    trip.preferred_start_date = today + timedelta(days=7)
-    trip.preferred_end_date = today + timedelta(days=10)
-    assert trip_service.trip_status(trip, today) == "upcoming"
-
-    trip.preferred_start_date = today - timedelta(days=1)
-    trip.preferred_end_date = today + timedelta(days=2)
-    assert trip_service.trip_status(trip, today) == "traveling"
-
-    trip.preferred_start_date = today - timedelta(days=10)
-    trip.preferred_end_date = today - timedelta(days=1)
-    assert trip_service.trip_status(trip, today) == "completed"
 
 
 # ————————————————————— 一个时段同时只能有一件未决的事 —————————————————————
@@ -422,27 +335,23 @@ def test_once_the_round_closes_the_block_is_free_again(db, full_trip):
 
 
 def test_a_proposal_gets_a_deadline(db, full_trip):
-    full_trip["dinner"].day_date = date.today() + timedelta(days=90)
     outcome = orch.propose_change(
         db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
     )
     proposal = db.get(ChangeProposal, outcome.proposal_id)
-    hours = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
-    assert 47.5 < hours < 48.5       # 规划中 48 小时
+    days = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 86400
+    assert 6.9 < days < 7.1           # 规划中 7 天
 
 
 def test_the_proposal_deadline_halves_once_the_trip_starts(db, full_trip):
-    today = date.today()
-    full_trip["trip"].preferred_start_date = today - timedelta(days=1)
-    full_trip["trip"].preferred_end_date = today + timedelta(days=2)
-    full_trip["dinner"].day_date = today + timedelta(days=1)
+    full_trip["trip"].status = "traveling"
     db.flush()
     outcome = orch.propose_change(
         db, full_trip["dinner"], {"start_hour": 20.0}, full_trip["me"].id
     )
     proposal = db.get(ChangeProposal, outcome.proposal_id)
-    hours = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 3600
-    assert 3.5 < hours < 4.5          # 旅行中 4 小时
+    days = (proposal.deadline - datetime.now(timezone.utc)).total_seconds() / 86400
+    assert 1.9 < days < 2.1           # 旅行中 2 天
 
 
 def test_an_expired_proposal_is_voided_not_approved(db, full_trip):

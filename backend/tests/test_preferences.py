@@ -96,36 +96,6 @@ def test_top_interests_are_capped_at_three(db, full_trip):
     assert len(saved["preference"]["top_interests"]) == 3
 
 
-def test_preference_dates_must_stay_inside_trip_window(db, full_trip):
-    full_trip["trip"].preferred_start_date = date(2026, 8, 14)
-    full_trip["trip"].preferred_end_date = date(2026, 8, 17)
-
-    with pytest.raises(pref.PreferenceOutsideTripWindow):
-        pref.save_mine(
-            db,
-            full_trip["me"],
-            pref.PreferenceData(available_start_date=date(2026, 8, 13)),
-        )
-
-
-def test_preference_dates_inside_trip_window_are_allowed(db, full_trip):
-    full_trip["trip"].preferred_start_date = date(2026, 8, 14)
-    full_trip["trip"].preferred_end_date = date(2026, 8, 17)
-
-    saved = pref.save_mine(
-        db,
-        full_trip["me"],
-        pref.PreferenceData(
-            preferred_start_date=date(2026, 8, 14),
-            preferred_end_date=date(2026, 8, 17),
-            available_start_date=date(2026, 8, 15),
-            available_end_date=date(2026, 8, 16),
-        ),
-    )
-
-    assert saved["preference"]["available_start_date"] == date(2026, 8, 15)
-
-
 # ————————————————————— 改严了：只报告，不自动改 —————————————————————
 
 

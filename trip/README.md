@@ -6,7 +6,7 @@ AI 协调的多人旅行规划工具的前端原型。核心理念:**没有 Fina
 后端 Python + FastAPI + PostgreSQL,在同级 [`../backend/`](../backend/)。
 
 > **前端还没接后端。** 前端数据仍是 mock + localStorage;后端已独立跑通(判定、三条路径、
-> 投票结算、流水账和接口)。接法见 [backend/README.md](../backend/README.md) 和 [交接.md](交接.md)。
+> 投票结算、流水账,13 个接口)。接法见 [BACKEND.md](BACKEND.md) 第五节和 [交接.md](交接.md)。
 
 ## 快速开始
 
@@ -34,7 +34,7 @@ npm run dev
 判定的权威实现在后端 `../backend/app/domain/constraints/engine.py`,前端那份 `classifyChange()` 是等着被删掉的 mock。
 
 **实际有四条路,不是三条**:`settled`(已经投票定过)的时段会走一条门槛更高的重开轮 ——
-要写理由,而且要过半数明确支持才能推翻。判定顺序和四档"结实程度"见 [backend/README.md](../backend/README.md)。
+要写理由,而且要过半数明确支持才能推翻。判定顺序和四档"结实程度"见 [BACKEND.md](BACKEND.md) 第一节。
 
 ### 路径 A · 直接生效 + 匿名通知(约 80%)
 
@@ -75,10 +75,11 @@ src/
     ├── tripContent.js      ★ 全部 mock 数据(含 currentUser),每项都标了对应接口
     └── final.css           全站样式(追加式,详见文件头注释)
 FRONTEND.md                 ★ 前端逻辑 + 每个按钮的行为规格(接手先读这份)
+BACKEND.md                  ★ 后端契约:实体、接口、隐私红线、未实现清单
 legacy/                     旧版原型(v4 五阶段版)与旧交接文档,仅存档,不参与构建
 ```
 
-**接手顺序:[FRONTEND.md](FRONTEND.md) → [backend/README.md](../backend/README.md) → 代码。**
+**接手顺序:[FRONTEND.md](FRONTEND.md) → [BACKEND.md](BACKEND.md) → 代码。**
 数据只存在于 `tripContent.js` 和 `TripAppState.jsx` 两个文件里,组件不持有任何业务数据。
 
 ## 路由(HashRouter,均在 `#/` 下)
@@ -116,7 +117,7 @@ legacy/                     旧版原型(v4 五阶段版)与旧交接文档,仅�
 
 ## 接后端
 
-完整契约见 **[backend/README.md](../backend/README.md)**,交接说明见 **[交接.md](交接.md)**。
+完整契约见 **[BACKEND.md](BACKEND.md)** 第五节,交接说明见 **[交接.md](交接.md)**。
 
 三条红线里,前两条后端已经做掉了:
 

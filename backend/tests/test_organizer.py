@@ -81,8 +81,6 @@ def test_nobody_reminds_someone_who_already_answered(db, full_trip):
 
 def test_extending_buys_time_and_tells_everyone(db, full_trip):
     round_ = _open_round(db, full_trip)
-    round_.deadline = datetime.now(timezone.utc) + timedelta(minutes=10)
-    db.flush()
     before = round_.deadline
 
     org.extend_round(db, full_trip["me"], round_.id)
@@ -94,18 +92,6 @@ def test_extending_buys_time_and_tells_everyone(db, full_trip):
     assert "extended" in notice.body
 
 
-def test_extending_does_not_stack_a_full_window_on_remaining_time(db, full_trip):
-    round_ = _open_round(db, full_trip)
-    started = datetime.now(timezone.utc)
-    round_.deadline = started + timedelta(hours=23, minutes=55)
-    db.flush()
-
-    org.extend_round(db, full_trip["me"], round_.id)
-
-    assert round_.deadline <= started + timedelta(hours=24, minutes=1)
-    assert round_.extended_at is not None
-
-
 def test_a_round_can_only_be_extended_once(db, full_trip):
     """More time is fine. Never settling is not."""
     round_ = _open_round(db, full_trip)
@@ -113,25 +99,6 @@ def test_a_round_can_only_be_extended_once(db, full_trip):
 
     with pytest.raises(org.AlreadyExtended):
         org.extend_round(db, full_trip["me"], round_.id)
-
-
-def test_a_proposal_can_be_extended_once(db, full_trip):
-    proposal = _stuck_proposal(db, full_trip)
-    proposal.deadline = datetime.now(timezone.utc) + timedelta(minutes=10)
-    db.flush()
-    before = proposal.deadline
-
-    org.extend_proposal(db, full_trip["me"], proposal.id)
-
-    assert proposal.deadline > before
-    assert proposal.extended_at is not None
-    notice = db.query(UpdateNotice).filter_by(kind="proposal").order_by(
-        UpdateNotice.created_at.desc()
-    ).first()
-    assert "extended" in notice.body
-
-    with pytest.raises(org.AlreadyExtended):
-        org.extend_proposal(db, full_trip["me"], proposal.id)
 
 
 def test_extending_does_not_change_what_silence_means(db, full_trip):
