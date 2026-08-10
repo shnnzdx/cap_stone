@@ -2331,6 +2331,12 @@ AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
 
 This path keeps RDS private and writes the demo organizer login through a one-off ECS task instead of direct laptop-to-RDS access.
 
+Successful cloud demo login run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
+```
+
 ---
 
 # 28. Official AWS References

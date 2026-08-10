@@ -42,6 +42,9 @@ https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/90504252
 
 Cloud Demo Login Upsert workflow:
 https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-login-upsert.yml
+
+Cloud Demo Login Upsert successful run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
 ```
 
 ## Current AWS Console Links

@@ -1,6 +1,12 @@
 # TripSync Cloud Demo Login Runbook
 
-Status: workflow ready; not run by this document.
+Status: completed successfully.
+
+Successful run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
+```
 
 Purpose:
 
