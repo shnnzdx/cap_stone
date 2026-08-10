@@ -1452,7 +1452,7 @@ mutate AWS
 
 ## Phase 3 — Frontend Hosting Proof
 
-Status: paused. Only revisit after AWS Phase 2 is green and the team explicitly resumes frontend hosting proof work.
+Status: local proof implemented; awaiting manual GitHub Actions run.
 
 Investigate/validate:
 
@@ -1460,6 +1460,25 @@ Investigate/validate:
 Vinext
 -> Amplify-compatible build path
 -> Nitro if required
+```
+
+Current Phase 3 proof files:
+
+```text
+AWS/PHASE3_FRONTEND_HOSTING_PROOF.md
+.github/workflows/frontend-hosting-proof.yml
+frontend/scripts/aws-hosting-proof.mjs
+frontend package script: npm run hosting:proof
+```
+
+Current proof conclusion:
+
+```text
+frontend/dist/client contains embedded Trip static output
+frontend/dist/server is also produced
+main app routes are not emitted as complete static HTML route files
+current frontend should not be assumed to be pure static S3/CloudFront hosting ready
+Amplify managed SSR compatibility is not assumed because the app uses Vinext with Next.js 16.x
 ```
 
 Use the main frontend application as the hosting unit.

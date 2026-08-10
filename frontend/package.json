@@ -9,6 +9,7 @@
     "dev": "node scripts/run-vinext.mjs dev",
     "build": "node scripts/run-vinext.mjs build",
     "build:trip-preview": "node scripts/sync-trip-preview.mjs --build",
+    "hosting:proof": "node scripts/aws-hosting-proof.mjs",
     "sync:trip-preview": "node scripts/sync-trip-preview.mjs",
     "start": "node scripts/run-vinext.mjs start",
     "test": "node scripts/run-vinext.mjs build && node --test tests/rendered-html.test.mjs tests/trip-preview-integration.test.mjs",
