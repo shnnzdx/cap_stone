@@ -104,5 +104,5 @@ ECR image storage
 If the proof is not needed continuously, reduce or remove resources using the cleanup order in:
 
 ```text
-AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md
+AWS/archive/completed-phases/PHASE5_BACKEND_DEPLOYMENT_PLAN.md
 ```

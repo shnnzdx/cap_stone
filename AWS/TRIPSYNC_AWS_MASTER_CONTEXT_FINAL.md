@@ -1,4 +1,4 @@
-# TripSync Capstone — AWS Access, Security, GitHub Actions, Cost Guardrails & Deployment Master Context
+# TripSync Capstone 鈥?AWS Access, Security, GitHub Actions, Cost Guardrails & Deployment Master Context
 
 **Document status:** Master handoff / source of truth for the current AWS setup and the next deployment phases  
 **Primary AWS Region:** `us-east-1`  
@@ -13,7 +13,7 @@
 This document records the complete working context for the TripSync Capstone AWS environment so that any teammate, Codex session, or future deployment task understands:
 
 1. who currently has AWS access;
-2. what “equal long-term access” means for the three human project members;
+2. what 鈥渆qual long-term access鈥?means for the three human project members;
 3. how the GitHub Actions AWS identity is separated from human accounts;
 4. what has already been validated;
 5. what must not be changed accidentally;
@@ -195,7 +195,7 @@ This means that for ordinary TripSync infrastructure work, both IAM users should
 
 ---
 
-# 5. The “Three Humans Have the Same Long-Term Access” Requirement
+# 5. The 鈥淭hree Humans Have the Same Long-Term Access鈥?Requirement
 
 This section is the most important identity-design clarification.
 
@@ -273,7 +273,7 @@ This is the cleanest way to satisfy literal long-term day-to-day equality while 
 
 Root remains available for account-owner and recovery operations, but Root should no longer be counted as one of the three daily project working accounts.
 
-## 5.3 What “long-term” means here
+## 5.3 What 鈥渓ong-term鈥?means here
 
 AWS distinguishes long-term and temporary credentials.
 
@@ -290,7 +290,7 @@ Passwords/access keys remain valid until they are changed, disabled, or deleted.
 For this project:
 
 - The **console password** is enough for human AWS Console access.
-- Do **not** create programmatic access keys for every human merely to make them “equal.”
+- Do **not** create programmatic access keys for every human merely to make them 鈥渆qual.鈥?
 - If a teammate genuinely needs AWS CLI/SDK access, create a unique access key for that individual IAM user.
 - Never share one human access key between multiple people.
 
@@ -390,7 +390,7 @@ no AWS database resources created
 Current Phase 4 proof files:
 
 ```text
-AWS/PHASE4_DATABASE_READINESS.md
+AWS/archive/completed-phases/PHASE4_DATABASE_READINESS.md
 .github/workflows/database-readiness.yml
 backend/app/db/init_schema.py
 backend/tests/test_db_safety.py
@@ -1293,7 +1293,7 @@ Integration Stage C: deeper runtime merge, paused
 
 When asking Codex to continue this plan, use names such as `AWS Phase 2` or `AWS Build Validation CI`.
 
-## Phase 0 — Identity and Account Guardrails
+## Phase 0 鈥?Identity and Account Guardrails
 
 Status: mostly complete. AWS resource provisioning remains blocked until the machine-IAM authorization checks below are resolved.
 
@@ -1325,7 +1325,7 @@ Remaining identity checks:
 - activate delegated Billing access if team needs it
 ```
 
-## Phase 1 — Cloud Readiness
+## Phase 1 鈥?Cloud Readiness
 
 No AWS infrastructure creation.
 
@@ -1412,7 +1412,7 @@ full backend pytest passed locally after using tripsync_test through the documen
 Docker CLI is not installed locally, so container build/run/health validation should be moved into Phase 2 GitHub Actions
 ```
 
-## Phase 2 — Build Validation CI
+## Phase 2 鈥?Build Validation CI
 
 Status: workflow created, awaiting manual GitHub Actions run.
 
@@ -1477,7 +1477,7 @@ change IAM
 mutate AWS
 ```
 
-## Phase 3 — Frontend Hosting Proof
+## Phase 3 鈥?Frontend Hosting Proof
 
 Status: completed.
 
@@ -1492,7 +1492,7 @@ Vinext
 Current Phase 3 proof files:
 
 ```text
-AWS/PHASE3_FRONTEND_HOSTING_PROOF.md
+AWS/archive/completed-phases/PHASE3_FRONTEND_HOSTING_PROOF.md
 .github/workflows/frontend-hosting-proof.yml
 frontend/scripts/aws-hosting-proof.mjs
 frontend package script: npm run hosting:proof
@@ -1514,7 +1514,7 @@ The Trip static build remains embedded.
 
 Do not attempt to absorb `trip/src/final/*` pages into `frontend/app` during AWS deployment preparation unless Integration Stage C is explicitly restarted.
 
-## Phase 4 — Database
+## Phase 4 鈥?Database
 
 Status: database readiness validation completed.
 
@@ -1530,7 +1530,7 @@ safe schema creation/migration
 no destructive automatic seed
 ```
 
-## Phase 5 — Backend
+## Phase 5 鈥?Backend
 
 Status: provisioned and verified.
 
@@ -1544,7 +1544,7 @@ Provision result:
 
 ```text
 AWS/TRIPSYNC_AWS_URLS.md
-AWS/PHASE5_BACKEND_PROVISION_RESULT.md
+AWS/archive/completed-phases/PHASE5_BACKEND_PROVISION_RESULT.md
 GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31349402435
 deployed commit: 9ff14d1fa7f5a4babf4b5a50107287c69fde1d21
 backend ALB URL: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
@@ -1564,7 +1564,7 @@ GitHub Actions ubuntu-latest runner has Docker
 Detailed plan:
 
 ```text
-AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md
+AWS/archive/completed-phases/PHASE5_BACKEND_DEPLOYMENT_PLAN.md
 ```
 
 First proof mode:
@@ -1602,7 +1602,7 @@ Cost warning:
 ```text
 Phase 5 resources now exist and may incur charges while running.
 Main cost drivers are ALB, Fargate runtime, public IPv4 addresses, CloudWatch Logs, and ECR storage.
-Use the cleanup order in AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md when the proof is no longer needed.
+Use the cleanup order in AWS/archive/completed-phases/PHASE5_BACKEND_DEPLOYMENT_PLAN.md when the proof is no longer needed.
 ```
 
 Exact initial VPC topology:
@@ -1704,7 +1704,7 @@ keep previous commit-SHA ECR image
 do not rely only on latest
 ```
 
-Cleanup order is recorded in `AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md`.
+Cleanup order is recorded in `AWS/archive/completed-phases/PHASE5_BACKEND_DEPLOYMENT_PLAN.md`.
 
 The first proof avoids NAT Gateway cost and avoids requiring all private-subnet ECR/logs VPC endpoints.
 
@@ -1722,7 +1722,7 @@ Phase 5 approval gate:
 Do not create ECR, ECS, ALB, CloudWatch, IAM roles, or networking resources until the user explicitly approves Phase 5 backend resource creation.
 ```
 
-## Phase 6 — Runtime Secrets
+## Phase 6 鈥?Runtime Secrets
 
 Status: repository readiness completed.
 
@@ -1730,9 +1730,9 @@ Current Phase 6 files:
 
 ```text
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
-AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
-AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
-AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
+AWS/archive/completed-phases/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
+AWS/archive/completed-phases/PHASE6_RUNTIME_PROVISION_PLAN.md
+AWS/archive/completed-phases/PHASE6_RUNTIME_PROVISION_RESULT.md
 .github/workflows/runtime-secrets-readiness.yml
 .github/workflows/phase6-runtime-provision.yml
 ```
@@ -1795,17 +1795,17 @@ local env sync targets:
 
 The deployed backend now has `DATABASE_URL` injected from SSM Parameter Store, but remains in proof/demo mode with `DISABLE_SCHEDULER=1` and `MOCK_AI=1`.
 
-## Phase 7 — Frontend/Backend Integration
+## Phase 7 鈥?Frontend/Backend Integration
 
 Status: partial completion; frontend container readiness added.
 
 Current files:
 
 ```text
-AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
-AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
-AWS/PHASE7_FRONTEND_CONTAINER_READINESS.md
-AWS/PHASE7_FRONTEND_CONTAINER_READINESS_RESULT.md
+AWS/archive/completed-phases/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
+AWS/archive/completed-phases/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
+AWS/archive/completed-phases/PHASE7_FRONTEND_CONTAINER_READINESS.md
+AWS/archive/completed-phases/PHASE7_FRONTEND_CONTAINER_READINESS_RESULT.md
 .github/workflows/phase7-backend-runtime-config.yml
 .github/workflows/frontend-container-readiness.yml
 frontend/Dockerfile
@@ -1872,7 +1872,7 @@ The next AWS resource creation step requires a separate explicit approval gate. 
 Approve frontend ECS service creation
 ```
 
-## Phase 8 — Deployment Automation
+## Phase 8 鈥?Deployment Automation
 
 Frontend ECS service creation was approved with:
 
@@ -1883,8 +1883,8 @@ Approve frontend ECS service creation
 Current Phase 8 frontend files:
 
 ```text
-AWS/PHASE8_FRONTEND_ECS_PROVISION_PLAN.md
-AWS/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
+AWS/archive/completed-phases/PHASE8_FRONTEND_ECS_PROVISION_PLAN.md
+AWS/archive/completed-phases/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
 .github/workflows/phase8-frontend-provision.yml
 ```
 
@@ -1956,15 +1956,15 @@ workflow_dispatch
 
 Do not merge this into the identity-check workflow.
 
-## Phase 9 — Demo / Operations Runbook
+## Phase 9 鈥?Demo / Operations Runbook
 
 Status: public browser E2E validated.
 
 Current Phase 9 files:
 
 ```text
-AWS/PHASE9_PUBLIC_E2E_RUNBOOK.md
-AWS/PHASE9_PUBLIC_E2E_RESULT.md
+AWS/archive/completed-phases/PHASE9_PUBLIC_E2E_RUNBOOK.md
+AWS/archive/completed-phases/PHASE9_PUBLIC_E2E_RESULT.md
 .github/workflows/phase9-public-e2e.yml
 frontend/tests/aws-public-e2e.mjs
 ```
@@ -2172,7 +2172,7 @@ When giving this document to Codex:
 5. No cost-bearing architecture expansion is allowed without explicit approval.
 6. The current Free Plan / no-Organizations constraint overrides generic AWS best-practice suggestions that would create an Organization.
 7. The current deliberate use of long-term GitHub AWS access keys must be respected unless the team explicitly decides to migrate to OIDC.
-8. “Three human accounts equal” means same day-to-day IAM administration policy; Root remains a separate account-owner concept.
+8. 鈥淭hree human accounts equal鈥?means same day-to-day IAM administration policy; Root remains a separate account-owner concept.
 9. Do not assume a successful STS identity check means the deployment user has every deployment permission.
 10. Always report exactly which AWS resources a proposed step will create and which of them can incur ongoing hourly/storage/network costs before provisioning.
 
@@ -2180,7 +2180,7 @@ When giving this document to Codex:
 
 # 25. Identity Diagrams
 
-## 25.1 Current state — 2026-08-09
+## 25.1 Current state 鈥?2026-08-09
 
 ```text
                      AWS Account 448678332746
@@ -2299,7 +2299,31 @@ This is a hygiene recommendation, not a credential-rotation event.
 
 ---
 
-# 27. Official AWS References
+# 27. AWS Documentation Layout
+
+The AWS folder has been consolidated so the root directory stays readable.
+
+Current root entry points:
+
+```text
+AWS/README.md
+AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
+AWS/TRIPSYNC_AWS_URLS.md
+AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
+```
+
+Completed Phase 3-9 plan/result/runbook files are archived under:
+
+```text
+AWS/archive/completed-phases/
+```
+
+`AWS/PHASE6_RUNTIME_SECRETS_PLAN.md` intentionally remains in the root because `.github/workflows/runtime-secrets-readiness.yml` validates that exact file path.
+
+---
+
+# 28. Official AWS References
 
 AWS Root user best practices:
 https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html
@@ -2339,6 +2363,6 @@ https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_CreateDBSubnetGrou
 
 ---
 
-# 28. One-Sentence Policy
+# 29. One-Sentence Policy
 
 > TripSync uses one standalone AWS Free Plan account; the fixed target daily human model is three independent IAM administrators in `Capstone-Admins` with the same `AdministratorAccess` policy while Root remains separate for account-owner/recovery use; GitHub Actions uses the separate long-term `github-actions-deploy` machine credential stored in GitHub Environment `Main`; and no AWS resource provisioning begins until build validation, machine-IAM authorization, database-safety, and cost guardrails are satisfied.

@@ -1,0 +1,54 @@
+# TripSync AWS Documentation
+
+This folder is the AWS source-of-truth area for the TripSync capstone deployment.
+
+## Start Here
+
+Read these files first:
+
+```text
+AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
+AWS/TRIPSYNC_AWS_URLS.md
+AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+```
+
+Use `TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md` for the full architecture and deployment history.
+
+Use `TRIPSYNC_AWS_URLS.md` for live URLs, AWS console links, GitHub Actions links, resource names, and current blockers.
+
+Use `PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md` when continuing HTTPS/custom domain work.
+
+## Current Root Files
+
+```text
+README.md
+TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
+TRIPSYNC_AWS_URLS.md
+PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+PHASE6_RUNTIME_SECRETS_PLAN.md
+```
+
+`PHASE6_RUNTIME_SECRETS_PLAN.md` intentionally remains in the root because the validation workflow references this exact path.
+
+## Archived Completed Phases
+
+Completed Phase 3-9 planning and result documents are stored in:
+
+```text
+AWS/archive/completed-phases/
+```
+
+These are kept for audit history and rollback context. They are not the main entry point for new AWS work.
+
+## Current Pause Point
+
+AWS deployment is paused after preparing Phase 10 HTTPS/custom domain automation.
+
+No HTTPS/custom domain AWS resources have been created yet.
+
+Before running Phase 10, provide:
+
+```text
+domain_name=<owned custom domain, for example app.example.com>
+hosted_zone_id=<existing Route 53 public hosted zone ID>
+```

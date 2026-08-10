@@ -13,7 +13,7 @@ Provisioning entrypoint:
 Provision result:
 
 ```text
-AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
+AWS/archive/completed-phases/PHASE6_RUNTIME_PROVISION_RESULT.md
 ```
 
 GitHub Environment:

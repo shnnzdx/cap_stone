@@ -60,7 +60,7 @@ Still not done:
 |-- backend/                     FastAPI backend for the Trip workspace
 |-- shared/                      Shared integration contracts and tokens
 |-- docs/                        Project notes and supporting documents
-|-- AWS/                         AWS planning and deployment notes
+|-- AWS/                         AWS deployment source-of-truth and archived phase notes
 |-- AI.md                        Local agent setup note for this repo
 |-- INTEGRATION-ROADMAP.md       Compatibility summary and future plan
 `-- README.md
@@ -212,7 +212,7 @@ Expected result:
 - the current compatibility approach is intentional
 - `/trip` loads static output built from `trip`
 - the deeper Phase 3 frontend/runtime merge is paused for now
-- GitHub Actions includes AWS identity validation, but no AWS deployment workflow should run until build validation and deployment architecture are settled
+- AWS deployment has reached the Phase 10 HTTPS/custom domain pause point; Phase 10 is prepared but not run yet
 
 Local agent and skill installation artifacts are kept outside this repository under:
 
@@ -221,6 +221,7 @@ Local agent and skill installation artifacts are kept outside this repository un
 ## Related docs
 
 - [INTEGRATION-ROADMAP.md](./INTEGRATION-ROADMAP.md)
+- [AWS/README.md](./AWS/README.md)
 - [AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md](./AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md)
 - [docs/PRODUCT.md](./docs/PRODUCT.md)
 - [docs/PROPOSAL.md](./docs/PROPOSAL.md)

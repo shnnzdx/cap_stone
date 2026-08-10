@@ -4,389 +4,148 @@ Date: 2026-08-10
 
 Region: us-east-1
 
-This is the central URL index for the current TripSync AWS backend and frontend proof.
-
----
+This is the compact entry point for TripSync AWS URLs, console links, workflow links, resource names, and current AWS documentation.
 
 ## Live Application
 
-Frontend public URL:
-
 ```text
+Frontend public URL:
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
-```
 
 Frontend login route:
-
-```text
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/login
-```
 
 Embedded Trip static entry:
-
-```text
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/trip-app/index.html
-```
-
----
-
-## Live Backend
-
-Backend ALB:
-
-```text
-http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
-```
 
 Backend health endpoint:
-
-```text
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/api/health
-```
 
 Expected health response:
-
-```json
 {"ok":true}
 ```
 
----
-
 ## GitHub
 
+```text
 Repository:
-
-```text
 https://github.com/shnnzdx/cap_stone
-```
 
-Phase 5 successful GitHub Actions run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31349402435
-```
-
-GitHub Actions list:
-
-```text
+GitHub Actions:
 https://github.com/shnnzdx/cap_stone/actions
-```
 
-Phase 5 workflow file:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase5-backend-provision.yml
-```
-
-Phase 6 readiness workflow file:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/runtime-secrets-readiness.yml
-```
-
-Phase 6 runtime provision workflow file:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase6-runtime-provision.yml
-```
-
-Phase 6 successful Runtime Secrets Readiness run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31349738285
-```
-
-Phase 6 successful Runtime Provision run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31350032734
-```
-
----
-
-## AWS Console Entry Points
-
-AWS Console home for us-east-1:
-
-```text
-https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1
-```
-
-ECS clusters:
-
-```text
-https://us-east-1.console.aws.amazon.com/ecs/v2/clusters?region=us-east-1
-```
-
-TripSync ECS cluster:
-
-```text
-https://us-east-1.console.aws.amazon.com/ecs/v2/clusters/tripsync-cluster/services?region=us-east-1
-```
-
-TripSync ECS backend service:
-
-```text
-https://us-east-1.console.aws.amazon.com/ecs/v2/clusters/tripsync-cluster/services/tripsync-backend-service/health?region=us-east-1
-```
-
-ECR repository:
-
-```text
-https://us-east-1.console.aws.amazon.com/ecr/repositories/private/tripsync-backend?region=us-east-1
-```
-
-CloudWatch Logs log group:
-
-```text
-https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/$252Fecs$252Ftripsync-backend
-```
-
-Application Load Balancers:
-
-```text
-https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LoadBalancers:
-```
-
-Target Groups:
-
-```text
-https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:
-```
-
-VPCs:
-
-```text
-https://us-east-1.console.aws.amazon.com/vpcconsole/home?region=us-east-1#vpcs:
-```
-
-Subnets:
-
-```text
-https://us-east-1.console.aws.amazon.com/vpcconsole/home?region=us-east-1#subnets:
-```
-
-Security Groups:
-
-```text
-https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#SecurityGroups:
-```
-
-IAM roles:
-
-```text
-https://us-east-1.console.aws.amazon.com/iam/home#/roles
-```
-
-Billing and Cost Management:
-
-```text
-https://us-east-1.console.aws.amazon.com/billing/home
-```
-
-Public IPv4 Insights:
-
-```text
-https://us-east-1.console.aws.amazon.com/vpcconsole/home?region=us-east-1#PublicIpInsights:
-```
-
----
-
-## Local AWS Documentation Files
-
-Phase 5 deployment plan:
-
-```text
-AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md
-```
-
-Phase 5 provision result:
-
-```text
-AWS/PHASE5_BACKEND_PROVISION_RESULT.md
-```
-
-Phase 6 runtime secrets plan:
-
-```text
-AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
-```
-
-Phase 6 runtime secrets readiness result:
-
-```text
-AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
-```
-
-Phase 6 runtime provision plan:
-
-```text
-AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
-```
-
-Phase 6 runtime provision result:
-
-```text
-AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
-```
-
-Phase 7 frontend/backend integration plan:
-
-```text
-AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
-```
-
-Phase 7 frontend/backend integration result:
-
-```text
-AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
-```
-
-Phase 7 backend runtime config workflow:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase7-backend-runtime-config.yml
-```
-
-Phase 7 frontend container readiness workflow:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/frontend-container-readiness.yml
-```
-
-Phase 7 successful backend runtime config run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31352265951
-```
-
-Phase 7 frontend container readiness plan:
-
-```text
-AWS/PHASE7_FRONTEND_CONTAINER_READINESS.md
-```
-
-Phase 7 frontend container readiness result:
-
-```text
-AWS/PHASE7_FRONTEND_CONTAINER_READINESS_RESULT.md
-```
-
-Phase 7 successful frontend container readiness run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31353334323
-```
-
-Phase 8 frontend ECS provision plan:
-
-```text
-AWS/PHASE8_FRONTEND_ECS_PROVISION_PLAN.md
-```
-
-Phase 8 frontend ECS provision workflow:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase8-frontend-provision.yml
-```
-
-Phase 8 frontend ECS provision result:
-
-```text
-AWS/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
-```
-
-Phase 8 successful frontend ECS provision run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31353851142
-```
-
-Phase 8 frontend redeploy after Trip iframe route fix:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31354836829
-```
-
-Phase 7 backend runtime config update after frontend deployment:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31354040217
-```
-
-Phase 9 public browser E2E runbook:
-
-```text
-AWS/PHASE9_PUBLIC_E2E_RUNBOOK.md
-```
-
-Phase 9 public browser E2E result:
-
-```text
-AWS/PHASE9_PUBLIC_E2E_RESULT.md
-```
-
-Phase 9 successful public browser E2E run:
-
-```text
+Phase 9 successful public E2E:
 https://github.com/shnnzdx/cap_stone/actions/runs/31355307955
-```
 
 Phase 9 screenshot artifact:
-
-```text
 https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/9050425261
 ```
 
-Phase 10 HTTPS custom domain plan:
+## Current AWS Console Links
 
 ```text
-AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+AWS Console home:
+https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1
+
+ECS cluster:
+https://us-east-1.console.aws.amazon.com/ecs/v2/clusters/tripsync-cluster/services?region=us-east-1
+
+Backend service:
+https://us-east-1.console.aws.amazon.com/ecs/v2/clusters/tripsync-cluster/services/tripsync-backend-service/health?region=us-east-1
+
+Frontend service:
+https://us-east-1.console.aws.amazon.com/ecs/v2/clusters/tripsync-cluster/services/tripsync-frontend-service/health?region=us-east-1
+
+Backend ECR:
+https://us-east-1.console.aws.amazon.com/ecr/repositories/private/tripsync-backend?region=us-east-1
+
+Frontend ECR:
+https://us-east-1.console.aws.amazon.com/ecr/repositories/private/tripsync-frontend?region=us-east-1
+
+Backend CloudWatch Logs:
+https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/$252Fecs$252Ftripsync-backend
+
+Frontend CloudWatch Logs:
+https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/$252Fecs$252Ftripsync-frontend
+
+Application Load Balancers:
+https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LoadBalancers:
+
+Target Groups:
+https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#TargetGroups:
+
+Route 53 hosted zones:
+https://us-east-1.console.aws.amazon.com/route53/v2/hostedzones
+
+ACM certificates:
+https://us-east-1.console.aws.amazon.com/acm/home?region=us-east-1#/certificates/list
+
+Billing and Cost Management:
+https://us-east-1.console.aws.amazon.com/billing/home
+
+Public IPv4 Insights:
+https://us-east-1.console.aws.amazon.com/vpcconsole/home?region=us-east-1#PublicIpInsights:
 ```
 
-Phase 10 HTTPS custom domain workflow:
-
-```text
-https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase10-https-custom-domain.yml
-```
-
-RDS endpoint:
-
-```text
-tripsync-postgres.cqv0oqgogc0p.us-east-1.rds.amazonaws.com
-```
-
-Master context:
-
-```text
-AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
-```
-
----
-
-## Current Resource Names
+## Current AWS Resource Names
 
 ```text
 VPC: tripsync-vpc
-ECS cluster: tripsync-cluster
-ECS service: tripsync-backend-service
-Frontend ECS service: tripsync-frontend-service
-ECR repository: tripsync-backend
-Frontend ECR repository: tripsync-frontend
 ALB: tripsync-backend-alb
-Target group: tripsync-backend-tg
+ALB security group: tripsync-alb-sg
+
+ECS cluster: tripsync-cluster
+Backend ECS service: tripsync-backend-service
+Frontend ECS service: tripsync-frontend-service
+
+Backend target group: tripsync-backend-tg
 Frontend target group: tripsync-frontend-tg
-CloudWatch log group: /ecs/tripsync-backend
+
+Backend ECR repository: tripsync-backend
+Frontend ECR repository: tripsync-frontend
+
+Backend CloudWatch log group: /ecs/tripsync-backend
 Frontend CloudWatch log group: /ecs/tripsync-frontend
+
 Execution role: tripsync-ecs-execution-role
-Task role: tripsync-backend-task-role
+Backend task role: tripsync-backend-task-role
+
+RDS endpoint:
+tripsync-postgres.cqv0oqgogc0p.us-east-1.rds.amazonaws.com
 ```
 
----
+## Current Documentation
+
+```text
+AWS/README.md
+AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
+AWS/TRIPSYNC_AWS_URLS.md
+AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
+```
+
+Completed Phase 3-9 documents:
+
+```text
+AWS/archive/completed-phases/
+```
+
+## Current Pause Point
+
+Phase 10 HTTPS/custom domain automation is ready but has not been run.
+
+Required before running Phase 10:
+
+```text
+domain_name=<owned custom domain, for example app.example.com>
+hosted_zone_id=<existing Route 53 public hosted zone ID>
+```
+
+No HTTPS/custom domain resources have been created yet.
 
 ## Cost Reminder
 
-The live backend proof may incur charges while running.
+The live proof can incur charges while running.
 
 Main cost drivers:
 
@@ -396,6 +155,8 @@ Fargate task runtime
 public IPv4 addresses
 CloudWatch Logs usage
 ECR image storage
+RDS runtime/storage if left active
+Route 53 hosted zone if created later
 ```
 
-Use the cleanup order in `AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md` when the proof is no longer needed.
+Use the cleanup order in `AWS/archive/completed-phases/PHASE5_BACKEND_DEPLOYMENT_PLAN.md` when the proof is no longer needed.

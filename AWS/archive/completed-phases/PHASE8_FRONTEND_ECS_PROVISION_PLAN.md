@@ -13,7 +13,7 @@ Approve frontend ECS service creation
 Provision result:
 
 ```text
-AWS/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
+AWS/archive/completed-phases/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
 ```
 
 ---

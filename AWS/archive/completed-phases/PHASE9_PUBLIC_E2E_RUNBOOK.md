@@ -94,7 +94,7 @@ npx playwright install chromium
 If it passes, record the GitHub Actions run in:
 
 ```text
-AWS/PHASE9_PUBLIC_E2E_RESULT.md
+AWS/archive/completed-phases/PHASE9_PUBLIC_E2E_RESULT.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 ```

@@ -13,7 +13,7 @@ http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
 Result:
 
 ```text
-AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
+AWS/archive/completed-phases/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
 GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31352265951
 result: success
 ```
@@ -137,7 +137,7 @@ New readiness files:
 frontend/Dockerfile
 .dockerignore
 .github/workflows/frontend-container-readiness.yml
-AWS/PHASE7_FRONTEND_CONTAINER_READINESS.md
+AWS/archive/completed-phases/PHASE7_FRONTEND_CONTAINER_READINESS.md
 ```
 
 Purpose:

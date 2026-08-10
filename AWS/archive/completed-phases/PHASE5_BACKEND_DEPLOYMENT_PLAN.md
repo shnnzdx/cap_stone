@@ -19,7 +19,7 @@ This workflow is `workflow_dispatch` only and uses the GitHub Environment `Main`
 Provision result:
 
 ```text
-AWS/PHASE5_BACKEND_PROVISION_RESULT.md
+AWS/archive/completed-phases/PHASE5_BACKEND_PROVISION_RESULT.md
 ```
 
 Completed prerequisites:
