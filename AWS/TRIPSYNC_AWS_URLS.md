@@ -214,10 +214,22 @@ Phase 7 frontend/backend integration plan:
 AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
 ```
 
+Phase 7 frontend/backend integration result:
+
+```text
+AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
+```
+
 Phase 7 backend runtime config workflow:
 
 ```text
 https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase7-backend-runtime-config.yml
+```
+
+Phase 7 successful backend runtime config run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31352265951
 ```
 
 RDS endpoint:

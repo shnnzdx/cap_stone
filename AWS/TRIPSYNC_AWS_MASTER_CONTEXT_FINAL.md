@@ -1797,12 +1797,13 @@ The deployed backend now has `DATABASE_URL` injected from SSM Parameter Store, b
 
 ## Phase 7 — Frontend/Backend Integration
 
-Status: started.
+Status: partial completion.
 
 Current files:
 
 ```text
 AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
+AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
 .github/workflows/phase7-backend-runtime-config.yml
 ```
 
@@ -1828,6 +1829,16 @@ DEV_ALLOW_MEMBERSHIP_HEADER=0
 ```
 
 Final production CORS and invite URL remain blocked until the frontend has a final public hosting URL.
+
+Phase 7 first runtime config result:
+
+```text
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31352265951
+FRONTEND_BASE_URL=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
+DEV_ALLOW_MEMBERSHIP_HEADER=0
+health result={"ok":true}
+```
 
 ## Phase 8 — Deployment Automation
 
