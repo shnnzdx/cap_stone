@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import main as api
-from app.db.models import Plan, PlanChange, PlanItem, PlanItemComment, Preference, Trip, TripMembership, User
+from app.db.models import DecisionRound, MemberConstraint, Plan, PlanChange, PlanItem, PlanItemComment, Preference, Trip, TripMembership, User
 
 
 @pytest.fixture
@@ -144,12 +144,13 @@ def test_list_trips_returns_only_current_users_trips(
     plan = Plan(trip_id=first_trip.id)
     api_session.add(plan)
     api_session.flush()
+    today = date.today()
     api_session.add_all(
         [
             PlanItem(
                 plan_id=plan.id,
                 day_index=2,
-                day_date=date.today() + timedelta(days=2),
+                day_date=today + timedelta(days=2),
                 start_hour=14.0,
                 title="Later museum",
                 place="Museum",
@@ -157,9 +158,7 @@ def test_list_trips_returns_only_current_users_trips(
             PlanItem(
                 plan_id=plan.id,
                 day_index=1,
-                # 相对今天算，不要写死日期 —— 写死的日期会随着时间流逝变成"过去"，
-                # 被"只看未来"的过滤挡掉，测试某天就莫名其妙红了。
-                day_date=date.today() + timedelta(days=1),
+                day_date=today + timedelta(days=1),
                 start_hour=9.0,
                 title="Morning coffee",
                 place="Cafe",
@@ -178,6 +177,7 @@ def test_list_trips_returns_only_current_users_trips(
     assert set(trips) == {first_trip.id, second_trip.id}
     assert trips[first_trip.id]["next_item_title"] == "Morning coffee"
     assert trips[first_trip.id]["my_role"] == "organizer"
+    assert trips[first_trip.id]["my_membership_id"] == auth_membership.id
     assert trips[second_trip.id]["next_item_title"] is None
 
 
@@ -199,6 +199,139 @@ def test_guest_cannot_list_trips(client: TestClient, api_session: Session):
     )
 
     assert response.status_code == 403
+
+
+def test_organizer_can_archive_and_unarchive_trip_without_deleting_plan_history(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    plan, item = _plan_item(api_session, trip)
+    change = PlanChange(
+        plan_id=plan.id,
+        plan_item_id=item.id,
+        origin="notice",
+        patch={"start_hour": 15.0},
+        reason="Moved later",
+        actor_membership_id=organizer.id,
+    )
+    api_session.add(change)
+    api_session.flush()
+
+    archived = client.post(
+        f"/api/trips/{trip.id}/archive",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert archived.status_code == 200
+    assert archived.json() == {"archived": True}
+    assert api_session.get(Trip, trip.id).archived_at is not None
+    listed_after_archive = client.get(
+        "/api/trips",
+        headers={"X-Membership-Id": organizer.id},
+    )
+    assert trip.id not in {item["id"] for item in listed_after_archive.json()}
+    assert api_session.get(Plan, plan.id) is not None
+    assert api_session.get(PlanItem, item.id) is not None
+    assert api_session.get(PlanChange, change.id) is not None
+
+    unarchived = client.post(
+        f"/api/trips/{trip.id}/unarchive",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert unarchived.status_code == 200
+    assert unarchived.json() == {"archived": False}
+    assert api_session.get(Trip, trip.id).archived_at is None
+    listed_after_unarchive = client.get(
+        "/api/trips",
+        headers={"X-Membership-Id": organizer.id},
+    )
+    assert trip.id in {item["id"] for item in listed_after_unarchive.json()}
+
+
+def test_non_organizer_cannot_archive_trip(client: TestClient, api_session: Session):
+    organizer_user = _user(api_session, "Mia")
+    participant_user = _user(api_session, "Sam")
+    trip, _ = _trip_with_member(api_session, organizer_user, role="organizer")
+    participant = TripMembership(
+        trip_id=trip.id,
+        user_id=participant_user.id,
+        role="participant",
+        status="joined",
+    )
+    api_session.add(participant)
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/archive",
+        headers={"X-Membership-Id": participant.id},
+    )
+
+    assert response.status_code == 403
+    assert api_session.get(Trip, trip.id).archived_at is None
+
+
+def test_archive_missing_trip_returns_404(client: TestClient, api_session: Session):
+    user = _user(api_session, "Mia")
+    _, organizer = _trip_with_member(api_session, user, role="organizer")
+
+    response = client.post(
+        f"/api/trips/{uuid4().hex}/archive",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 404
+
+
+def test_extend_round_api_caps_deadline_and_rejects_second_extend(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    _, item = _plan_item(api_session, trip)
+    started = datetime.now(timezone.utc)
+    round_ = DecisionRound(
+        plan_item_id=item.id,
+        options=[{"id": "requested", "label": "Change it"}],
+        deadline=started + timedelta(hours=23, minutes=55),
+        status="open",
+    )
+    api_session.add(round_)
+    api_session.flush()
+
+    first = client.post(
+        f"/api/rounds/{round_.id}/extend",
+        headers={"X-Membership-Id": organizer.id},
+    )
+    second = client.post(
+        f"/api/rounds/{round_.id}/extend",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert first.status_code == 200
+    body = first.json()
+    assert body["extended_at"]
+    assert datetime.fromisoformat(body["deadline"]) <= started + timedelta(hours=24, minutes=1)
+    assert second.status_code == 409
+
+
+def test_list_trips_hides_archived_trips(client: TestClient, api_session: Session):
+    user = _user(api_session, "Mia")
+    visible_trip, auth_membership = _trip_with_member(
+        api_session, user, name="Visible trip", role="organizer"
+    )
+    archived_trip, _ = _trip_with_member(api_session, user, name="Archived trip")
+    archived_trip.archived_at = datetime.now(timezone.utc)
+    api_session.flush()
+
+    response = client.get(
+        "/api/trips",
+        headers={"X-Membership-Id": auth_membership.id},
+    )
+
+    assert response.status_code == 200
+    assert {trip["id"] for trip in response.json()} == {visible_trip.id}
 
 
 @pytest.mark.parametrize(
@@ -476,3 +609,142 @@ def test_marking_an_item_booked_and_unbooked_is_persistent(
         select(PlanChange).where(PlanChange.plan_item_id == item.id)
     ).all()
     assert [change.patch["settledness"] for change in changes] == ["booked", "settled"]
+
+
+def test_planner_generates_a_first_draft_for_an_empty_trip(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Planner Mia")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    trip.preferred_start_date = date(2026, 8, 14)
+    trip.preferred_end_date = date(2026, 8, 16)
+    plan = Plan(trip_id=trip.id)
+    api_session.add(plan)
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plan_id"] == plan.id
+    assert body["days"]
+    assert body["used_ai"] is False
+
+    items = api_session.scalars(select(PlanItem).where(PlanItem.plan_id == plan.id)).all()
+    assert len(items) >= 6
+    assert {item.source for item in items} == {"ai_estimate"}
+    assert api_session.scalar(
+        select(PlanChange).where(PlanChange.origin == "ai_generate")
+    ) is not None
+
+
+def test_planner_draft_never_starts_before_morning_even_with_midnight_constraint(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Daytime Planner")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    trip.preferred_start_date = date(2026, 8, 14)
+    trip.preferred_end_date = date(2026, 8, 15)
+    plan = Plan(trip_id=trip.id)
+    api_session.add_all([
+        plan,
+        MemberConstraint(
+            trip_membership_id=organizer.id,
+            kind="time_window",
+            importance="required",
+            params={"earliest_hour": 0},
+        ),
+    ])
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 200
+    items = api_session.scalars(select(PlanItem).where(PlanItem.plan_id == plan.id)).all()
+    assert items
+    assert min(item.start_hour for item in items) >= 9.0
+
+
+@pytest.mark.parametrize("day_count", [2, 3, 5, 6])
+def test_planner_api_covers_every_inclusive_trip_date(
+    monkeypatch, client: TestClient, api_session: Session, day_count: int
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, f"Planner {day_count}")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    trip.preferred_start_date = date(2026, 8, 19)
+    trip.preferred_end_date = trip.preferred_start_date + timedelta(days=day_count - 1)
+    api_session.add(Plan(trip_id=trip.id))
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["used_ai"] is False
+    assert [day["day_index"] for day in body["days"]] == list(range(1, day_count + 1))
+    assert [
+        day["items"][0]["day_date"] for day in body["days"]
+    ] == [
+        (trip.preferred_start_date + timedelta(days=offset)).isoformat()
+        for offset in range(day_count)
+    ]
+    if day_count == 6:
+        assert [len(day["items"]) for day in body["days"]] != [2] * 6
+
+
+def test_planner_does_not_duplicate_an_existing_itinerary(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Planner No Duplicate")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    plan = Plan(trip_id=trip.id)
+    api_session.add(plan)
+    api_session.flush()
+    api_session.add(
+        PlanItem(
+            plan_id=plan.id,
+            day_index=1,
+            day_date=date(2026, 8, 14),
+            start_hour=10.0,
+            title="Existing stop",
+            place="Loop",
+        )
+    )
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 409
+
+
+def test_only_the_organizer_can_generate_the_first_draft(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Planner Participant")
+    trip, participant = _trip_with_member(api_session, user, role="participant")
+    api_session.add(Plan(trip_id=trip.id))
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": participant.id},
+    )
+
+    assert response.status_code == 403

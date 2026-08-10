@@ -68,6 +68,7 @@ POIS = [
     ("Sultan's Market", "Wicker Park", 41.9084, -87.6749, 12, 45, 10.0, 22.0, "low", ["seating"], ["vegetarian", "vegan", "halal"], ["food", "budget", "casual"]),
     ("Handlebar", "Wicker Park", 41.9074, -87.6773, 22, 90, 11.0, 22.0, "low", ["seating"], ["vegetarian", "vegan"], ["food", "casual", "relaxed"]),
     ("Lula Cafe", "Logan Square", 41.9265, -87.7085, 35, 90, 9.0, 22.0, "low", ["seating"], ["vegetarian", "vegan"], ["food", "brunch", "relaxed"]),
+    ("Starbucks Reserve Chicago Roastery", "Michigan Avenue", 41.8942, -87.6243, 15, 90, 7.0, 22.0, "low", ["wheelchair", "seating"], ["vegetarian"], ["food", "coffee", "cafe", "evening"]),
     ("Wildberry Pancakes and Cafe", "Loop", 41.8842, -87.6218, 22, 75, 7.0, 14.0, "low", ["wheelchair", "seating"], ["vegetarian"], ["food", "brunch", "morning"]),
     ("Chicago French Market", "West Loop", 41.8827, -87.6410, 18, 60, 7.0, 19.0, "low", ["wheelchair", "step_free", "seating"], ["vegetarian", "vegan", "gluten_free"], ["food", "budget", "indoor", "flexible"]),
 

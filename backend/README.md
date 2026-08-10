@@ -1,207 +1,291 @@
-# TripSync 后端
+# Cadensy Backend
 
-Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、决策流水账。
+Python + FastAPI + PostgreSQL. The backend owns trip data, membership, invite links,
+privacy boundaries, plan generation, decision routing, voting, confirmations, and the
+append-only plan change log.
 
-产品逻辑以 [`../README.md`](../README.md) 和 [`../trip/BACKEND.md`](../trip/BACKEND.md) 为准。
-今天做了什么、接下来怎么接着做,见 [`../交接.md`](../交接.md)。
+Product logic lives in [`../docs/PRODUCT.md`](../docs/PRODUCT.md). Local setup details
+live in [`LOCAL_DEV.md`](LOCAL_DEV.md). Current handoff notes live in [`../交接.md`](../交接.md).
 
 ---
 
-## 跑起来
+## Run Locally
 
-需要 PostgreSQL(本机已装 `postgresql@15`)和 Python 3.13。
-
-第一次从 fresh 包启动,先开后端。前端登录页只是页面,真正登录会请求
-`http://localhost:8000/api/auth/login`;如果后端没开,同学会看到
-`Could not reach the backend. Make sure the API is running.`。
+Requires PostgreSQL and Python 3.13.
 
 ```bash
-cd /Users/carina/Desktop/main_sync_fresh/backend
+cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env
-createdb tripsync
-createdb tripsync_test
-MOCK_AI=1 .venv/bin/python -m app.db.seed
-MOCK_AI=1 .venv/bin/uvicorn app.api.main:app --port 8000 --reload
+createdb tripsync && createdb tripsync_test
+.venv/bin/python -m app.db.seed
+.venv/bin/uvicorn app.api.main:app --port 8000 --reload
 ```
 
-打开 http://localhost:8000/docs —— 所有接口都能直接点着试。
+Open http://localhost:8000/docs to try the API.
 
-后端这条 `uvicorn` 命令要一直开着,不要关终端。另开一个终端跑前端:
+Run tests:
 
 ```bash
-cd /Users/carina/Desktop/main_sync_fresh/frontend
-npm install
-npm run dev
+DISABLE_SCHEDULER=1 .venv/bin/python -m pytest -q
 ```
 
-打开 http://localhost:3000/login,用演示账号登录:
+`.venv/bin/python -m app.db.seed` drops and recreates tables. Use it only for local demo data.
+
+## Environment
+
+`.env` is ignored by git.
+
+| Name | Purpose | Default |
+|---|---|---|
+| `DATABASE_URL` | Main database URL | `postgresql+psycopg://localhost/tripsync` |
+| `TEST_DATABASE_URL` | Test database URL, must be separate | `.../tripsync_test` |
+| `OPENAI_API_KEY` | AI provider key | none |
+| `OPENAI_BASE_URL` | OpenAI-compatible provider override | none |
+| `OPENAI_MODEL` | AI model name | `gpt-4o-mini` |
+| `MOCK_AI` | Use local deterministic mock for demos/tests | `1` |
+| `SETTLE_TICK_SECONDS` | Polling interval for expired rounds | `60` |
+| `DISABLE_SCHEDULER` | Disable background jobs for tests | none |
+| `DEV_ALLOW_MEMBERSHIP_HEADER` | Allow `X-Membership-Id` dev auth fallback | `1` |
+| `FRONTEND_BASE_URL` | Frontend URL used in invite/login links | `http://localhost:5173` |
+| `CORS_ORIGINS` | Allowed frontend origins | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` |
+
+Never put real keys in code.
+
+---
+
+## Structure
 
 ```text
-email: organizer@cadensy.local
-password: 12345678
+app/
+├── agents/                  AI-facing planner/chat adapters
+├── api/main.py              HTTP layer; keep business rules out of route handlers
+├── db/
+│   ├── models.py            Tables and database invariants
+│   ├── seed.py              Demo trip data
+│   └── session.py           Database connection
+├── domain/
+│   ├── constraints/         Deterministic rule engine
+│   ├── decisions/           Notice / round / confirm execution
+│   ├── plans/               Initial itinerary generation
+│   ├── preferences/         Preference and constraint persistence
+│   └── trips/               Trip, invite, and membership services
+└── jobs/scheduler.py        Round settlement scheduler
+tests/                       Backend regression tests
 ```
 
-如果前端不是跑在 `3000`,要把实际地址加到后端 `.env` 的 `CORS_ORIGINS`,然后重启后端。
+Dependency direction should stay one-way: `api` calls `domain`, and `domain` uses `db`.
+Do not move core decision logic into API handlers.
 
-### 登录不上时先看这里
+---
 
-| 现象 | 原因 | 处理 |
-|---|---|---|
-| `Could not reach the backend` | 后端没启动,或不是 `8000` 端口 | 运行 `MOCK_AI=1 .venv/bin/uvicorn app.api.main:app --port 8000 --reload` |
-| `Invalid email or password` | 数据库没灌演示账号,或密码列还没补 | 跑 `MOCK_AI=1 .venv/bin/python -m app.db.seed`;已有数据不想删时跑 `.venv/bin/python -m app.db.enable_auth` |
-| 后端启动时报数据库连接错误 | PostgreSQL 没开,或库没建 | 先启动 PostgreSQL,再跑 `createdb tripsync` |
-| AI 相关接口报 key 问题 | 没有配置 OpenAI key | 开发演示用 `MOCK_AI=1`,不用真实 key |
+## Decision Rules
 
-跑测试:
+All change classification happens on the server in
+[`app/domain/constraints/engine.py`](app/domain/constraints/engine.py). It is deterministic,
+does not call AI, and does not read private raw preference text.
+
+Decision order:
+
+| Check | Result |
+|---|---|
+| Booked item, required constraint violation, budget ceiling violation, or date range violation | `confirm` |
+| The slot is already `settled` | `reopen_round` |
+| The slot was previously touched by someone | `round` |
+| None of the above | `notice` |
+
+Plan item settledness:
+
+| State | Meaning |
+|---|---|
+| `loose` | AI-generated or untouched; anyone can change it through Notice |
+| `touched` | Directly changed once; later competing changes create a Round |
+| `settled` | Voted or confirmed; reopening needs a reason and majority support |
+| `booked` | Paid/booked; any change must go through Confirm |
+
+Important invariants:
+
+- Silence is never counted as agreement in rounds or confirmations.
+- Reopening a settled item requires a reason and majority support.
+- One item can have only one open round or one pending proposal at a time.
+- Public outputs never include member names or private preference wording.
+
+---
+
+## Roles
+
+Role belongs to `TripMembership`, not `User`. The same user can be organizer in one trip
+and participant in another.
+
+| Capability | organizer | participant | guest |
+|---|:--:|:--:|:--:|
+| View current plan | yes | yes | yes |
+| Private AI chat | yes | yes | yes |
+| Submit or edit own preferences | yes | yes | yes |
+| Vote and confirm | yes | yes | yes |
+| Comment on plan items | yes | yes | yes |
+| Propose changes | yes | yes | yes |
+| View member list / remind / extend deadlines | yes | no | no |
+| Generate and revoke invite links | yes | no | no |
+| Receive escalated deadlocks | yes | no | no |
+| My Trips dashboard / cross-trip account features | yes | yes | no |
+
+Product rules:
+
+- Organizer preferences have no extra weight.
+- Organizer cannot read private preferences.
+- No role can make decisions for another member.
+- Guests are full participants inside the trip. Their limitation is account-level only.
+- Guests are deduped by normalized `display_name` within the same trip. Rejoining as
+  `Guest Lee` / ` guest lee ` returns the existing guest membership.
+- If a guest later saves to an account, keep the same `TripMembership` and update `user_id`.
+
+---
+
+## Privacy
+
+Privacy is structural:
+
+| Layer | Guard |
+|---|---|
+| Database | Raw user wording is stored in `member_constraint_private`, separate from machine-readable `member_constraint`. |
+| Types | Classification returns `AnonymizedFinding`, which has no `membership_id`, name, or raw text field. |
+| Notices | `update_notice` intentionally has no actor field. |
+
+Never return:
+
+- `MemberConstraintPrivate.original_text` to the group or organizer.
+- Other members' `user_id`, name, or private reason in conflict flows.
+- Actor identity on anonymous preference or plan-impact updates.
+
+---
+
+## Core Data
+
+Implemented tables include:
+
+- `user`
+- `trip`
+- `trip_membership`
+- `invite_link`
+- `preference`
+- `member_constraint`
+- `member_constraint_private`
+- `plan`
+- `plan_item`
+- `plan_change`
+- `decision_round`
+- `vote`
+- `change_proposal`
+- `proposal_decision`
+- `update_notice`
+
+Key notes:
+
+- `invite_link` stores `token_hash`, not the clear token. The clear token is returned once.
+- Opening an invite with `GET /api/invites/{token}` never creates membership.
+- Account users are unique per trip through `(trip_id, user_id)`.
+- Guest dedupe is handled in the invite join service by normalized display name.
+- `plan_change` is append-only. Current item state is the original item plus applied changes.
+- `PlanItem.source` is set by code, not trusted from AI output.
+
+---
+
+## Plan Generation
+
+`POST /api/trips/{trip_id}/plans/generate` is organizer-only.
+
+Rules:
+
+- Organizer must submit their own preferences first, otherwise return `422`.
+- If any `PlanItem` already exists for the trip, reject regeneration with `409`.
+- Generation uses the Chicago POI catalog, applies opening hours, duplicate checks,
+  budget ceilings, and every required constraint through the deterministic engine.
+- If AI planner output is missing, invalid, or violates constraints, the backend falls back
+  to rule generation.
+- If no valid plan can be produced, return `status: "blocked"` with a safe
+  `blocked_reason` and do not write plan items.
+- Successful generation writes `PlanItem` rows and `PlanChange.origin` as
+  `ai_generate` or `rule_generate`.
+
+---
+
+## API Surface
+
+Implemented:
+
+```text
+GET    /api/health
+GET    /api/me
+GET    /api/trips
+GET    /api/trips/{trip_id}
+GET    /api/trips/{trip_id}/plans/current
+GET    /api/trips/{trip_id}/updates
+GET    /api/trips/{trip_id}/actions
+GET    /api/rounds/{round_id}
+GET    /api/proposals/{proposal_id}
+GET    /api/plans/{plan_id}/changes
+GET    /api/invites/{token}
+GET    /api/trips/{trip_id}/preferences/me
+GET    /api/trips/{trip_id}/members
+
+POST   /api/trips
+POST   /api/trips/{trip_id}/archive
+POST   /api/trips/{trip_id}/unarchive
+POST   /api/trips/{trip_id}/invite
+POST   /api/trips/{trip_id}/chat
+POST   /api/trips/{trip_id}/plans/generate
+POST   /api/plans/items/{item_id}/classify
+POST   /api/plans/items/{item_id}/changes
+POST   /api/updates/{notice_id}/object
+POST   /api/rounds/{round_id}/votes
+POST   /api/rounds/{round_id}/settle
+POST   /api/proposals/{proposal_id}/decisions
+POST   /api/invites/{token}/join
+POST   /api/invites/{invite_id}/revoke
+POST   /api/trips/{trip_id}/constraints
+POST   /api/trips/{trip_id}/members/{membership_id}/remind
+POST   /api/rounds/{round_id}/extend
+POST   /api/proposals/{proposal_id}/escalate
+POST   /api/proposals/{proposal_id}/deadlock
+
+PUT    /api/trips/{trip_id}/preferences/me
+PATCH  /api/constraints/{constraint_id}
+DELETE /api/constraints/{constraint_id}
+```
+
+Manual migration for existing local databases:
+
+```sql
+ALTER TABLE trip ADD COLUMN archived_at TIMESTAMPTZ;
+```
+
+`/classify` and `/changes` accept the same body and use the same decision path. The
+difference is that `/classify` rolls back after calculation, while `/changes` executes.
+
+Still missing:
+
+```text
+GET    /api/plans/{id}/validation
+POST   /api/proposals/{id}/withdraw
+POST   /api/plans/items/{id}/comments
+```
+
+---
+
+## Tests
+
+Run:
 
 ```bash
 DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
 ```
 
-`.venv/bin/python -m app.db.seed` 会**先删表再建表**,里面的数据全没。只在开发时用。
+High-value tests protect product promises:
 
-## 环境变量
-
-写在 `.env`(已进 `.gitignore`,不会提交)。
-
-| 名字 | 干什么 | 默认 |
-|---|---|---|
-| `DATABASE_URL` | 数据库地址 | `postgresql+psycopg://localhost/tripsync` |
-| `TEST_DATABASE_URL` | 测试库,和上面必须是两个库 | `…/tripsync_test` |
-| `OPENAI_API_KEY` | AI 用 | 无 |
-| `OPENAI_BASE_URL` | 换 DeepSeek 等兼容 OpenAI 协议供应商时用 | 无 |
-| `OPENAI_MODEL` | AI 模型名 | `gpt-4o-mini` |
-| `MOCK_AI` | 设成 `1` 用本地 mock,演示不用真实 key | `1` |
-| `SETTLE_TICK_SECONDS` | 多久检查一次到期的投票 | `60` |
-| `DISABLE_SCHEDULER` | 设成 `1` 关掉定时任务(测试时用) | 无 |
-| `FRONTEND_BASE_URL` | 邀请/登录跳转用的前端地址 | `http://localhost:5173` |
-| `CORS_ORIGINS` | 允许访问后端的前端地址 | `http://localhost:5173,http://localhost:3000` |
-
-**任何真实的 key 都不能写进代码。** 代码里只出现变量名。
-
----
-
-## 目录
-
-```
-app/
-├── domain/                  ← 业务规则全在这里，不依赖 FastAPI、不依赖数据库
-│   ├── constraints/
-│   │   ├── types.py         数据形状 + 隐私边界
-│   │   └── engine.py        classify()：判定一个改动走哪条路
-│   └── decisions/
-│       └── orchestrator.py  执行三条路径：写行程、开投票、建提案、结算
-├── db/
-│   ├── models.py            全部表 + 数据库层面的不变量
-│   ├── session.py           连接
-│   └── seed.py              演示数据（Mia's 30th in Chicago）
-├── api/main.py              HTTP 接口。薄层，不写业务判断
-└── jobs/scheduler.py        定时结算
-tests/                       153 条
-```
-
-**依赖方向是单向的**:`api` → `domain` → `db`。`domain/constraints` 谁也不依赖。
-反过来 import 会把规则漏进接口层,以后就拆不开了。
-
----
-
-## 三个模块
-
-### 判定引擎 `domain/constraints`
-
-一个纯函数:
-
-```python
-classify(change, constraints) -> Classification   # notice | round | reopen_round | confirm
-```
-
-不碰数据库、不发网络请求、**不调 AI**。同样的输入永远同样的输出。
-
-判定顺序(命中即停):
-
-| 问 | 是 → |
-|---|---|
-| 已订 / 违反谁的 required / 超预算上限 / 超日期 | `confirm` |
-| 这个时段已经"定过"了 | `reopen_round` |
-| 这个时段被人碰过 | `round` |
-| 都不是 | `notice` |
-
-**为什么不用 AI 判定**:大模型同一个问题两次可能给不同答案。一个以"公平"为卖点的产品,规则本身不能是飘的。AI 只在用户**写下**约束的那一刻出场(把人话翻译成六种类型之一),翻译结果存下来,以后判定只看存下来的规则。
-
-### 执行者 `domain/decisions`
-
-判定完了真的去做:改行程、开投票、建提案、到点结算。守着几条不变量:
-
-- 没投票的人记成"没表态",**永远不记成同意**
-- 提案要所有受影响的人都点头才写进行程
-- 重开轮里没表态的人算"维持原样"
-- 三条路径最后都往流水账追加一行,没有例外
-
-### 接口层 `api`
-
-只做三件事:收参数、调 domain、转 JSON。**一条业务判断都不写。**
-
-身份现在优先走登录 session bearer token。为了本地开发和老接口兼容,仍保留
-`X-Membership-Id` 作为 dev fallback。
-
----
-
-## 隐私是怎么保证的
-
-不是"记得过滤",是三层结构上就漏不出去:
-
-1. **数据库**:用户写的原话在 `member_constraint_private`,和判定用的 `member_constraint` 是两张表。判定引擎不查前者。
-2. **类型**:判定结果里只有 `AnonymizedFinding`,这个类型**没有** `membership_id` 字段、**没有**原文字段。想漏也没地方装。
-3. **通知表**:`update_notice` 故意没有"是谁干的"这一栏。存了早晚会被某个接口带出去。
-
-`tests/test_engine.py::test_findings_never_carry_identity_or_wording` 守着这条。
-
----
-
-## 数据库自己守的规矩
-
-这些不是靠代码记得检查,是数据库直接拦:
-
-| 规矩 | 怎么实现 |
-|---|---|
-| 一个条目同时只能有一轮开着的投票 | 部分唯一索引 `one_open_round_per_item` |
-| 一个条目同时只能有一个待确认提案 | 部分唯一索引 `one_pending_proposal_per_item` |
-| 一人一轮一票 | `UNIQUE(round_id, trip_membership_id)` |
-| 一人一提案一次表态 | `UNIQUE(proposal_id, trip_membership_id)` |
-
-应用层在 `_guard_not_pending()` 里提前拦一道,给用户一句人话(409)而不是 500。
-**两道都要**:应用层管体验,数据库管正确。
-
-## 流水账
-
-`plan_change` 只追加,不修改,不删除。一个条目"现在长什么样"= 原始状态叠加所有改动。
-
-`origin` 记着每次改动怎么来的(`notice` / `round` / `reopen_round` / `confirm` / `ai_generate` / `rule_generate`)。
-`GET /api/plans/{id}/changes` 把它摊开——**这是答辩时最有说服力的一屏**。
-
----
-
-## 测试
-
-153 条,`pytest -q` 很快跑完。主要分这些组:
-
-| 文件 | 守什么 |
-|---|---|
-| `test_engine.py` | 判定规则 + 隐私红线 + 确定性 |
-| `test_schema.py` | 数据库自己守的那几条 |
-| `test_paths.py` | 三条路径从提出到落地的真实流程 |
-| `test_jobs.py` | 定时结算 + 地图坐标 |
-| `test_auth.py` | 登录、登出、session 和 bearer token |
-| `test_agent*.py` | Chat Agent 的规则命中、追问、委托选择和可执行变更 |
-| `test_plan_generation.py` | planner stub、AI 失败降级、生成计划写入流水账 |
-| `test_comments.py` / `test_booking.py` | 评论、预订状态和组织者动作 |
-
-有几条测试守的是**产品承诺**,不是代码细节——改它们之前先确认产品真的改了主意:
-
-- `test_findings_never_carry_identity_or_wording` —— 判定结果不带姓名和原文
-- `test_silence_is_never_counted_as_agreement` —— 沉默不算同意
-- `test_one_missing_confirmation_blocks_the_change` —— 少一个人点头就不落地
-- `test_a_minority_cannot_overturn_a_settled_decision` —— 少数推翻不了已定的事
-- `test_same_input_always_gives_same_answer` —— 判定不会今天说行明天说不行
+- `test_findings_never_carry_identity_or_wording`
+- `test_silence_is_never_counted_as_agreement`
+- `test_one_missing_confirmation_blocks_the_change`
+- `test_a_minority_cannot_overturn_a_settled_decision`
+- `test_same_input_always_gives_same_answer`

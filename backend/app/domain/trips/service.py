@@ -9,13 +9,13 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ...db.models import InviteLink, Plan, PlanItem, Trip, TripMembership, User
+from ...db.models import InviteLink, Plan, PlanItem, Preference, Trip, TripMembership, User
 
 
 class GuestTripAccessDenied(Exception):
@@ -30,12 +30,49 @@ class InviteNotFound(Exception):
     """Invalid, expired, or revoked invite token."""
 
 
+class TripDatesInvalid(Exception):
+    """日期范围排不出行程。
+
+    在**创建时**就拦下来,而不是等用户填完偏好、点了生成、再收到一句
+    莫名其妙的"预算太低" —— 那时候他已经改不了日期了。
+    """
+
+
 def _initials(name: str) -> str:
     """取名字的首字母。中文名取前两个字。"""
     parts = [p for p in name.split() if p]
     if len(parts) >= 2:
         return (parts[0][0] + parts[1][0]).upper()
     return (parts[0][:2] if parts else "?").upper()
+
+
+def trip_status(trip: Trip, today: date | None = None) -> str:
+    """Trip status is derived from dates; trip.status is only a display cache."""
+    today = today or date.today()
+    start = trip.preferred_start_date
+    end = trip.preferred_end_date
+    if start is None or end is None:
+        return "planning"
+    if today > end:
+        return "completed"
+    if start <= today <= end:
+        return "traveling"
+    if start - timedelta(days=7) <= today < start:
+        return "upcoming"
+    return "planning"
+
+
+def sync_trip_statuses(db: Session, today: date | None = None) -> list[str]:
+    """Refresh the cache column opportunistically; date-derived status is authoritative."""
+    changed: list[str] = []
+    for trip in db.scalars(select(Trip)).all():
+        derived = trip_status(trip, today)
+        if trip.status != derived:
+            trip.status = derived
+            changed.append(trip.id)
+    if changed:
+        db.flush()
+    return changed
 
 
 def describe_me(db: Session, membership: TripMembership) -> dict:
@@ -81,11 +118,30 @@ class CreatedTrip:
     membership: TripMembership
 
 
+def _validate_trip_dates(start, end) -> None:
+    """日期范围必须排得出行程。不合法就当场说清楚,别拖到生成那一步。"""
+    from ..plans.generator import MAX_TRIP_DAYS
+
+    if start is None or end is None:
+        return
+    if end < start:
+        raise TripDatesInvalid("The end date cannot be before the start date.")
+    days = (end - start).days + 1
+    if days > MAX_TRIP_DAYS:
+        raise TripDatesInvalid(
+            f"A trip can span at most {MAX_TRIP_DAYS} days for now — "
+            f"this one is {days}. Every place is used at most once, "
+            "so a longer trip cannot be filled."
+        )
+
+
 def create_trip(
     db: Session, creator: TripMembership, data: TripCreateData
 ) -> CreatedTrip:
     if creator.user_id is None:
         raise GuestTripAccessDenied("Guests cannot create trips")
+
+    _validate_trip_dates(data.preferred_start_date, data.preferred_end_date)
 
     trip = Trip(
         name=data.name,
@@ -131,7 +187,7 @@ def list_user_trips(db: Session, membership: TripMembership) -> list[dict]:
     trips: list[dict] = []
     for my_membership in memberships:
         trip = db.get(Trip, my_membership.trip_id)
-        if trip is None:
+        if trip is None or trip.archived_at is not None:
             continue
 
         member_count = db.scalar(
@@ -156,13 +212,38 @@ def list_user_trips(db: Session, membership: TripMembership) -> list[dict]:
                 "id": trip.id,
                 "name": trip.name,
                 "destination": trip.destination,
-                "status": trip.status,
+                "preferred_start_date": trip.preferred_start_date.isoformat() if trip.preferred_start_date else None,
+                "preferred_end_date": trip.preferred_end_date.isoformat() if trip.preferred_end_date else None,
+                "status": trip_status(trip),
                 "member_count": member_count or 0,
                 "next_item_title": next_item.title if next_item else None,
                 "my_role": my_membership.role,
+                # 前端本地 demo 还保留 X-Membership-Id,切 trip 时必须切到"自己在那趟里的身份"。
+                "my_membership_id": my_membership.id,
             }
         )
     return trips
+
+
+def archive_trip(db: Session, trip_id: str, membership: TripMembership) -> Trip:
+    trip = db.get(Trip, trip_id)
+    if trip is None:
+        raise InviteNotFound("Trip not found")
+    _require_organizer(db, trip_id, membership)
+    if trip.archived_at is None:
+        trip.archived_at = _now()
+    db.flush()
+    return trip
+
+
+def unarchive_trip(db: Session, trip_id: str, membership: TripMembership) -> Trip:
+    trip = db.get(Trip, trip_id)
+    if trip is None:
+        raise InviteNotFound("Trip not found")
+    _require_organizer(db, trip_id, membership)
+    trip.archived_at = None
+    db.flush()
+    return trip
 
 
 def _token_hash(token: str) -> str:
@@ -176,6 +257,105 @@ def _now() -> datetime:
 def _require_organizer(db: Session, trip_id: str, membership: TripMembership) -> None:
     if membership.trip_id != trip_id or membership.role != "organizer":
         raise OrganizerRequired("Only the organizer can manage this trip invite")
+
+
+def _active_invite(db: Session, trip_id: str) -> InviteLink | None:
+    return db.scalar(
+        select(InviteLink)
+        .where(
+            InviteLink.trip_id == trip_id,
+            InviteLink.is_primary.is_(True),
+            InviteLink.revoked_at.is_(None),
+        )
+        .order_by(InviteLink.created_at.desc())
+        .limit(1)
+    )
+
+
+def _invite_status(invite: InviteLink) -> str:
+    if invite.revoked_at is not None:
+        return "revoked"
+    if invite.expires_at is not None and invite.expires_at <= _now():
+        return "expired"
+    return "active"
+
+
+def _preference_status(db: Session, membership: TripMembership | None) -> tuple[str, datetime | None]:
+    if membership is None:
+        return "missing", None
+    pref = db.scalar(
+        select(Preference).where(Preference.trip_membership_id == membership.id)
+    )
+    if membership.status == "preferences_submitted":
+        return "complete", pref.submitted_at if pref else None
+    if pref is None:
+        return "missing", None
+    has_any_value = any(
+        value not in (None, "", [])
+        for value in (
+            pref.preferred_start_date,
+            pref.preferred_end_date,
+            pref.available_start_date,
+            pref.available_end_date,
+            pref.ideal_budget,
+            pref.maximum_budget,
+            pref.travel_style,
+            pref.top_interests or [],
+        )
+    )
+    return ("partial" if has_any_value else "missing"), pref.submitted_at
+
+
+def onboarding_summary(db: Session, trip_id: str) -> dict:
+    trip = db.get(Trip, trip_id)
+    if trip is None:
+        raise InviteNotFound("Trip not found")
+
+    memberships = db.scalars(
+        select(TripMembership)
+        .where(TripMembership.trip_id == trip_id)
+        .order_by(TripMembership.created_at)
+    ).all()
+    organizer = next((member for member in memberships if member.role == "organizer"), None)
+    organizer_status, submitted_at = _preference_status(db, organizer)
+    submitted_members = sum(1 for member in memberships if member.status == "preferences_submitted")
+    waiting_members = max(0, len(memberships) - submitted_members)
+
+    invite = _active_invite(db, trip_id)
+    active_invite = None
+    if invite is not None and _invite_status(invite) == "active":
+        active_invite = {
+            "id": invite.id,
+            "invite_id": invite.id,
+            "status": "active",
+            "expires_at": invite.expires_at.isoformat() if invite.expires_at else None,
+        }
+
+    blocking_reasons: list[str] = []
+    if organizer_status != "complete":
+        blocking_reasons.append("organizer_preference_missing")
+
+    return {
+        "active_invite": active_invite,
+        "organizer_preference": {
+            "status": organizer_status,
+            "completed_at": submitted_at.isoformat() if submitted_at else None,
+        },
+        "preference_collection": {
+            "total_members": len(memberships),
+            "submitted_members": submitted_members,
+            "waiting_members": waiting_members,
+        },
+        "planning_readiness": {
+            "can_generate_itinerary": not blocking_reasons,
+            "blocking_reasons": blocking_reasons,
+            "next_action": (
+                "fill_organizer_preferences"
+                if "organizer_preference_missing" in blocking_reasons
+                else "generate_itinerary"
+            ),
+        },
+    }
 
 
 @dataclass(frozen=True)
@@ -260,6 +440,26 @@ def join_invite(
     normalized_email = (email or "").strip().lower() or None
 
     if normalized_email is None:
+        existing_guest = db.scalar(
+            select(TripMembership)
+            .where(
+                TripMembership.trip_id == invite.trip_id,
+                TripMembership.user_id.is_(None),
+                TripMembership.join_method == "invite_guest",
+                func.lower(func.trim(TripMembership.guest_display_name)) == name.lower(),
+            )
+            .order_by(TripMembership.created_at, TripMembership.id)
+            .limit(1)
+        )
+        if existing_guest is not None:
+            existing_guest.status = (
+                existing_guest.status
+                if existing_guest.status == "preferences_submitted"
+                else "joined"
+            )
+            db.flush()
+            return JoinedInvite(membership=existing_guest, trip_id=invite.trip_id)
+
         membership = TripMembership(
             trip_id=invite.trip_id,
             user_id=None,

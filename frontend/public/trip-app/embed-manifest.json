@@ -4,10 +4,22 @@
   "frameSrc": "/trip-app/#/",
   "sourceApp": "tripsync",
   "sourceVersion": "0.4.0",
-  "syncedAt": "2026-08-09T21:23:06.407Z",
+  "syncedAt": "2026-08-10T07:43:50.346Z",
   "files": [
-    "assets/index-Bmcdi2kg.js",
-    "assets/index-CE-irYS0.css",
+    "assets/index-DzZW_o70.css",
+    "assets/index-VAVLIBFI.js",
+    "images/cadensy-mark.png",
+    "images/cadensy-wordmark.png",
+    "images/trip-photos/brunch.jpg",
+    "images/trip-photos/chicago-skyline.jpg",
+    "images/trip-photos/cruise.jpg",
+    "images/trip-photos/dinner.jpg",
+    "images/trip-photos/food-walk.jpg",
+    "images/trip-photos/hotel.jpg",
+    "images/trip-photos/museum.jpg",
+    "images/trip-photos/restaurant.jpg",
+    "images/trip-photos/riverwalk.jpg",
+    "images/trip-photos/wicker-food.jpg",
     "index.html"
   ]
 }

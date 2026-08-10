@@ -31,6 +31,8 @@ from ...db.models import (
     TripMembership,
     UpdateNotice,
 )
+from ..trips import service as trip_service
+from .orchestrator import deadline_for_window
 
 # One reminder per member per day. A nudge, not a nag.
 REMIND_COOLDOWN = timedelta(hours=24)
@@ -121,13 +123,17 @@ def extend_round(db: Session, organizer: TripMembership, round_id: str) -> Decis
         raise AlreadyExtended("This round has already been extended once")
 
     item = db.get(PlanItem, round_.plan_item_id)
+    if item is None or item.plan.trip_id != organizer.trip_id:
+        raise NothingToDo("No open round here")
     trip = db.get(Trip, item.plan.trip_id)
-    window = (
-        EXTEND_TRAVELING if trip and trip.status == "traveling" else EXTEND_PLANNING
-    )
+    status = trip_service.trip_status(trip, _now().date()) if trip else "planning"
+    window = EXTEND_TRAVELING if status == "traveling" else EXTEND_PLANNING
 
-    round_.deadline = round_.deadline + window
-    round_.extended_at = _now()
+    now = _now()
+    # 延长是补足一段新窗口,不是把剩余时间继续往上叠。
+    # 刚开轮就点 Extend,应该仍然接近 24h/2h,不能变成 48h/4h。
+    round_.deadline = deadline_for_window(window, item, current=round_.deadline)
+    round_.extended_at = now
     db.add(
         UpdateNotice(
             trip_id=item.plan.trip_id,
@@ -142,6 +148,42 @@ def extend_round(db: Session, organizer: TripMembership, round_id: str) -> Decis
     )
     db.flush()
     return round_
+
+
+def extend_proposal(
+    db: Session, organizer: TripMembership, proposal_id: str
+) -> ChangeProposal:
+    """Buy a confirmation more time, without changing what silence means."""
+    _require_organizer(organizer)
+    proposal = db.get(ChangeProposal, proposal_id)
+    if proposal is None or proposal.status not in ("waiting_affected_members", "escalated"):
+        raise NothingToDo("No active proposal here")
+    if proposal.extended_at is not None:
+        raise AlreadyExtended("This proposal has already been extended once")
+
+    item = db.get(PlanItem, proposal.plan_item_id)
+    if item is None or item.plan.trip_id != organizer.trip_id:
+        raise NothingToDo("No active proposal here")
+    trip = db.get(Trip, item.plan.trip_id)
+    status = trip_service.trip_status(trip, _now().date()) if trip else "planning"
+    window = EXTEND_TRAVELING if status == "traveling" else EXTEND_PLANNING
+
+    proposal.deadline = deadline_for_window(window, item, current=proposal.deadline)
+    proposal.extended_at = _now()
+    db.add(
+        UpdateNotice(
+            trip_id=item.plan.trip_id,
+            plan_item_id=item.id,
+            kind="proposal",
+            title=f"More time to confirm {item.title}",
+            body=(
+                "The organizer extended this confirmation. If it still expires, "
+                "the proposal is void and the current plan stays unchanged."
+            ),
+        )
+    )
+    db.flush()
+    return proposal
 
 
 # ————————————————————— The deadlock exit —————————————————————

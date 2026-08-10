@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from typing import NamedTuple
 
 from .types import (
@@ -40,6 +41,14 @@ SAFE_TEXT = {
     ConstraintKind.DIETARY: "This place does not meet a required dietary need.",
     ConstraintKind.AVOID_TAG: "This is something a member has required to avoid.",
 }
+
+
+def _coerce_date(value) -> date | None:
+    if value is None or isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    return value
 
 
 class _CheckSpec(NamedTuple):
@@ -123,7 +132,7 @@ def violates(constraint: Constraint, change: ProposedChange) -> bool:
         return ceiling is not None and change.trip_total_after > ceiling
 
     if constraint.kind is ConstraintKind.DATE_RANGE:
-        start, end = params.get("start"), params.get("end")
+        start, end = _coerce_date(params.get("start")), _coerce_date(params.get("end"))
         if start is not None and after.day_date < start:
             return True
         return end is not None and after.day_date > end
