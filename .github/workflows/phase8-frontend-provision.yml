@@ -144,6 +144,20 @@ jobs:
           fi
           aws elbv2 modify-target-group-attributes --target-group-arn "${FRONTEND_TG_ARN}" --attributes Key=deregistration_delay.timeout_seconds,Value=30 >/dev/null
 
+          TEMP_FRONTEND_RULE="$(aws elbv2 describe-rules --listener-arn "${LISTENER_ARN}" --query "Rules[?Conditions[?Field=='path-pattern' && contains(Values, '/_tripsync-frontend/*')]].RuleArn | [0]" --output text)"
+          if [ "${TEMP_FRONTEND_RULE}" = "None" ]; then
+            aws elbv2 create-rule \
+              --listener-arn "${LISTENER_ARN}" \
+              --priority 20 \
+              --conditions Field=path-pattern,Values='/_tripsync-frontend/*' \
+              --actions "Type=forward,TargetGroupArn=${FRONTEND_TG_ARN}" >/dev/null
+          else
+            aws elbv2 modify-rule \
+              --rule-arn "${TEMP_FRONTEND_RULE}" \
+              --conditions Field=path-pattern,Values='/_tripsync-frontend/*' \
+              --actions "Type=forward,TargetGroupArn=${FRONTEND_TG_ARN}" >/dev/null
+          fi
+
           EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${EXECUTION_ROLE_NAME}" --query 'Role.Arn' --output text)"
           ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
 
@@ -291,6 +305,11 @@ jobs:
           aws elbv2 modify-listener \
             --listener-arn "${LISTENER_ARN}" \
             --default-actions "Type=forward,TargetGroupArn=${FRONTEND_TG_ARN}" >/dev/null
+
+          TEMP_FRONTEND_RULE="$(aws elbv2 describe-rules --listener-arn "${LISTENER_ARN}" --query "Rules[?Conditions[?Field=='path-pattern' && contains(Values, '/_tripsync-frontend/*')]].RuleArn | [0]" --output text)"
+          if [ "${TEMP_FRONTEND_RULE}" != "None" ]; then
+            aws elbv2 delete-rule --rule-arn "${TEMP_FRONTEND_RULE}" >/dev/null
+          fi
 
       - name: Verify frontend and backend through ALB
         shell: bash
