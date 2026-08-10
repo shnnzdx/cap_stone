@@ -1,0 +1,322 @@
+name: Phase 8 Frontend Provision
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VPC_NAME: tripsync-vpc
+  PUBLIC_SUBNET_A_NAME: tripsync-public-subnet-a
+  PUBLIC_SUBNET_B_NAME: tripsync-public-subnet-b
+  ALB_SG_NAME: tripsync-alb-sg
+  FRONTEND_SG_NAME: tripsync-frontend-sg
+  LOG_GROUP_NAME: /ecs/tripsync-frontend
+  ECR_REPOSITORY: tripsync-frontend
+  ECS_CLUSTER: tripsync-cluster
+  TASK_FAMILY: tripsync-frontend
+  ECS_SERVICE: tripsync-frontend-service
+  ALB_NAME: tripsync-backend-alb
+  FRONTEND_TARGET_GROUP_NAME: tripsync-frontend-tg
+  BACKEND_TARGET_GROUP_NAME: tripsync-backend-tg
+  EXECUTION_ROLE_NAME: tripsync-ecs-execution-role
+  CONTAINER_NAME: tripsync-frontend
+  CONTAINER_PORT: "3000"
+
+jobs:
+  provision-frontend:
+    name: Provision Frontend ECS Service
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Confirm AWS identity and region
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity --output json
+          echo "AWS region: ${AWS_REGION}"
+
+      - name: Prepare frontend infrastructure
+        id: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
+          authorize_ingress() {
+            local group_id="$1"
+            shift
+            if ! output="$(aws ec2 authorize-security-group-ingress --group-id "${group_id}" "$@" 2>&1)"; then
+              if ! grep -q 'InvalidPermission.Duplicate' <<< "${output}"; then
+                echo "${output}"
+                return 1
+              fi
+            fi
+          }
+
+          tag_resource() {
+            local resource_id="$1"
+            local name="$2"
+            aws ec2 create-tags --resources "${resource_id}" --tags "Key=Name,Value=${name}" "Key=Project,Value=TripSync" "Key=Phase,Value=8"
+          }
+
+          VPC_ID="$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${VPC_NAME}" --query 'Vpcs[0].VpcId' --output text)"
+          PUBLIC_SUBNET_A_ID="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PUBLIC_SUBNET_A_NAME}" --query 'Subnets[0].SubnetId' --output text)"
+          PUBLIC_SUBNET_B_ID="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PUBLIC_SUBNET_B_NAME}" --query 'Subnets[0].SubnetId' --output text)"
+          ALB_SG_ID="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${ALB_SG_NAME}" --query 'SecurityGroups[0].GroupId' --output text)"
+
+          if [ "${VPC_ID}" = "None" ] || [ "${PUBLIC_SUBNET_A_ID}" = "None" ] || [ "${PUBLIC_SUBNET_B_ID}" = "None" ] || [ "${ALB_SG_ID}" = "None" ]; then
+            echo "::error::Required Phase 5 VPC, public subnets, or ALB security group are missing."
+            exit 1
+          fi
+
+          FRONTEND_SG_ID="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${FRONTEND_SG_NAME}" --query 'SecurityGroups[0].GroupId' --output text)"
+          if [ "${FRONTEND_SG_ID}" = "None" ]; then
+            FRONTEND_SG_ID="$(aws ec2 create-security-group --group-name "${FRONTEND_SG_NAME}" --description "TripSync frontend ECS task security group" --vpc-id "${VPC_ID}" --query 'GroupId' --output text)"
+            tag_resource "${FRONTEND_SG_ID}" "${FRONTEND_SG_NAME}"
+          fi
+
+          authorize_ingress "${FRONTEND_SG_ID}" --ip-permissions "IpProtocol=tcp,FromPort=${CONTAINER_PORT},ToPort=${CONTAINER_PORT},UserIdGroupPairs=[{GroupId=${ALB_SG_ID},Description=\"ALB to frontend\"}]"
+
+          if ! aws logs describe-log-groups --log-group-name-prefix "${LOG_GROUP_NAME}" --query "logGroups[?logGroupName=='${LOG_GROUP_NAME}'].logGroupName" --output text | grep -qx "${LOG_GROUP_NAME}"; then
+            aws logs create-log-group --log-group-name "${LOG_GROUP_NAME}"
+          fi
+          aws logs put-retention-policy --log-group-name "${LOG_GROUP_NAME}" --retention-in-days 7
+
+          aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "${ECR_REPOSITORY}" --image-scanning-configuration scanOnPush=true >/dev/null
+
+          cat > /tmp/ecr-lifecycle-policy.json <<'JSON'
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images after 7 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+          JSON
+          aws ecr put-lifecycle-policy --repository-name "${ECR_REPOSITORY}" --lifecycle-policy-text "file:///tmp/ecr-lifecycle-policy.json" >/dev/null
+
+          ALB_ARN="$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --query 'LoadBalancers[0].LoadBalancerArn' --output text)"
+          ALB_DNS="$(aws elbv2 describe-load-balancers --load-balancer-arns "${ALB_ARN}" --query 'LoadBalancers[0].DNSName' --output text)"
+          LISTENER_ARN="$(aws elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text)"
+          BACKEND_TG_ARN="$(aws elbv2 describe-target-groups --names "${BACKEND_TARGET_GROUP_NAME}" --query 'TargetGroups[0].TargetGroupArn' --output text)"
+
+          if [ "${LISTENER_ARN}" = "None" ] || [ "${BACKEND_TG_ARN}" = "None" ]; then
+            echo "::error::Existing ALB listener or backend target group is missing."
+            exit 1
+          fi
+
+          FRONTEND_TG_ARN="$(aws elbv2 describe-target-groups --names "${FRONTEND_TARGET_GROUP_NAME}" --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)"
+          if [ -z "${FRONTEND_TG_ARN}" ] || [ "${FRONTEND_TG_ARN}" = "None" ]; then
+            FRONTEND_TG_ARN="$(aws elbv2 create-target-group \
+              --name "${FRONTEND_TARGET_GROUP_NAME}" \
+              --protocol HTTP \
+              --port "${CONTAINER_PORT}" \
+              --vpc-id "${VPC_ID}" \
+              --target-type ip \
+              --health-check-protocol HTTP \
+              --health-check-path /login \
+              --matcher HttpCode=200-399 \
+              --query 'TargetGroups[0].TargetGroupArn' \
+              --output text)"
+          fi
+          aws elbv2 modify-target-group-attributes --target-group-arn "${FRONTEND_TG_ARN}" --attributes Key=deregistration_delay.timeout_seconds,Value=30 >/dev/null
+
+          EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${EXECUTION_ROLE_NAME}" --query 'Role.Arn' --output text)"
+          ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+
+          {
+            echo "account_id=${ACCOUNT_ID}"
+            echo "public_subnet_a_id=${PUBLIC_SUBNET_A_ID}"
+            echo "public_subnet_b_id=${PUBLIC_SUBNET_B_ID}"
+            echo "frontend_sg_id=${FRONTEND_SG_ID}"
+            echo "frontend_tg_arn=${FRONTEND_TG_ARN}"
+            echo "backend_tg_arn=${BACKEND_TG_ARN}"
+            echo "listener_arn=${LISTENER_ARN}"
+            echo "alb_dns=${ALB_DNS}"
+            echo "frontend_base_url=http://${ALB_DNS}"
+            echo "ecr_uri=${ECR_URI}"
+            echo "execution_role_arn=${EXECUTION_ROLE_ARN}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push frontend image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="${GITHUB_SHA}"
+          ECR_URI="${{ steps.infra.outputs.ecr_uri }}"
+          FRONTEND_BASE_URL="${{ steps.infra.outputs.frontend_base_url }}"
+
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_URI%/*}"
+          docker build \
+            --file frontend/Dockerfile \
+            --tag "${ECR_URI}:${IMAGE_TAG}" \
+            --tag "${ECR_URI}:latest" \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="${FRONTEND_BASE_URL}" \
+            --build-arg VITE_API_BASE_URL="${FRONTEND_BASE_URL}" \
+            .
+          docker push "${ECR_URI}:${IMAGE_TAG}"
+          docker push "${ECR_URI}:latest"
+
+      - name: Register frontend task definition and deploy service
+        id: service
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${{ steps.infra.outputs.ecr_uri }}:${GITHUB_SHA}"
+          FRONTEND_BASE_URL="${{ steps.infra.outputs.frontend_base_url }}"
+
+          cat > /tmp/task-definition-frontend.json <<JSON
+          {
+            "family": "${TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${{ steps.infra.outputs.execution_role_arn }}",
+            "containerDefinitions": [
+              {
+                "name": "${CONTAINER_NAME}",
+                "image": "${IMAGE_URI}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": ${CONTAINER_PORT},
+                    "hostPort": ${CONTAINER_PORT},
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  { "name": "NODE_ENV", "value": "production" },
+                  { "name": "PORT", "value": "${CONTAINER_PORT}" },
+                  { "name": "NEXT_PUBLIC_API_BASE_URL", "value": "${FRONTEND_BASE_URL}" },
+                  { "name": "VITE_API_BASE_URL", "value": "${FRONTEND_BASE_URL}" }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/login').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 20
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition-frontend.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+          echo "task_definition_arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
+
+          SERVICE_STATUS="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].status' --output text 2>/dev/null || true)"
+          if [ "${SERVICE_STATUS}" = "ACTIVE" ]; then
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --task-definition "${TASK_DEFINITION_ARN}" \
+              --desired-count 1 \
+              --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+              --health-check-grace-period-seconds 60 >/dev/null
+          else
+            aws ecs create-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service-name "${ECS_SERVICE}" \
+              --task-definition "${TASK_DEFINITION_ARN}" \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --platform-version LATEST \
+              --network-configuration "awsvpcConfiguration={subnets=[${{ steps.infra.outputs.public_subnet_a_id }},${{ steps.infra.outputs.public_subnet_b_id }}],securityGroups=[${{ steps.infra.outputs.frontend_sg_id }}],assignPublicIp=ENABLED}" \
+              --load-balancers "targetGroupArn=${{ steps.infra.outputs.frontend_tg_arn }},containerName=${CONTAINER_NAME},containerPort=${CONTAINER_PORT}" \
+              --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+              --health-check-grace-period-seconds 60 >/dev/null
+          fi
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+
+      - name: Configure ALB routing
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LISTENER_ARN="${{ steps.infra.outputs.listener_arn }}"
+          BACKEND_TG_ARN="${{ steps.infra.outputs.backend_tg_arn }}"
+          FRONTEND_TG_ARN="${{ steps.infra.outputs.frontend_tg_arn }}"
+
+          EXISTING_API_RULE="$(aws elbv2 describe-rules --listener-arn "${LISTENER_ARN}" --query "Rules[?Conditions[?Field=='path-pattern' && contains(Values, '/api/*')]].RuleArn | [0]" --output text)"
+          if [ "${EXISTING_API_RULE}" = "None" ]; then
+            aws elbv2 create-rule \
+              --listener-arn "${LISTENER_ARN}" \
+              --priority 10 \
+              --conditions Field=path-pattern,Values='/api/*' \
+              --actions "Type=forward,TargetGroupArn=${BACKEND_TG_ARN}" >/dev/null
+          else
+            aws elbv2 modify-rule \
+              --rule-arn "${EXISTING_API_RULE}" \
+              --conditions Field=path-pattern,Values='/api/*' \
+              --actions "Type=forward,TargetGroupArn=${BACKEND_TG_ARN}" >/dev/null
+          fi
+
+          aws elbv2 modify-listener \
+            --listener-arn "${LISTENER_ARN}" \
+            --default-actions "Type=forward,TargetGroupArn=${FRONTEND_TG_ARN}" >/dev/null
+
+      - name: Verify frontend and backend through ALB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALB_URL="${{ steps.infra.outputs.frontend_base_url }}"
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "${ALB_URL}/login" --output /tmp/tripsync-login.html; then
+              echo "Frontend /login passed through ALB."
+              break
+            fi
+
+            echo "Waiting for frontend ALB route, attempt ${attempt}/30..."
+            sleep 10
+
+            if [ "${attempt}" = "30" ]; then
+              echo "::error::Frontend /login did not pass through ALB."
+              aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].events[0:10]' --output table
+              exit 1
+            fi
+          done
+
+          curl --fail --silent --show-error "${ALB_URL}/trip-app/index.html" --output /tmp/tripsync-trip-app.html
+          curl --fail --silent --show-error "${ALB_URL}/api/health"
+          echo
+          echo "Frontend URL: ${ALB_URL}"
+          echo "Backend health still passes at: ${ALB_URL}/api/health"

@@ -256,6 +256,18 @@ Phase 7 successful frontend container readiness run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31353334323
 ```
 
+Phase 8 frontend ECS provision plan:
+
+```text
+AWS/PHASE8_FRONTEND_ECS_PROVISION_PLAN.md
+```
+
+Phase 8 frontend ECS provision workflow:
+
+```text
+https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase8-frontend-provision.yml
+```
+
 RDS endpoint:
 
 ```text

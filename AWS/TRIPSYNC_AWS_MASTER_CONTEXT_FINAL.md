@@ -1874,6 +1874,38 @@ Approve frontend ECS service creation
 
 ## Phase 8 — Deployment Automation
 
+Frontend ECS service creation was approved with:
+
+```text
+Approve frontend ECS service creation
+```
+
+Current Phase 8 frontend files:
+
+```text
+AWS/PHASE8_FRONTEND_ECS_PROVISION_PLAN.md
+.github/workflows/phase8-frontend-provision.yml
+```
+
+First frontend AWS architecture:
+
+```text
+reuse existing ALB: tripsync-backend-alb
+/api/* -> tripsync-backend-tg
+default -> tripsync-frontend-tg
+ECR repository -> tripsync-frontend
+ECS service -> tripsync-frontend-service
+task definition family -> tripsync-frontend
+CloudWatch log group -> /ecs/tripsync-frontend
+security group -> tripsync-frontend-sg
+desiredCount=1
+cpu=256
+memory=512 MiB
+Assign Public IP=ENABLED
+```
+
+This creates an additional frontend Fargate task and related frontend resources, but does not create a second ALB, NAT Gateway, VPC, subnet, RDS instance, or IAM user.
+
 Only now create the actual deployment workflow.
 
 Keep it manually triggered first.
