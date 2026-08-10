@@ -821,7 +821,13 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
     setDraft('')
     setSending(true)
     try {
-      const result = await app.chatWithTrip({ message: text, itemId })
+      const history = messages
+        .filter(message => !message.loading && message.text)
+        .map(message => ({
+          role: message.from === 'you' ? 'user' : 'assistant',
+          text: message.text,
+        }))
+      const result = await app.chatWithTrip({ message: text, itemId, history })
       setMessages(current => current.map(message => message.id === loadingId ? {
         ...message,
         loading: false,
@@ -1003,7 +1009,13 @@ function PersonalThread() {
     setDraft('')
     setSending(true)
     try {
-      const result = await app.chatWithTrip({ message: text, itemId: null })
+      const history = messages
+        .filter(message => !message.loading && message.text)
+        .map(message => ({
+          role: message.from === 'you' ? 'user' : 'assistant',
+          text: message.text,
+        }))
+      const result = await app.chatWithTrip({ message: text, itemId: null, history })
       setMessages(current => current.map(message => message.id === loadingId ? {
         ...message,
         loading: false,

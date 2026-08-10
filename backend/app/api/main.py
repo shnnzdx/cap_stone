@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from ..agents import chat as chat_agent
 from ..db.models import (
     ChangeProposal,
     DecisionRound,
@@ -38,6 +39,7 @@ from ..domain.chat import service as chat_service
 from ..domain.decisions import orchestrator as orch
 from ..domain.decisions import organizer as org_actions
 from ..domain.plans import generator as plan_generator
+from ..domain.planning import service as plan_service
 from ..domain.preferences import service as pref_service
 from ..domain.trips import service as trip_service
 
@@ -203,9 +205,15 @@ class TripCreateRequest(BaseModel):
     currency: str = Field(default="USD", min_length=1, max_length=8)
 
 
+class ChatTurnRequest(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    text: str = Field(min_length=1, max_length=1000)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     item_id: str | None = None
+    history: list[ChatTurnRequest] = Field(default_factory=list, max_length=10)
 
 
 class CommentRequest(BaseModel):
@@ -265,6 +273,27 @@ def _comment_out(db: Session, comment: PlanItemComment, me: TripMembership) -> d
         "text": comment.body,
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
         "is_me": comment.trip_membership_id == me.id,
+    }
+
+
+def _plan_out(db: Session, trip_id: str) -> dict:
+    plan = db.scalar(select(Plan).where(Plan.trip_id == trip_id))
+    if plan is None:
+        raise HTTPException(404, "No plan yet")
+    items = db.scalars(
+        select(PlanItem)
+        .where(PlanItem.plan_id == plan.id)
+        .order_by(PlanItem.day_index, PlanItem.start_hour)
+    ).all()
+    days: dict[int, list] = {}
+    for item in items:
+        days.setdefault(item.day_index, []).append(_item_out(item))
+    return {
+        "plan_id": plan.id,
+        "status": plan.status,
+        "blocked_reason": plan.blocked_reason,
+        "estimated_total_per_person": plan.estimated_total_per_person,
+        "days": [{"day_index": d, "items": v} for d, v in sorted(days.items())],
     }
 
 
@@ -451,24 +480,7 @@ def get_trip(trip_id: str, db: Session = Depends(get_session)) -> dict:
 
 @app.get("/api/trips/{trip_id}/plans/current")
 def get_current_plan(trip_id: str, db: Session = Depends(get_session)) -> dict:
-    plan = db.scalar(select(Plan).where(Plan.trip_id == trip_id))
-    if plan is None:
-        raise HTTPException(404, "No plan yet")
-    items = db.scalars(
-        select(PlanItem)
-        .where(PlanItem.plan_id == plan.id)
-        .order_by(PlanItem.day_index, PlanItem.start_hour)
-    ).all()
-    days: dict[int, list] = {}
-    for item in items:
-        days.setdefault(item.day_index, []).append(_item_out(item))
-    return {
-        "plan_id": plan.id,
-        "status": plan.status,
-        "blocked_reason": plan.blocked_reason,
-        "estimated_total_per_person": plan.estimated_total_per_person,
-        "days": [{"day_index": d, "items": v} for d, v in sorted(days.items())],
-    }
+    return _plan_out(db, trip_id)
 
 
 @app.get("/api/trips/{trip_id}/comments")
@@ -589,6 +601,10 @@ def chat_with_trip(
             membership=me,
             message=body.message,
             item_id=body.item_id,
+            history=tuple(
+                chat_agent.HistoryTurn(role=turn.role, text=turn.text)
+                for turn in body.history
+            ),
         )
     except chat_service.ChatAccessDenied as exc:
         raise HTTPException(403, str(exc)) from exc
@@ -764,6 +780,33 @@ def generate_trip_plan(
         "blocked_reason": result.blocked_reason,
         "generated_by": result.generated_by,
     }
+
+
+@app.post("/api/trips/{trip_id}/plans/generate-draft")
+def generate_draft_plan(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    """Generate the first itinerary draft through Jiayi's planner pipeline."""
+    try:
+        result = plan_service.generate_draft_plan(db, trip_id=trip_id, membership=me)
+    except plan_service.PlannerAccessDenied as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except plan_service.PlannerTripNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except plan_service.PlannerAlreadyHasItems as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except (
+        plan_service.PlannerTripDatesInvalid,
+        plan_service.PlannerDraftRejected,
+    ) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    payload = _plan_out(db, trip_id)
+    payload["planner_note"] = result.note
+    payload["used_ai"] = result.used_ai
+    return payload
 
 
 @app.post("/api/plans/items/{item_id}/classify")

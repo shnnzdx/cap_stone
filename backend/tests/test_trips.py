@@ -475,3 +475,111 @@ def test_marking_an_item_booked_and_unbooked_is_persistent(
         select(PlanChange).where(PlanChange.plan_item_id == item.id)
     ).all()
     assert [change.patch["settledness"] for change in changes] == ["booked", "settled"]
+
+
+def test_planner_generates_a_first_draft_for_an_empty_trip(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Planner Mia")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    trip.preferred_start_date = date(2026, 8, 14)
+    trip.preferred_end_date = date(2026, 8, 16)
+    plan = Plan(trip_id=trip.id)
+    api_session.add(plan)
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plan_id"] == plan.id
+    assert body["days"]
+    assert body["used_ai"] is False
+
+    items = api_session.scalars(select(PlanItem).where(PlanItem.plan_id == plan.id)).all()
+    assert len(items) >= 6
+    assert {item.source for item in items} == {"ai_estimate"}
+    assert api_session.scalar(
+        select(PlanChange).where(PlanChange.origin == "ai_generate")
+    ) is not None
+
+
+@pytest.mark.parametrize("day_count", [2, 3, 5, 6])
+def test_planner_api_covers_every_inclusive_trip_date(
+    monkeypatch, client: TestClient, api_session: Session, day_count: int
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, f"Planner {day_count}")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    trip.preferred_start_date = date(2026, 8, 19)
+    trip.preferred_end_date = trip.preferred_start_date + timedelta(days=day_count - 1)
+    api_session.add(Plan(trip_id=trip.id))
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["used_ai"] is False
+    assert [day["day_index"] for day in body["days"]] == list(range(1, day_count + 1))
+    assert [
+        day["items"][0]["day_date"] for day in body["days"]
+    ] == [
+        (trip.preferred_start_date + timedelta(days=offset)).isoformat()
+        for offset in range(day_count)
+    ]
+    if day_count == 6:
+        assert [len(day["items"]) for day in body["days"]] != [2] * 6
+
+
+def test_planner_does_not_duplicate_an_existing_itinerary(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Planner No Duplicate")
+    trip, organizer = _trip_with_member(api_session, user, role="organizer")
+    plan = Plan(trip_id=trip.id)
+    api_session.add(plan)
+    api_session.flush()
+    api_session.add(
+        PlanItem(
+            plan_id=plan.id,
+            day_index=1,
+            day_date=date(2026, 8, 14),
+            start_hour=10.0,
+            title="Existing stop",
+            place="Loop",
+        )
+    )
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": organizer.id},
+    )
+
+    assert response.status_code == 409
+
+
+def test_only_the_organizer_can_generate_the_first_draft(
+    monkeypatch, client: TestClient, api_session: Session
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    user = _user(api_session, "Planner Participant")
+    trip, participant = _trip_with_member(api_session, user, role="participant")
+    api_session.add(Plan(trip_id=trip.id))
+    api_session.flush()
+
+    response = client.post(
+        f"/api/trips/{trip.id}/plans/generate-draft",
+        headers={"X-Membership-Id": participant.id},
+    )
+
+    assert response.status_code == 403

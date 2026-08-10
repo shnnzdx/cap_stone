@@ -66,6 +66,77 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
     assert body["proposed_change"]["verdict"]["path"] == "notice"
 
 
+def test_chat_resolves_delegated_downtown_cafe_replacement_from_history(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+    lula = PlanItem(
+        plan_id=full_trip["plan"].id,
+        day_index=1,
+        day_date=date(2026, 8, 14),
+        start_hour=19.0,
+        duration_min=90,
+        title="Lula Cafe",
+        place="Logan Square",
+        price_per_person=35.0,
+        lat=41.9265,
+        lng=-87.7085,
+        settledness="loose",
+    )
+    db.add(lula)
+    db.flush()
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "随便",
+                "item_id": lula.id,
+                "history": [
+                    {"role": "user", "text": "replace Lula Cafe with another place downtown"},
+                    {"role": "assistant", "text": "Do you want a specific place?"},
+                    {"role": "user", "text": "你选个在密歇根大道的咖啡店"},
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    proposed = response.json()["proposed_change"]
+    assert proposed is not None
+    assert proposed["item_id"] == lula.id
+    assert proposed["patch"] == {
+        "title": "Starbucks Reserve Chicago Roastery",
+        "place": "Michigan Avenue",
+        "price_per_person": 15.0,
+        "lat": 41.8942,
+        "lng": -87.6243,
+    }
+    assert "我建议" in response.json()["reply"]
+    assert "点击 Apply 后才会提交" in response.json()["reply"]
+    assert "已更改" not in response.json()["reply"]
+
+
+def test_chat_does_not_choose_random_place_without_a_preference(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "Replace this",
+                "item_id": full_trip["art"].id,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["proposed_change"] is None
+    assert "what would you like to change" in response.json()["reply"].lower()
+
+
 def test_chat_is_read_only(monkeypatch, db: Session, full_trip: dict):
     monkeypatch.setenv("MOCK_AI", "1")
     before = {

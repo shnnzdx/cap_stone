@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from . import base
 from ..domain.constraints.types import Classification
@@ -30,9 +30,35 @@ class ItemContext:
 
 
 @dataclass(frozen=True)
+class HistoryTurn:
+    role: Literal["user", "assistant"]
+    text: str
+
+
+@dataclass(frozen=True)
+class CandidateContext:
+    title: str
+    place: str
+    price_per_person: float
+    lat: float
+    lng: float
+    opens: float
+    closes: float
+    tags: tuple[str, ...]
+
+    def prompt_line(self) -> str:
+        return (
+            f"- {self.title} | {self.place} | ${self.price_per_person:.0f} | "
+            f"hours {self.opens:g}-{self.closes:g} | tags: {', '.join(self.tags)}"
+        )
+
+
+@dataclass(frozen=True)
 class UnderstandInput:
     message: str
     item: ItemContext | None = None
+    history: tuple[HistoryTurn, ...] = ()
+    candidates: tuple[CandidateContext, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,8 +103,12 @@ UNDERSTAND_SCHEMA = {
                 "start_hour": {"type": ["number", "null"], "minimum": 0, "maximum": 24},
                 "day_date": {"type": ["string", "null"]},
                 "price_per_person": {"type": ["number", "null"], "minimum": 0},
+                "lat": {"type": ["number", "null"], "minimum": -90, "maximum": 90},
+                "lng": {"type": ["number", "null"], "minimum": -180, "maximum": 180},
             },
-            "required": ["title", "place", "start_hour", "day_date", "price_per_person"],
+            "required": [
+                "title", "place", "start_hour", "day_date", "price_per_person", "lat", "lng"
+            ],
         },
     },
     "required": ["intent", "item_hint", "patch"],
@@ -98,6 +128,11 @@ def understand(request: UnderstandInput) -> Understanding:
     result = base.call_model(
         system=(
             "You turn a trip-planning chat message into a structured intent. "
+            "Resolve short follow-ups using the conversation history. If the traveler "
+            "delegates a choice (for example: choose one, any, 随便, 你选, 可以), choose "
+            "one concrete eligible candidate instead of asking again. For a replacement, "
+            "never keep the old title while merely changing its area. Use candidate values "
+            "exactly and never invent a venue. "
             "Return only JSON. Do not decide whether the change is allowed."
         ),
         user=_understand_prompt(request),
@@ -131,8 +166,10 @@ def explain(request: ReplyInput) -> Reply:
     result = base.call_model(
         system=(
             "You explain a precomputed itinerary-change verdict to a traveler. "
-            "Use plain English. Do not pressure anyone. Do not claim the change "
-            "has been submitted."
+            "Reply in the same language as the traveler's latest message, in no more "
+            "than two short sentences. Use only the supplied item, patch, and verdict. "
+            "Do not invent a weekday, availability, opening hours, or other facts. "
+            "Do not pressure anyone or claim the change has been submitted."
         ),
         user=_reply_prompt(request, safe),
         schema=REPLY_SCHEMA,
@@ -184,8 +221,32 @@ def fallback_explanation(verdict: Classification) -> str:
     return f"{verdict.headline}. {verdict.detail}"
 
 
+def replacement_explanation(request: ReplyInput) -> str:
+    title = str(request.patch["title"])
+    place = str(request.patch.get("place") or "").strip()
+    destination = f"{title} ({place})" if place else title
+    chinese = bool(re.search(r"[\u4e00-\u9fff]", request.message))
+    if request.verdict.path.value == "notice":
+        if chinese:
+            return f"我建议把 {request.item.title} 换成 {destination}，时间保持不变。检查通过；点击 Apply 后才会提交。"
+        return f"I suggest replacing {request.item.title} with {destination} at the same time. It passes the checks; it will only be submitted after you click Apply."
+    if request.verdict.path.value in {"round", "reopen_round"}:
+        if chinese:
+            return f"我建议把 {request.item.title} 换成 {destination}。这个调整需要小组投票，点击 Apply 后才会发起。"
+        return f"I suggest replacing {request.item.title} with {destination}. This needs a group round, which starts only after you click Apply."
+    if chinese:
+        return f"我建议把 {request.item.title} 换成 {destination}。这个调整需要相关成员确认，点击 Apply 后才会提交。"
+    return f"I suggest replacing {request.item.title} with {destination}. Affected members must confirm, and it will only be submitted after you click Apply."
+
+
 def _understand_prompt(request: UnderstandInput) -> str:
     parts = [
+        "Recent conversation (oldest to newest):",
+        *(
+            [f"{turn.role}: {turn.text}" for turn in request.history[-10:]]
+            or ["None"]
+        ),
+        "",
         "Message:",
         request.message,
         "",
@@ -195,6 +256,19 @@ def _understand_prompt(request: UnderstandInput) -> str:
         parts.extend(["", "Current itinerary item:", request.item.prompt_block()])
     else:
         parts.extend(["", "No specific item was selected. If the message does not name an item, item_hint must be null."])
+    parts.extend(
+        [
+            "",
+            "Eligible catalog replacements at the current time:",
+            *(
+                [candidate.prompt_line() for candidate in request.candidates]
+                or ["None"]
+            ),
+            "",
+            "A generic area such as downtown is a preference, not a venue title. "
+            "When choosing a candidate, copy its title, place, price, lat, and lng exactly.",
+        ]
+    )
     return "\n".join(parts)
 
 
@@ -243,6 +317,8 @@ def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
         "start_hour": _hour_from_text(message),
         "day_date": None,
         "price_per_person": None,
+        "lat": None,
+        "lng": None,
     }
     if "shopping" in message or "shop" in message:
         patch["title"] = "Magnificent Mile shopping"
@@ -250,8 +326,11 @@ def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
     elif "dinner" in message and "move" not in message:
         patch["title"] = "Dinner"
 
+    history_text = " ".join(turn.text.lower() for turn in request.history)
+    combined = f"{history_text} {message}".strip()
     has_change = any(value is not None for value in patch.values()) or any(
-        word in message for word in ("move", "replace", "change", "switch", "go to")
+        word in combined
+        for word in ("move", "replace", "change", "switch", "go to", "换", "改", "替换")
     )
     if not has_change:
         return {"intent": "question", "item_hint": None, "patch": patch}
