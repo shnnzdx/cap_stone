@@ -1387,7 +1387,7 @@ Docker CLI is not installed locally, so container build/run/health validation sh
 
 ## Phase 2 — Build Validation CI
 
-Status: next recommended step. Not created yet.
+Status: workflow created, awaiting manual GitHub Actions run.
 
 Create:
 
@@ -1405,12 +1405,11 @@ It should:
 
 ```text
 checkout
-build trip
-sync trip output
-build frontend
-run backend tests
-docker build backend
-run backend container
+build trip and sync embedded trip output
+build frontend and run frontend integration tests
+run backend tests against a GitHub Actions PostgreSQL service container
+docker build backend image
+run backend container with DISABLE_SCHEDULER=1 injected at runtime
 curl /api/health
 ```
 
@@ -1428,6 +1427,8 @@ npm test
 ```
 
 The workflow may build generated assets inside CI, but it should not commit them back to the repository.
+
+The workflow is validation-only and uses no AWS credentials. It does not call STS, ECR, ECS, RDS, Amplify, CloudFormation, Terraform, or any other AWS mutation path.
 
 It must not:
 
