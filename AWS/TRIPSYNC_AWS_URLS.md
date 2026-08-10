@@ -62,6 +62,12 @@ Phase 6 readiness workflow file:
 https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/runtime-secrets-readiness.yml
 ```
 
+Phase 6 successful Runtime Secrets Readiness run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31349738285
+```
+
 ---
 
 ## AWS Console Entry Points
@@ -170,6 +176,12 @@ Phase 6 runtime secrets plan:
 
 ```text
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
+```
+
+Phase 6 runtime secrets readiness result:
+
+```text
+AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
 ```
 
 Master context:

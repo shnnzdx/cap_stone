@@ -1,6 +1,6 @@
 # TripSync AWS Phase 6 Runtime Secrets Plan
 
-Status: repository readiness started, no AWS secrets or parameters created.
+Status: repository readiness completed, no AWS secrets or parameters created.
 
 Date: 2026-08-10
 
@@ -15,6 +15,14 @@ Repository readiness workflow:
 ```
 
 The workflow is manually triggered and validation-only. It does not configure AWS credentials, read GitHub Secrets, read AWS secrets, or print environment variables.
+
+Readiness result:
+
+```text
+AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31349738285
+result: success
+```
 
 ---
 
@@ -202,6 +210,18 @@ paste real DATABASE_URL or API keys into docs
 ## 9. Approval Gate
 
 Before creating AWS secrets, SSM parameters, or IAM policy changes, require explicit human approval for Phase 6 resource changes.
+
+Recommended next resource step:
+
+```text
+Create the minimal RDS PostgreSQL instance first, then create DATABASE_URL as a runtime secret/parameter, then update the ECS task definition to inject it.
+```
+
+Reason:
+
+```text
+DATABASE_URL cannot be finalized until the RDS endpoint, database name, database user, and database password are known.
+```
 
 This plan does not override the Phase 5 approval gate:
 

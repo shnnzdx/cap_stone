@@ -1724,12 +1724,13 @@ Do not create ECR, ECS, ALB, CloudWatch, IAM roles, or networking resources unti
 
 ## Phase 6 — Runtime Secrets
 
-Status: repository readiness started.
+Status: repository readiness completed.
 
 Current Phase 6 files:
 
 ```text
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
+AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
 .github/workflows/runtime-secrets-readiness.yml
 ```
 
@@ -1750,7 +1751,26 @@ checks high-confidence secret patterns
 confirms Phase 6 runtime rules are documented
 ```
 
+Readiness result:
+
+```text
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31349738285
+checked commit: 9fb73a619b73a311b30459e1a9c8c1936c851889
+result: success
+```
+
 The workflow does not prove that future AWS SSM/Secrets Manager parameters exist. It only protects the repository before runtime secrets are created later.
+
+Next required runtime step:
+
+```text
+Create minimal RDS PostgreSQL first.
+Then create DATABASE_URL as a runtime secret/parameter.
+Then update ECS task definition to inject the secret.
+Then switch backend from infrastructure proof toward real runtime mode.
+```
+
+Do not create RDS, SSM parameters, Secrets Manager secrets, IAM policy changes, or ECS secret injection without explicit human approval.
 
 ## Phase 7 — Frontend/Backend Integration
 
