@@ -115,6 +115,7 @@ jobs:
           SETTLE_TICK_SECONDS="${SETTLE_TICK_SECONDS:-60}"
 
           {
+            echo "current_task_def_arn=${CURRENT_TASK_DEF_ARN}"
             echo "execution_role_arn=${EXECUTION_ROLE_ARN}"
             echo "task_role_arn=${TASK_ROLE_ARN}"
             echo "cpu=${CPU}"
@@ -127,9 +128,6 @@ jobs:
             echo "frontend_base_url=${FRONTEND_BASE_URL}"
             echo "cors_origins=${CORS_ORIGINS}"
             echo "settle_tick_seconds=${SETTLE_TICK_SECONDS}"
-            echo "backend_container_json<<EOF"
-            echo "${BACKEND_CONTAINER}"
-            echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Register task definition with AI runtime config
@@ -142,11 +140,27 @@ jobs:
         run: |
           set -euo pipefail
 
+          CURRENT_TASK_DEF="$(aws ecs describe-task-definition \
+            --task-definition "${{ steps.discover.outputs.current_task_def_arn }}" \
+            --output json)"
+          BACKEND_CONTAINER="$(jq -c ".taskDefinition.containerDefinitions[] | select(.name == \"${CONTAINER_NAME}\")" <<< "${CURRENT_TASK_DEF}")"
+          if [ -z "${BACKEND_CONTAINER}" ] || [ "${BACKEND_CONTAINER}" = "null" ]; then
+            echo "::error::Backend container ${CONTAINER_NAME} was not found while building the updated task definition."
+            exit 1
+          fi
+
+          if [ "${INPUT_MOCK_AI}" = "true" ]; then
+            MOCK_AI_VALUE="1"
+          else
+            MOCK_AI_VALUE="0"
+          fi
+
           UPDATED_CONTAINER="$(
             jq -c \
+              --argjson container "${BACKEND_CONTAINER}" \
               --arg app_env "${{ steps.discover.outputs.app_env }}" \
               --arg disable_scheduler "${{ steps.discover.outputs.disable_scheduler }}" \
-              --arg mock_ai "${INPUT_MOCK_AI}" \
+              --arg mock_ai "${MOCK_AI_VALUE}" \
               --arg dev_allow_membership_header "${{ steps.discover.outputs.dev_allow_membership_header }}" \
               --arg frontend_base_url "${{ steps.discover.outputs.frontend_base_url }}" \
               --arg cors_origins "${{ steps.discover.outputs.cors_origins }}" \
@@ -162,7 +176,7 @@ jobs:
                 .secrets = ((.secrets // []) | map(select(.name != $name)) + [{name: $name, valueFrom: $valueFrom}]);
               def remove_secret($name):
                 .secrets = ((.secrets // []) | map(select(.name != $name)));
-              .
+              $container
               | upsert_env("APP_ENV"; $app_env)
               | upsert_env("DISABLE_SCHEDULER"; $disable_scheduler)
               | upsert_env("MOCK_AI"; $mock_ai)
@@ -177,7 +191,7 @@ jobs:
                 then upsert_secret("OPENAI_API_KEY"; $openai_api_key_secret_arn)
                 else remove_secret("OPENAI_API_KEY")
                 end
-              ' <<< '${{ steps.discover.outputs.backend_container_json }}'
+              ' <<< '{}'
           )"
 
           jq -n \
