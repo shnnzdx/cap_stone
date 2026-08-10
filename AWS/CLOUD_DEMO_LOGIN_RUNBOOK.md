@@ -37,7 +37,7 @@ GitHub Actions
 -> run one-off ECS task using existing backend service subnets/security group
 -> ECS task receives DATABASE_URL from existing SSM parameter
 -> task upserts organizer@cadensy.local in RDS
--> public API login is verified through ALB
+-> public API login is verified through ALB at /api/auth/login
 ```
 
 The workflow does not:
@@ -106,6 +106,7 @@ Common causes are schema drift, missing RDS connectivity from backend SG, or mis
 
 ```text
 The database write may have failed, the backend service may be unhealthy, or the public ALB/backend route may be down.
+The expected login endpoint is /api/auth/login.
 ```
 
 ## Security Position

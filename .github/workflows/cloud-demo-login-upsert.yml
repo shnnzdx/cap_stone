@@ -218,7 +218,7 @@ jobs:
           curl --fail --silent --show-error \
             -H "Content-Type: application/json" \
             -d @/tmp/login-payload.json \
-            "http://${ALB_DNS}/api/login" > /tmp/login-response.json
+            "http://${ALB_DNS}/api/auth/login" > /tmp/login-response.json
 
           jq -e '.token and (.memberships | length > 0)' /tmp/login-response.json >/dev/null
           echo "Demo organizer login verified through the public backend API."
