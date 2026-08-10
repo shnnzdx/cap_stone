@@ -4,7 +4,29 @@ Date: 2026-08-10
 
 Region: us-east-1
 
-This is the central URL index for the current TripSync AWS Phase 5 backend proof.
+This is the central URL index for the current TripSync AWS backend and frontend proof.
+
+---
+
+## Live Application
+
+Frontend public URL:
+
+```text
+http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+```
+
+Frontend login route:
+
+```text
+http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/login
+```
+
+Embedded Trip static entry:
+
+```text
+http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/trip-app/index.html
+```
 
 ---
 
@@ -268,6 +290,24 @@ Phase 8 frontend ECS provision workflow:
 https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase8-frontend-provision.yml
 ```
 
+Phase 8 frontend ECS provision result:
+
+```text
+AWS/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
+```
+
+Phase 8 successful frontend ECS provision run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31353851142
+```
+
+Phase 7 backend runtime config update after frontend deployment:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31354040217
+```
+
 RDS endpoint:
 
 ```text
@@ -288,10 +328,14 @@ AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 VPC: tripsync-vpc
 ECS cluster: tripsync-cluster
 ECS service: tripsync-backend-service
+Frontend ECS service: tripsync-frontend-service
 ECR repository: tripsync-backend
+Frontend ECR repository: tripsync-frontend
 ALB: tripsync-backend-alb
 Target group: tripsync-backend-tg
+Frontend target group: tripsync-frontend-tg
 CloudWatch log group: /ecs/tripsync-backend
+Frontend CloudWatch log group: /ecs/tripsync-frontend
 Execution role: tripsync-ecs-execution-role
 Task role: tripsync-backend-task-role
 ```

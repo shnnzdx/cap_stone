@@ -1884,6 +1884,7 @@ Current Phase 8 frontend files:
 
 ```text
 AWS/PHASE8_FRONTEND_ECS_PROVISION_PLAN.md
+AWS/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
 .github/workflows/phase8-frontend-provision.yml
 ```
 
@@ -1905,6 +1906,35 @@ Assign Public IP=ENABLED
 ```
 
 This creates an additional frontend Fargate task and related frontend resources, but does not create a second ALB, NAT Gateway, VPC, subnet, RDS instance, or IAM user.
+
+Phase 8 frontend provision result:
+
+```text
+status: success
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31353851142
+backend runtime config update run: https://github.com/shnnzdx/cap_stone/actions/runs/31354040217
+frontend public URL: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+backend health URL: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/api/health
+local public checks:
+  GET /login -> 200
+  GET /trip-app/index.html -> 200
+  GET /api/health -> {"ok":true}
+```
+
+Current ALB routing:
+
+```text
+/api/* -> tripsync-backend-tg
+default -> tripsync-frontend-tg
+```
+
+Backend runtime config now uses the ALB frontend URL:
+
+```text
+FRONTEND_BASE_URL=http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+CORS_ORIGINS=http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
+DEV_ALLOW_MEMBERSHIP_HEADER=0
+```
 
 Only now create the actual deployment workflow.
 

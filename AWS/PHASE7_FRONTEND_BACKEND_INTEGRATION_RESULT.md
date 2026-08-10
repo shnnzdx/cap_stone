@@ -1,6 +1,6 @@
 # TripSync AWS Phase 7 Frontend/Backend Integration Result
 
-Status: partial completion.
+Status: completed for the first shared-ALB AWS proof.
 
 Date: 2026-08-10
 
@@ -75,26 +75,33 @@ ALB /api/health after update: passed
 
 ---
 
-## Remaining Blocker
+## First AWS Frontend URL
 
-Final production frontend/backend integration is blocked until the frontend has a final public hosting URL.
-
-After the frontend URL exists, re-run:
+The first AWS frontend URL now exists:
 
 ```text
-.github/workflows/phase7-backend-runtime-config.yml
+http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+```
+
+Backend runtime config was updated after frontend deployment:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31354040217
 ```
 
 with:
 
 ```text
-frontend_base_url=<real frontend URL>
-cors_origins=<real frontend origin>
+frontend_base_url=http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+cors_origins=http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
 ```
 
-Then rebuild/deploy frontend with:
+Current first-proof validation:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
-VITE_API_BASE_URL=http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+GET /login -> 200
+GET /trip-app/index.html -> 200
+GET /api/health -> {"ok":true}
 ```
+
+Remaining production work is HTTPS/custom domain, browser-level end-to-end testing, and dependency audit triage.

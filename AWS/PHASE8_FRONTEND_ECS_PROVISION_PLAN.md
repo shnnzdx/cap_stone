@@ -1,6 +1,6 @@
 # TripSync AWS Phase 8 Frontend ECS Provision Plan
 
-Status: approved for execution.
+Status: provisioned and verified.
 
 Date: 2026-08-10
 
@@ -8,6 +8,12 @@ Approval phrase received:
 
 ```text
 Approve frontend ECS service creation
+```
+
+Provision result:
+
+```text
+AWS/PHASE8_FRONTEND_ECS_PROVISION_RESULT.md
 ```
 
 ---
