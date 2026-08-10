@@ -302,10 +302,40 @@ Phase 8 successful frontend ECS provision run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31353851142
 ```
 
+Phase 8 frontend redeploy after Trip iframe route fix:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31354836829
+```
+
 Phase 7 backend runtime config update after frontend deployment:
 
 ```text
 https://github.com/shnnzdx/cap_stone/actions/runs/31354040217
+```
+
+Phase 9 public browser E2E runbook:
+
+```text
+AWS/PHASE9_PUBLIC_E2E_RUNBOOK.md
+```
+
+Phase 9 public browser E2E result:
+
+```text
+AWS/PHASE9_PUBLIC_E2E_RESULT.md
+```
+
+Phase 9 successful public browser E2E run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31355307955
+```
+
+Phase 9 screenshot artifact:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/9050425261
 ```
 
 RDS endpoint:

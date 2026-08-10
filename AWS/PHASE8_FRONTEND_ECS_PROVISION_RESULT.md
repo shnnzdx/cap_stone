@@ -34,6 +34,12 @@ Backend runtime config update run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31354040217
 ```
 
+Frontend redeploy after Trip iframe route fix:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31354836829
+```
+
 ---
 
 ## Created Or Reused
@@ -112,7 +118,7 @@ backend memory=512 MiB
 
 ```text
 Add HTTPS/custom domain with ACM when domain is ready.
-Run browser-level end-to-end checks for login and trip workflows.
+Browser-level public E2E has passed for home, login, Trip iframe shell, embedded Trip static entry, and /api/health.
 Decide whether to keep localhost in production CORS after demo needs are clear.
 Triage npm audit warnings before production release.
 Plan cleanup/scale-down if cost needs to be minimized between demos.

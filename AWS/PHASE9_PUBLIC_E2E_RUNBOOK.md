@@ -1,6 +1,6 @@
 # TripSync AWS Phase 9 Public E2E Runbook
 
-Status: ready for validation.
+Status: validated successfully.
 
 Date: 2026-08-10
 
@@ -97,6 +97,12 @@ If it passes, record the GitHub Actions run in:
 AWS/PHASE9_PUBLIC_E2E_RESULT.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
+```
+
+Current successful run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31355307955
 ```
 
 If it fails, inspect:

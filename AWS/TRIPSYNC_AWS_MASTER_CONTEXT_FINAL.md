@@ -1958,6 +1958,49 @@ Do not merge this into the identity-check workflow.
 
 ## Phase 9 — Demo / Operations Runbook
 
+Status: public browser E2E validated.
+
+Current Phase 9 files:
+
+```text
+AWS/PHASE9_PUBLIC_E2E_RUNBOOK.md
+AWS/PHASE9_PUBLIC_E2E_RESULT.md
+.github/workflows/phase9-public-e2e.yml
+frontend/tests/aws-public-e2e.mjs
+```
+
+Public browser E2E result:
+
+```text
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31355307955
+screenshot artifact: https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/9050425261
+validated public URL: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+validated:
+  GET /
+  GET /login
+  GET /trip
+  iframe src = /trip-app/index.html#/
+  GET /trip-app/index.html
+  GET /trip-app/index.html#/
+  GET /api/health -> {"ok":true}
+```
+
+Phase 9 found and fixed a deployed Trip iframe issue:
+
+```text
+old iframe src: /trip-app/#/
+new iframe src: /trip-app/index.html#/
+frontend redeploy run: https://github.com/shnnzdx/cap_stone/actions/runs/31354836829
+```
+
+Known non-blocking browser console noise:
+
+```text
+[vinext] RSC prefetch setup error
+```
+
+This is currently ignored by E2E because the public pages, iframe shell, embedded Trip static entry, and backend health endpoint pass.
+
 Document:
 
 ```text
