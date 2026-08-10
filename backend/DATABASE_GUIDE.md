@@ -10,6 +10,15 @@ The database is owned by the FastAPI backend in `backend/`. The frontend and
 Trip workspace do not create their own application database. They call the
 backend REST API, and the backend reads and writes PostgreSQL through SQLAlchemy.
 
+The current working setup is mixed:
+
+```text
+DATABASE_URL      -> primary runtime database (currently allowed to be cloud RDS)
+TEST_DATABASE_URL -> disposable local PostgreSQL test database
+```
+
+This split is intentional. Normal backend runtime and pytest do not have the same safety requirements.
+
 ## Important Files
 
 - `app/db/models.py`: SQLAlchemy table definitions
@@ -18,14 +27,20 @@ backend REST API, and the backend reads and writes PostgreSQL through SQLAlchemy
 - `app/api/main.py`: REST API endpoints used by the frontend
 - `.env`: local database URLs and runtime settings, not committed to Git
 
+## Source Of Truth
+
+`backend/.env` is the backend runtime source of truth.
+
+The repo root `.env` may exist for other tooling, but backend commands should be aligned to `backend/.env` to avoid configuration drift.
+
 ## Configure The Database
 
 Create `backend/.env` from `backend/.env.example`.
 
-Use your local PostgreSQL username, password, host, port, and database names:
+Current mixed example:
 
 ```env
-DATABASE_URL=postgresql+psycopg://postgres:<URL_ENCODED_PASSWORD>@localhost:5432/tripsync
+DATABASE_URL=postgresql+psycopg://<RDS_USER>:<URL_ENCODED_PASSWORD>@<RDS_HOST>:5432/tripsync
 TEST_DATABASE_URL=postgresql+psycopg://postgres:<URL_ENCODED_PASSWORD>@localhost:5432/tripsync_test
 MOCK_AI=1
 DEV_ALLOW_MEMBERSHIP_HEADER=1
@@ -35,13 +50,24 @@ CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 
 Do not commit real passwords or API keys.
 
-## Create Local Databases
+Rules:
 
-On macOS or Linux, if PostgreSQL command line tools are on your PATH:
+- `DATABASE_URL` may point at cloud RDS if this machine can reach it.
+- `TEST_DATABASE_URL` should stay local and disposable.
+- `DATABASE_URL` and `TEST_DATABASE_URL` must not point at the same database.
+
+## Create Local Test Databases
+
+At minimum, create the local test database:
+
+```bash
+createdb tripsync_test
+```
+
+Create local `tripsync` too only if you want to run the main backend against localhost instead of cloud RDS:
 
 ```bash
 createdb tripsync
-createdb tripsync_test
 ```
 
 If those databases already exist, keep them.
@@ -55,14 +81,19 @@ cd backend
 .venv/bin/python -m app.db.seed
 ```
 
+Important:
+
+- `seed` uses `DATABASE_URL`, not `TEST_DATABASE_URL`.
+- `seed` is destructive and meant only for local/demo databases.
+- The current code refuses destructive seed against a non-local `DATABASE_URL` unless `ALLOW_DESTRUCTIVE_SEED=1` is set explicitly.
+
 This command creates the tables and loads the demo trip:
 
 ```text
 Mia's 30th in Chicago
 ```
 
-Important: the seed script resets local demo tables. Use it only for local
-development or a demo database.
+Use it only for local development or a demo database.
 
 ## Start The Backend
 
@@ -70,6 +101,8 @@ development or a demo database.
 cd backend
 .venv/bin/uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+This command uses `DATABASE_URL`. If that URL points to cloud RDS and the host is not reachable from this machine, backend startup or the first request will fail or time out.
 
 Open the API docs:
 
@@ -91,14 +124,21 @@ Expected response:
 
 ## Enter PostgreSQL From Terminal
 
-Use `psql` to inspect the local database:
+Use `psql` to inspect whichever database is active for the command you are debugging.
+
+For the local test database:
+
+```bash
+psql postgresql://postgres@localhost:5432/tripsync_test
+```
+
+For a local runtime database:
 
 ```bash
 psql postgresql://postgres@localhost:5432/tripsync
 ```
 
-If your user or password is different, use the same connection values from
-`DATABASE_URL`.
+If your user, password, host, or database name differ, use the same connection values from the relevant URL in `backend/.env`.
 
 Useful commands inside `psql`:
 
@@ -134,6 +174,23 @@ curl http://127.0.0.1:8000/api/trips \
 
 For local development, `DEV_ALLOW_MEMBERSHIP_HEADER=1` also allows the demo
 `X-Membership-Id` flow.
+
+## Tests
+
+Pytest now loads `backend/.env` automatically and forces test runtime to use `TEST_DATABASE_URL` for both schema rebuilds and app startup paths. This prevents test runs from accidentally touching a cloud `DATABASE_URL`.
+
+Run:
+
+```bash
+cd backend
+DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
+```
+
+Safety requirement:
+
+```text
+TEST_DATABASE_URL must point at a disposable database.
+```
 
 ## What To Show In The Module 7 Video
 

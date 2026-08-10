@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -20,9 +22,19 @@ from app.db.models import (
     User,
 )
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(BACKEND_ROOT / ".env", override=True)
+
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL", "postgresql+psycopg://localhost/tripsync_test"
 )
+
+# Tests must stay on the disposable local test database even when normal
+# runtime points DATABASE_URL at a cloud RDS instance.
+os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["DISABLE_SCHEDULER"] = "1"
+os.environ.setdefault("MOCK_AI", "1")
 
 
 @pytest.fixture(scope="session")
