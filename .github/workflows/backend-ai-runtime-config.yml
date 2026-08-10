@@ -219,7 +219,59 @@ jobs:
             --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
             --health-check-grace-period-seconds 60 >/dev/null
 
-          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+          if ! aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"; then
+            echo "::group::ECS service events"
+            aws ecs describe-services \
+              --cluster "${ECS_CLUSTER}" \
+              --services "${ECS_SERVICE}" \
+              --query 'services[0].events[0:10].[createdAt,message]' \
+              --output table || true
+            echo "::endgroup::"
+
+            echo "::group::Recent stopped tasks"
+            STOPPED_TASKS="$(aws ecs list-tasks \
+              --cluster "${ECS_CLUSTER}" \
+              --service-name "${ECS_SERVICE}" \
+              --desired-status STOPPED \
+              --max-results 5 \
+              --query 'taskArns' \
+              --output text || true)"
+            if [ -n "${STOPPED_TASKS}" ]; then
+              aws ecs describe-tasks \
+                --cluster "${ECS_CLUSTER}" \
+                --tasks ${STOPPED_TASKS} \
+                --query 'tasks[].{stoppedReason:stoppedReason,lastStatus:lastStatus,taskArn:taskArn,containers:containers[].{name:name,exitCode:exitCode,reason:reason,lastStatus:lastStatus}}' \
+                --output json || true
+            else
+              echo "No stopped tasks found."
+            fi
+            echo "::endgroup::"
+
+            echo "::group::Recent backend log streams"
+            LATEST_STREAMS="$(aws logs describe-log-streams \
+              --log-group-name "${LOG_GROUP_NAME}" \
+              --order-by LastEventTime \
+              --descending \
+              --max-items 3 \
+              --query 'logStreams[].logStreamName' \
+              --output text || true)"
+            if [ -n "${LATEST_STREAMS}" ]; then
+              for stream in ${LATEST_STREAMS}; do
+                echo "--- ${stream} ---"
+                aws logs get-log-events \
+                  --log-group-name "${LOG_GROUP_NAME}" \
+                  --log-stream-name "${stream}" \
+                  --limit 20 \
+                  --query 'events[].message' \
+                  --output text || true
+              done
+            else
+              echo "No backend log streams found."
+            fi
+            echo "::endgroup::"
+
+            exit 1
+          fi
 
       - name: Verify backend health
         shell: bash
