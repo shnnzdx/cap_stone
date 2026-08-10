@@ -479,7 +479,15 @@ export function TripAppProvider({ children }) {
     }
     if (!background) setLoading(current => ({ ...current, initial: true }))
     try {
-      await Promise.all([refreshCurrentUser(), loadTrips(), refreshTrip(), refreshPlan(), refreshUpdates(), refreshActions()])
+      const profile = await refreshCurrentUser()
+      const isGuestProfile = profile?.is_guest || profile?.role === 'guest'
+      await Promise.all([
+        isGuestProfile ? Promise.resolve([]) : loadTrips(),
+        refreshTrip(),
+        refreshPlan(),
+        refreshUpdates(),
+        refreshActions(),
+      ])
       setError('')
       return true
     } catch (err) {
