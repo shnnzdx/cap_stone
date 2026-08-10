@@ -208,6 +208,18 @@ Phase 6 runtime provision result:
 AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
 ```
 
+Phase 7 frontend/backend integration plan:
+
+```text
+AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
+```
+
+Phase 7 backend runtime config workflow:
+
+```text
+https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase7-backend-runtime-config.yml
+```
+
 RDS endpoint:
 
 ```text

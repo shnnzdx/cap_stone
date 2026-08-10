@@ -1,0 +1,143 @@
+name: Phase 7 Backend Runtime Config
+
+on:
+  workflow_dispatch:
+    inputs:
+      frontend_base_url:
+        description: Frontend base URL used in invite links
+        required: true
+        default: http://localhost:3000
+      cors_origins:
+        description: Comma-separated frontend origins allowed by backend CORS
+        required: true
+        default: http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
+
+permissions:
+  contents: read
+
+env:
+  ECS_CLUSTER: tripsync-cluster
+  ECS_SERVICE: tripsync-backend-service
+  TASK_FAMILY: tripsync-backend
+  CONTAINER_NAME: tripsync-backend
+  LOG_GROUP_NAME: /ecs/tripsync-backend
+
+jobs:
+  update-runtime-config:
+    name: Update Backend Runtime Config
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Register task definition with frontend runtime config
+        id: taskdef
+        shell: bash
+        env:
+          FRONTEND_BASE_URL: ${{ inputs.frontend_base_url }}
+          CORS_ORIGINS: ${{ inputs.cors_origins }}
+        run: |
+          set -euo pipefail
+
+          CURRENT_TASK_DEF_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].taskDefinition' --output text)"
+          CURRENT_TASK_DEF="$(aws ecs describe-task-definition --task-definition "${CURRENT_TASK_DEF_ARN}" --output json)"
+
+          CURRENT_IMAGE="$(jq -r ".taskDefinition.containerDefinitions[] | select(.name == \"${CONTAINER_NAME}\") | .image" <<< "${CURRENT_TASK_DEF}")"
+          EXECUTION_ROLE_ARN="$(jq -r '.taskDefinition.executionRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          TASK_ROLE_ARN="$(jq -r '.taskDefinition.taskRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          DATABASE_URL_SECRET="$(jq -r ".taskDefinition.containerDefinitions[] | select(.name == \"${CONTAINER_NAME}\") | (.secrets // [])[] | select(.name == \"DATABASE_URL\") | .valueFrom" <<< "${CURRENT_TASK_DEF}")"
+
+          if [ -z "${DATABASE_URL_SECRET}" ] || [ "${DATABASE_URL_SECRET}" = "null" ]; then
+            echo "::error::DATABASE_URL secret is not present on the current task definition."
+            exit 1
+          fi
+
+          cat > /tmp/task-definition-phase7.json <<JSON
+          {
+            "family": "${TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+            "taskRoleArn": "${TASK_ROLE_ARN}",
+            "containerDefinitions": [
+              {
+                "name": "${CONTAINER_NAME}",
+                "image": "${CURRENT_IMAGE}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  { "name": "APP_ENV", "value": "production" },
+                  { "name": "DISABLE_SCHEDULER", "value": "1" },
+                  { "name": "MOCK_AI", "value": "1" },
+                  { "name": "DEV_ALLOW_MEMBERSHIP_HEADER", "value": "0" },
+                  { "name": "FRONTEND_BASE_URL", "value": "${FRONTEND_BASE_URL}" },
+                  { "name": "CORS_ORIGINS", "value": "${CORS_ORIGINS}" }
+                ],
+                "secrets": [
+                  {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "${DATABASE_URL_SECRET}"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 20
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition-phase7.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+          echo "task_definition_arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update ECS service
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${{ steps.taskdef.outputs.task_definition_arn }}" \
+            --desired-count 1 \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --health-check-grace-period-seconds 60 >/dev/null
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+
+      - name: Verify backend health
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALB_DNS="$(aws elbv2 describe-load-balancers --names tripsync-backend-alb --query 'LoadBalancers[0].DNSName' --output text)"
+          curl --fail --silent "http://${ALB_DNS}/api/health"
+          echo
+          echo "Backend health check passed after Phase 7 runtime config update."

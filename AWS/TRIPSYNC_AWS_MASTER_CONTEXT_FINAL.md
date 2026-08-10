@@ -1797,9 +1797,37 @@ The deployed backend now has `DATABASE_URL` injected from SSM Parameter Store, b
 
 ## Phase 7 — Frontend/Backend Integration
 
-Set frontend API base URL to the deployed backend endpoint.
+Status: started.
 
-Set backend CORS production origin to the real frontend domain.
+Current files:
+
+```text
+AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
+.github/workflows/phase7-backend-runtime-config.yml
+```
+
+Local ignored env files have been synced so the frontend can call the AWS backend ALB:
+
+```text
+frontend/.env.local -> NEXT_PUBLIC_API_BASE_URL
+trip/.env.local -> VITE_API_BASE_URL
+```
+
+Current AWS backend endpoint:
+
+```text
+http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+```
+
+Backend runtime config workflow is ready to set:
+
+```text
+FRONTEND_BASE_URL
+CORS_ORIGINS
+DEV_ALLOW_MEMBERSHIP_HEADER=0
+```
+
+Final production CORS and invite URL remain blocked until the frontend has a final public hosting URL.
 
 ## Phase 8 — Deployment Automation
 
