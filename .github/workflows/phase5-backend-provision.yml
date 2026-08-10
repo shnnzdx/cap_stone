@@ -1,0 +1,395 @@
+name: Phase 5 Backend Provision
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: tripsync
+  VPC_NAME: tripsync-vpc
+  PUBLIC_SUBNET_A_NAME: tripsync-public-subnet-a
+  PUBLIC_SUBNET_B_NAME: tripsync-public-subnet-b
+  PRIVATE_DB_SUBNET_A_NAME: tripsync-private-db-subnet-a
+  PRIVATE_DB_SUBNET_B_NAME: tripsync-private-db-subnet-b
+  PUBLIC_RT_NAME: tripsync-public-rt
+  PRIVATE_DB_RT_NAME: tripsync-private-db-rt
+  IGW_NAME: tripsync-igw
+  ALB_SG_NAME: tripsync-alb-sg
+  BACKEND_SG_NAME: tripsync-backend-sg
+  RDS_SG_NAME: tripsync-rds-sg
+  LOG_GROUP_NAME: /ecs/tripsync-backend
+  ECR_REPOSITORY: tripsync-backend
+  ECS_CLUSTER: tripsync-cluster
+  TASK_FAMILY: tripsync-backend
+  ECS_SERVICE: tripsync-backend-service
+  ALB_NAME: tripsync-backend-alb
+  TARGET_GROUP_NAME: tripsync-backend-tg
+  EXECUTION_ROLE_NAME: tripsync-ecs-execution-role
+  TASK_ROLE_NAME: tripsync-backend-task-role
+
+jobs:
+  provision-backend:
+    name: Provision Backend Proof
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Confirm AWS identity and region
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity --output json
+          echo "AWS region: ${AWS_REGION}"
+
+      - name: Provision network, roles, ECR, logs, and ALB
+        id: infra
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          AZ_A="$(aws ec2 describe-availability-zones --filters Name=state,Values=available --query 'AvailabilityZones[0].ZoneName' --output text)"
+          AZ_B="$(aws ec2 describe-availability-zones --filters Name=state,Values=available --query 'AvailabilityZones[1].ZoneName' --output text)"
+
+          tag_resource() {
+            local resource_id="$1"
+            local name="$2"
+            aws ec2 create-tags --resources "${resource_id}" --tags "Key=Name,Value=${name}" "Key=Project,Value=TripSync" "Key=Phase,Value=5"
+          }
+
+          authorize_ingress() {
+            local group_id="$1"
+            shift
+            if ! output="$(aws ec2 authorize-security-group-ingress --group-id "${group_id}" "$@" 2>&1)"; then
+              if ! grep -q 'InvalidPermission.Duplicate' <<< "${output}"; then
+                echo "${output}"
+                return 1
+              fi
+            fi
+          }
+
+          VPC_ID="$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=${VPC_NAME}" --query 'Vpcs[0].VpcId' --output text)"
+          if [ "${VPC_ID}" = "None" ]; then
+            VPC_ID="$(aws ec2 create-vpc --cidr-block 10.42.0.0/16 --query 'Vpc.VpcId' --output text)"
+            tag_resource "${VPC_ID}" "${VPC_NAME}"
+            aws ec2 modify-vpc-attribute --vpc-id "${VPC_ID}" --enable-dns-hostnames '{"Value":true}'
+            aws ec2 modify-vpc-attribute --vpc-id "${VPC_ID}" --enable-dns-support '{"Value":true}'
+          fi
+
+          create_subnet() {
+            local name="$1"
+            local cidr="$2"
+            local az="$3"
+            local subnet_id
+            subnet_id="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${name}" --query 'Subnets[0].SubnetId' --output text)"
+            if [ "${subnet_id}" = "None" ]; then
+              subnet_id="$(aws ec2 create-subnet --vpc-id "${VPC_ID}" --cidr-block "${cidr}" --availability-zone "${az}" --query 'Subnet.SubnetId' --output text)"
+              tag_resource "${subnet_id}" "${name}"
+            fi
+            echo "${subnet_id}"
+          }
+
+          PUBLIC_SUBNET_A_ID="$(create_subnet "${PUBLIC_SUBNET_A_NAME}" 10.42.1.0/24 "${AZ_A}")"
+          PUBLIC_SUBNET_B_ID="$(create_subnet "${PUBLIC_SUBNET_B_NAME}" 10.42.2.0/24 "${AZ_B}")"
+          PRIVATE_DB_SUBNET_A_ID="$(create_subnet "${PRIVATE_DB_SUBNET_A_NAME}" 10.42.101.0/24 "${AZ_A}")"
+          PRIVATE_DB_SUBNET_B_ID="$(create_subnet "${PRIVATE_DB_SUBNET_B_NAME}" 10.42.102.0/24 "${AZ_B}")"
+
+          IGW_ID="$(aws ec2 describe-internet-gateways --filters "Name=tag:Name,Values=${IGW_NAME}" --query 'InternetGateways[0].InternetGatewayId' --output text)"
+          if [ "${IGW_ID}" = "None" ]; then
+            IGW_ID="$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text)"
+            tag_resource "${IGW_ID}" "${IGW_NAME}"
+          fi
+
+          ATTACHED_VPC="$(aws ec2 describe-internet-gateways --internet-gateway-ids "${IGW_ID}" --query 'InternetGateways[0].Attachments[0].VpcId' --output text)"
+          if [ "${ATTACHED_VPC}" = "None" ]; then
+            aws ec2 attach-internet-gateway --internet-gateway-id "${IGW_ID}" --vpc-id "${VPC_ID}"
+          fi
+
+          PUBLIC_RT_ID="$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PUBLIC_RT_NAME}" --query 'RouteTables[0].RouteTableId' --output text)"
+          if [ "${PUBLIC_RT_ID}" = "None" ]; then
+            PUBLIC_RT_ID="$(aws ec2 create-route-table --vpc-id "${VPC_ID}" --query 'RouteTable.RouteTableId' --output text)"
+            tag_resource "${PUBLIC_RT_ID}" "${PUBLIC_RT_NAME}"
+          fi
+
+          if ! aws ec2 create-route --route-table-id "${PUBLIC_RT_ID}" --destination-cidr-block 0.0.0.0/0 --gateway-id "${IGW_ID}" >/tmp/create-route.out 2>&1; then
+            if ! grep -q 'RouteAlreadyExists' /tmp/create-route.out; then
+              cat /tmp/create-route.out
+              exit 1
+            fi
+          fi
+
+          for subnet_id in "${PUBLIC_SUBNET_A_ID}" "${PUBLIC_SUBNET_B_ID}"; do
+            aws ec2 associate-route-table --route-table-id "${PUBLIC_RT_ID}" --subnet-id "${subnet_id}" >/dev/null 2>&1 || true
+          done
+
+          PRIVATE_DB_RT_ID="$(aws ec2 describe-route-tables --filters "Name=vpc-id,Values=${VPC_ID}" "Name=tag:Name,Values=${PRIVATE_DB_RT_NAME}" --query 'RouteTables[0].RouteTableId' --output text)"
+          if [ "${PRIVATE_DB_RT_ID}" = "None" ]; then
+            PRIVATE_DB_RT_ID="$(aws ec2 create-route-table --vpc-id "${VPC_ID}" --query 'RouteTable.RouteTableId' --output text)"
+            tag_resource "${PRIVATE_DB_RT_ID}" "${PRIVATE_DB_RT_NAME}"
+          fi
+
+          for subnet_id in "${PRIVATE_DB_SUBNET_A_ID}" "${PRIVATE_DB_SUBNET_B_ID}"; do
+            aws ec2 associate-route-table --route-table-id "${PRIVATE_DB_RT_ID}" --subnet-id "${subnet_id}" >/dev/null 2>&1 || true
+          done
+
+          get_or_create_sg() {
+            local name="$1"
+            local description="$2"
+            local sg_id
+            sg_id="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${name}" --query 'SecurityGroups[0].GroupId' --output text)"
+            if [ "${sg_id}" = "None" ]; then
+              sg_id="$(aws ec2 create-security-group --group-name "${name}" --description "${description}" --vpc-id "${VPC_ID}" --query 'GroupId' --output text)"
+              tag_resource "${sg_id}" "${name}"
+            fi
+            echo "${sg_id}"
+          }
+
+          ALB_SG_ID="$(get_or_create_sg "${ALB_SG_NAME}" "TripSync backend ALB security group")"
+          BACKEND_SG_ID="$(get_or_create_sg "${BACKEND_SG_NAME}" "TripSync backend ECS task security group")"
+          RDS_SG_ID="$(get_or_create_sg "${RDS_SG_NAME}" "TripSync future private RDS security group")"
+
+          authorize_ingress "${ALB_SG_ID}" --ip-permissions 'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0,Description="Initial HTTP proof"}]'
+          authorize_ingress "${BACKEND_SG_ID}" --ip-permissions "IpProtocol=tcp,FromPort=8000,ToPort=8000,UserIdGroupPairs=[{GroupId=${ALB_SG_ID},Description=\"ALB to backend\"}]"
+          authorize_ingress "${RDS_SG_ID}" --ip-permissions "IpProtocol=tcp,FromPort=5432,ToPort=5432,UserIdGroupPairs=[{GroupId=${BACKEND_SG_ID},Description=\"Backend to future RDS\"}]"
+
+          if ! aws logs describe-log-groups --log-group-name-prefix "${LOG_GROUP_NAME}" --query "logGroups[?logGroupName=='${LOG_GROUP_NAME}'].logGroupName" --output text | grep -qx "${LOG_GROUP_NAME}"; then
+            aws logs create-log-group --log-group-name "${LOG_GROUP_NAME}"
+          fi
+          aws logs put-retention-policy --log-group-name "${LOG_GROUP_NAME}" --retention-in-days 7
+
+          aws ecr describe-repositories --repository-names "${ECR_REPOSITORY}" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "${ECR_REPOSITORY}" --image-scanning-configuration scanOnPush=true >/dev/null
+
+          cat > /tmp/ecr-lifecycle-policy.json <<'JSON'
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images after 7 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+          JSON
+          aws ecr put-lifecycle-policy --repository-name "${ECR_REPOSITORY}" --lifecycle-policy-text "file:///tmp/ecr-lifecycle-policy.json" >/dev/null
+
+          TRUST_POLICY="/tmp/ecs-task-trust-policy.json"
+          cat > "${TRUST_POLICY}" <<JSON
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+                "Action": "sts:AssumeRole",
+                "Condition": {
+                  "StringEquals": { "aws:SourceAccount": "${ACCOUNT_ID}" },
+                  "ArnLike": { "aws:SourceArn": "arn:aws:ecs:${AWS_REGION}:${ACCOUNT_ID}:*" }
+                }
+              }
+            ]
+          }
+          JSON
+
+          if ! aws iam get-role --role-name "${EXECUTION_ROLE_NAME}" >/dev/null 2>&1; then
+            aws iam create-role --role-name "${EXECUTION_ROLE_NAME}" --assume-role-policy-document "file://${TRUST_POLICY}" >/dev/null
+          fi
+          aws iam attach-role-policy --role-name "${EXECUTION_ROLE_NAME}" --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+          if ! aws iam get-role --role-name "${TASK_ROLE_NAME}" >/dev/null 2>&1; then
+            aws iam create-role --role-name "${TASK_ROLE_NAME}" --assume-role-policy-document "file://${TRUST_POLICY}" >/dev/null
+          fi
+
+          EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${EXECUTION_ROLE_NAME}" --query 'Role.Arn' --output text)"
+          TASK_ROLE_ARN="$(aws iam get-role --role-name "${TASK_ROLE_NAME}" --query 'Role.Arn' --output text)"
+
+          aws ecs describe-clusters --clusters "${ECS_CLUSTER}" --query 'clusters[0].clusterName' --output text | grep -qx "${ECS_CLUSTER}" || \
+            aws ecs create-cluster --cluster-name "${ECS_CLUSTER}" >/dev/null
+
+          TARGET_GROUP_ARN="$(aws elbv2 describe-target-groups --names "${TARGET_GROUP_NAME}" --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)"
+          if [ -z "${TARGET_GROUP_ARN}" ] || [ "${TARGET_GROUP_ARN}" = "None" ]; then
+            TARGET_GROUP_ARN="$(aws elbv2 create-target-group \
+              --name "${TARGET_GROUP_NAME}" \
+              --protocol HTTP \
+              --port 8000 \
+              --vpc-id "${VPC_ID}" \
+              --target-type ip \
+              --health-check-protocol HTTP \
+              --health-check-path /api/health \
+              --matcher HttpCode=200 \
+              --query 'TargetGroups[0].TargetGroupArn' \
+              --output text)"
+          fi
+          aws elbv2 modify-target-group-attributes --target-group-arn "${TARGET_GROUP_ARN}" --attributes Key=deregistration_delay.timeout_seconds,Value=30 >/dev/null
+
+          ALB_ARN="$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)"
+          if [ -z "${ALB_ARN}" ] || [ "${ALB_ARN}" = "None" ]; then
+            ALB_ARN="$(aws elbv2 create-load-balancer \
+              --name "${ALB_NAME}" \
+              --subnets "${PUBLIC_SUBNET_A_ID}" "${PUBLIC_SUBNET_B_ID}" \
+              --security-groups "${ALB_SG_ID}" \
+              --scheme internet-facing \
+              --type application \
+              --query 'LoadBalancers[0].LoadBalancerArn' \
+              --output text)"
+          fi
+
+          LISTENER_ARN="$(aws elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text)"
+          if [ "${LISTENER_ARN}" = "None" ]; then
+            aws elbv2 create-listener \
+              --load-balancer-arn "${ALB_ARN}" \
+              --protocol HTTP \
+              --port 80 \
+              --default-actions "Type=forward,TargetGroupArn=${TARGET_GROUP_ARN}" >/dev/null
+          fi
+
+          ALB_DNS="$(aws elbv2 describe-load-balancers --load-balancer-arns "${ALB_ARN}" --query 'LoadBalancers[0].DNSName' --output text)"
+          ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+
+          {
+            echo "account_id=${ACCOUNT_ID}"
+            echo "vpc_id=${VPC_ID}"
+            echo "public_subnet_a_id=${PUBLIC_SUBNET_A_ID}"
+            echo "public_subnet_b_id=${PUBLIC_SUBNET_B_ID}"
+            echo "backend_sg_id=${BACKEND_SG_ID}"
+            echo "target_group_arn=${TARGET_GROUP_ARN}"
+            echo "alb_dns=${ALB_DNS}"
+            echo "ecr_uri=${ECR_URI}"
+            echo "execution_role_arn=${EXECUTION_ROLE_ARN}"
+            echo "task_role_arn=${TASK_ROLE_ARN}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="${GITHUB_SHA}"
+          ECR_URI="${{ steps.infra.outputs.ecr_uri }}"
+
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_URI%/*}"
+          docker build -t "${ECR_URI}:${IMAGE_TAG}" -t "${ECR_URI}:latest" backend
+          docker push "${ECR_URI}:${IMAGE_TAG}"
+          docker push "${ECR_URI}:latest"
+
+      - name: Register task definition and deploy ECS service
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_URI="${{ steps.infra.outputs.ecr_uri }}:${GITHUB_SHA}"
+
+          cat > /tmp/task-definition.json <<JSON
+          {
+            "family": "${TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${{ steps.infra.outputs.execution_role_arn }}",
+            "taskRoleArn": "${{ steps.infra.outputs.task_role_arn }}",
+            "containerDefinitions": [
+              {
+                "name": "tripsync-backend",
+                "image": "${IMAGE_URI}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  { "name": "APP_ENV", "value": "production" },
+                  { "name": "DISABLE_SCHEDULER", "value": "1" },
+                  { "name": "MOCK_AI", "value": "1" }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 20
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+
+          SERVICE_STATUS="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].status' --output text 2>/dev/null || true)"
+          if [ "${SERVICE_STATUS}" = "ACTIVE" ]; then
+            aws ecs update-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service "${ECS_SERVICE}" \
+              --task-definition "${TASK_DEFINITION_ARN}" \
+              --desired-count 1 \
+              --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+              --health-check-grace-period-seconds 60 >/dev/null
+          else
+            aws ecs create-service \
+              --cluster "${ECS_CLUSTER}" \
+              --service-name "${ECS_SERVICE}" \
+              --task-definition "${TASK_DEFINITION_ARN}" \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --platform-version LATEST \
+              --network-configuration "awsvpcConfiguration={subnets=[${{ steps.infra.outputs.public_subnet_a_id }},${{ steps.infra.outputs.public_subnet_b_id }}],securityGroups=[${{ steps.infra.outputs.backend_sg_id }}],assignPublicIp=ENABLED}" \
+              --load-balancers "targetGroupArn=${{ steps.infra.outputs.target_group_arn }},containerName=tripsync-backend,containerPort=8000" \
+              --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+              --health-check-grace-period-seconds 60 >/dev/null
+          fi
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+
+      - name: Verify backend health through ALB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALB_URL="http://${{ steps.infra.outputs.alb_dns }}/api/health"
+
+          for attempt in {1..30}; do
+            if curl --fail --silent "${ALB_URL}"; then
+              echo
+              echo "Backend health check passed through ALB."
+              echo "Backend ALB URL: http://${{ steps.infra.outputs.alb_dns }}"
+              exit 0
+            fi
+
+            echo "Waiting for ALB health check, attempt ${attempt}/30..."
+            sleep 10
+          done
+
+          echo "::error::Backend health check did not pass through ALB."
+          aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].events[0:10]' --output table
+          exit 1

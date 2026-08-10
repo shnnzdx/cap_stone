@@ -1532,19 +1532,97 @@ no destructive automatic seed
 
 ## Phase 5 — Backend
 
-Status: plan-only completed in `AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md`.
+Status: approved for first backend provisioning proof.
 
-No AWS resources have been created for Phase 5.
-
-Proposed resources after explicit approval:
+Provisioning entrypoint:
 
 ```text
-ECR
-ECS cluster
-Fargate task definition
-ECS service
-ALB
-CloudWatch log group
+.github/workflows/phase5-backend-provision.yml
+```
+
+Reason for GitHub Actions provisioning:
+
+```text
+local AWS CLI exists but no local AWS credentials are configured
+local Docker CLI is not installed
+GitHub Actions has AWS credentials through environment Main
+GitHub Actions ubuntu-latest runner has Docker
+```
+
+Detailed plan:
+
+```text
+AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md
+```
+
+First proof mode:
+
+```text
+GitHub/manual image build
+-> ECR
+-> ECS Fargate
+-> ALB
+-> GET /api/health
+```
+
+Initial proof runtime:
+
+```text
+DISABLE_SCHEDULER=1
+MOCK_AI=1
+desiredCount=1
+```
+
+The first proof is infrastructure-only.
+
+It does not require:
+
+```text
+functional RDS connection
+OpenAI integration
+production frontend/backend integration
+```
+
+Do not describe the full TripSync backend as production-functional until RDS, runtime secrets, frontend API base URL, and production CORS are connected later.
+
+Exact initial VPC topology:
+
+```text
+one VPC
+Public Subnet A in AZ A
+Public Subnet B in AZ B
+Private DB Subnet A in AZ A
+Private DB Subnet B in AZ B
+Internet Gateway
+public route table with 0.0.0.0/0 -> Internet Gateway
+ALB uses both public subnets
+initial Fargate service uses public subnet networking with Assign Public IP = ENABLED
+future RDS remains in the private DB subnet group
+```
+
+Proposed resource names after explicit approval:
+
+```text
+VPC: tripsync-vpc
+Public Subnet A: tripsync-public-subnet-a
+Public Subnet B: tripsync-public-subnet-b
+Private DB Subnet A: tripsync-private-db-subnet-a
+Private DB Subnet B: tripsync-private-db-subnet-b
+Public route table: tripsync-public-rt
+Private DB route table: tripsync-private-db-rt
+Internet Gateway: tripsync-igw
+ALB security group: tripsync-alb-sg
+Backend security group: tripsync-backend-sg
+Future RDS security group: tripsync-rds-sg
+CloudWatch log group: /ecs/tripsync-backend
+ECR repository: tripsync-backend
+ECS cluster: tripsync-cluster
+ECS task definition family: tripsync-backend
+ECS service: tripsync-backend-service
+ALB: tripsync-backend-alb
+Target group: tripsync-backend-tg
+ECS task execution role: tripsync-ecs-execution-role
+ECS task role: tripsync-backend-task-role
 ```
 
 Initial service shape:
@@ -1558,24 +1636,59 @@ memory=512 MiB
 health path=/api/health
 deployment circuit breaker rollback=enabled
 healthCheckGracePeriodSeconds=60
+Assign Public IP=ENABLED
 ```
 
-Preferred first network option for the Capstone proof:
+Upgrade trigger:
 
 ```text
-ALB public
-Fargate task in public subnets with assignPublicIp enabled
-task security group accepts inbound 8000 only from ALB security group
-no NAT Gateway in the first proof unless explicitly approved
+increase to cpu=512 and memory=1024 MiB only if:
+container exits with code 137
+CloudWatch metrics show memory pressure
+/api/health becomes unstable under normal demo traffic
+application startup routinely exceeds the health grace period
 ```
 
-Reason:
+ECR rule:
 
 ```text
-This avoids NAT Gateway cost and avoids requiring all private-subnet ECR/logs VPC endpoints for the first backend proof.
+repository=tripsync-backend
+deployment tag=<commit-sha>
+optional convenience tag=latest
+recommend lifecycle policy to expire old untagged images and cap retained old images
+initial applied lifecycle policy expires untagged images after 7 days
 ```
 
-Production-hardening path:
+CloudWatch Logs rule:
+
+```text
+log group=/ecs/tripsync-backend
+retention=7 days
+do not log secrets, tokens, passwords, full database URLs, or sensitive request payloads
+```
+
+Estimated first-proof monthly cost:
+
+```text
+about $37-$44/month before AWS Free Plan credits
+main drivers: ALB hourly charge, Fargate runtime, public IPv4 charges
+recheck current us-east-1 AWS pricing immediately before provisioning
+```
+
+Rollback rule:
+
+```text
+use ECS deployment circuit breaker rollback
+keep previous task definition revision
+keep previous commit-SHA ECR image
+do not rely only on latest
+```
+
+Cleanup order is recorded in `AWS/PHASE5_BACKEND_DEPLOYMENT_PLAN.md`.
+
+The first proof avoids NAT Gateway cost and avoids requiring all private-subnet ECR/logs VPC endpoints.
+
+Production-hardening path after proof:
 
 ```text
 move Fargate tasks to private subnets
@@ -1591,7 +1704,33 @@ Do not create ECR, ECS, ALB, CloudWatch, IAM roles, or networking resources unti
 
 ## Phase 6 — Runtime Secrets
 
-Move runtime application secrets to SSM Parameter Store SecureString.
+Status: repository readiness started.
+
+Current Phase 6 files:
+
+```text
+AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
+.github/workflows/runtime-secrets-readiness.yml
+```
+
+Move runtime application secrets to SSM Parameter Store SecureString or Secrets Manager only after the resource creation path is approved.
+
+No secret values belong in Git, Codex chat, workflow YAML plaintext, Docker images, or frontend bundles.
+
+Current Phase 6 readiness workflow:
+
+```text
+workflow_dispatch only
+no AWS credentials
+no GitHub Secrets access
+no AWS secret reads
+no env or printenv
+checks tracked files for accidentally committed .env files
+checks high-confidence secret patterns
+confirms Phase 6 runtime rules are documented
+```
+
+The workflow does not prove that future AWS SSM/Secrets Manager parameters exist. It only protects the repository before runtime secrets are created later.
 
 ## Phase 7 — Frontend/Backend Integration
 
