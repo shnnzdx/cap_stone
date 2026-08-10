@@ -177,6 +177,7 @@ jobs:
               def remove_secret($name):
                 .secrets = ((.secrets // []) | map(select(.name != $name)));
               $container
+              | del(.healthCheck)
               | upsert_env("APP_ENV"; $app_env)
               | upsert_env("DISABLE_SCHEDULER"; $disable_scheduler)
               | upsert_env("MOCK_AI"; $mock_ai)

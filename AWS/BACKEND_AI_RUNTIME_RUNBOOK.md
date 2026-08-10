@@ -58,7 +58,8 @@ switches MOCK_AI between 1 and 0
 ```text
 GitHub Actions
 -> read the current backend ECS task definition
--> keep current image, health check, logs, DATABASE_URL secret, frontend URL, CORS, scheduler flag
+-> keep current image, logs, DATABASE_URL secret, frontend URL, CORS, scheduler flag
+-> remove the container-level healthCheck and rely on the ALB target-group /api/health check
 -> optionally look up the SSM parameter metadata for the AI API key
 -> register a new backend task definition revision
 -> update the existing backend ECS service
@@ -191,6 +192,15 @@ Inspect Phase 6 Runtime Provision and the active ECS task definition.
 ```text
 The ECS deployment did not stabilize or the backend is unhealthy after startup.
 Check the ECS service events and /ecs/tripsync-backend CloudWatch Logs.
+```
+
+`Task failed container health checks`
+
+```text
+The backend process may still be serving /api/health through the ALB while the
+container-level ECS healthCheck fails internally. The AI runtime workflow
+intentionally removes the container-level healthCheck and relies on the ALB
+target-group health check for this service.
 ```
 
 ## Current Product Reality
