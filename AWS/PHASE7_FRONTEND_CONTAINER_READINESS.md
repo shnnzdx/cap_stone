@@ -1,6 +1,6 @@
 # TripSync AWS Phase 7 Frontend Container Readiness
 
-Status: ready for manual GitHub Actions validation.
+Status: validated successfully.
 
 Date: 2026-08-10
 
@@ -90,6 +90,16 @@ Wait for login route: Frontend login route responded
 Validate embedded Trip static asset route: Embedded Trip static entry responded
 ```
 
+Successful validation:
+
+```text
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31353334323
+commit: f4dc8772ae9b373a21cc2cbd1551c1c9ca85488e
+result: success
+/login: responded on attempt 2
+/trip-app/index.html: responded
+```
+
 ---
 
 ## What This Does Not Prove
@@ -107,6 +117,12 @@ end-to-end browser login flow
 ```
 
 Those require a separately approved frontend AWS provisioning step.
+
+---
+
+## Residual Notes
+
+The GitHub run showed npm audit warnings during dependency installation. They did not block this readiness proof, but dependency audit triage should be handled separately before a production release.
 
 ---
 
