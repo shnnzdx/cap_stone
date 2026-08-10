@@ -1,0 +1,79 @@
+name: Frontend Container Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: "Public backend API base URL baked into the frontend proof image"
+        required: true
+        default: "http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-container-readiness:
+    name: Build and run frontend container
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: tripsync-frontend-readiness
+      CONTAINER_NAME: tripsync-frontend-readiness
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build frontend SSR image
+        run: |
+          docker build \
+            --file frontend/Dockerfile \
+            --tag "${IMAGE_NAME}:${GITHUB_SHA}" \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="${{ inputs.api_base_url }}" \
+            --build-arg VITE_API_BASE_URL="${{ inputs.api_base_url }}" \
+            .
+
+      - name: Start frontend container
+        run: |
+          docker run \
+            --detach \
+            --name "${CONTAINER_NAME}" \
+            --publish 3000:3000 \
+            --env PORT=3000 \
+            --env NEXT_PUBLIC_API_BASE_URL="${{ inputs.api_base_url }}" \
+            "${IMAGE_NAME}:${GITHUB_SHA}"
+
+      - name: Wait for login route
+        run: |
+          for attempt in {1..45}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/login --output /tmp/tripsync-login.html; then
+              echo "Frontend login route responded on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Waiting for frontend container, attempt ${attempt}/45..."
+            sleep 2
+          done
+
+          echo "Frontend container did not respond on /login in time."
+          docker logs "${CONTAINER_NAME}" --tail 120 || true
+          exit 1
+
+      - name: Validate embedded Trip static asset route
+        run: |
+          curl --fail --silent --show-error \
+            http://127.0.0.1:3000/trip-app/index.html \
+            --output /tmp/tripsync-trip-app.html
+          echo "Embedded Trip static entry responded."
+
+      - name: Inspect container health status
+        run: |
+          docker inspect \
+            --format='container={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' \
+            "${CONTAINER_NAME}"
+
+      - name: Stop frontend container
+        if: always()
+        run: |
+          docker logs "${CONTAINER_NAME}" --tail 80 || true
+          docker rm --force "${CONTAINER_NAME}" || true

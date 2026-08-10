@@ -1797,14 +1797,18 @@ The deployed backend now has `DATABASE_URL` injected from SSM Parameter Store, b
 
 ## Phase 7 — Frontend/Backend Integration
 
-Status: partial completion.
+Status: partial completion; frontend container readiness added.
 
 Current files:
 
 ```text
 AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION.md
 AWS/PHASE7_FRONTEND_BACKEND_INTEGRATION_RESULT.md
+AWS/PHASE7_FRONTEND_CONTAINER_READINESS.md
 .github/workflows/phase7-backend-runtime-config.yml
+.github/workflows/frontend-container-readiness.yml
+frontend/Dockerfile
+.dockerignore
 ```
 
 Local ignored env files have been synced so the frontend can call the AWS backend ALB:
@@ -1838,6 +1842,28 @@ FRONTEND_BASE_URL=http://localhost:3000
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
 DEV_ALLOW_MEMBERSHIP_HEADER=0
 health result={"ok":true}
+```
+
+Frontend container readiness:
+
+```text
+workflow: .github/workflows/frontend-container-readiness.yml
+trigger: workflow_dispatch only
+AWS resources created: none
+image pushed to ECR: no
+purpose: prove the merged frontend + trip app can run as a Vinext SSR container
+container port: 3000
+start command: npm run start -- --hostname 0.0.0.0 --port 3000
+validated paths: /login and /trip-app/index.html
+default backend API base URL: http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
+```
+
+This frontend container readiness step is not a deployment. It does not prove a public frontend URL, ALB routing, frontend ECR, HTTPS, custom domain, or production CORS.
+
+The next AWS resource creation step requires a separate explicit approval gate. Candidate approval phrase:
+
+```text
+Approve frontend ECS service creation
 ```
 
 ## Phase 8 — Deployment Automation

@@ -1,6 +1,6 @@
 # TripSync AWS Phase 7 Frontend/Backend Integration
 
-Status: partial completion.
+Status: partial completion; frontend container readiness added.
 
 Date: 2026-08-10
 
@@ -119,9 +119,57 @@ DEV_ALLOW_MEMBERSHIP_HEADER=0
 ## 4. Remaining Work
 
 ```text
-Choose final frontend AWS hosting path.
-Deploy frontend.
+Run Frontend Container Readiness in GitHub Actions.
+If it succeeds, approve or reject frontend ECS service creation.
+Deploy frontend only after that explicit approval.
 Re-run Phase 7 backend runtime config with the real frontend origin.
 Set frontend production env to the backend ALB or future backend domain.
 Verify login and trip app browser flows end to end.
+```
+
+---
+
+## 5. Frontend Container Readiness
+
+New readiness files:
+
+```text
+frontend/Dockerfile
+.dockerignore
+.github/workflows/frontend-container-readiness.yml
+AWS/PHASE7_FRONTEND_CONTAINER_READINESS.md
+```
+
+Purpose:
+
+```text
+Prove merged frontend + trip can run as a Vinext SSR container.
+Do not create any AWS resource.
+Do not push an image to ECR.
+Do not create a frontend ECS service.
+```
+
+Validation shape:
+
+```text
+docker build
+-> npm ci in trip
+-> npm ci in frontend
+-> npm run build:trip-preview
+-> npm run build
+-> docker run -p 3000:3000
+-> GET /login
+-> GET /trip-app/index.html
+```
+
+Manual workflow:
+
+```text
+Frontend Container Readiness
+```
+
+Default API base URL:
+
+```text
+http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
 ```

@@ -226,10 +226,22 @@ Phase 7 backend runtime config workflow:
 https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase7-backend-runtime-config.yml
 ```
 
+Phase 7 frontend container readiness workflow:
+
+```text
+https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/frontend-container-readiness.yml
+```
+
 Phase 7 successful backend runtime config run:
 
 ```text
 https://github.com/shnnzdx/cap_stone/actions/runs/31352265951
+```
+
+Phase 7 frontend container readiness plan:
+
+```text
+AWS/PHASE7_FRONTEND_CONTAINER_READINESS.md
 ```
 
 RDS endpoint:
