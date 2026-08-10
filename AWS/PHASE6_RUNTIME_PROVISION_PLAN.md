@@ -1,6 +1,6 @@
 # TripSync AWS Phase 6 Runtime Provision Plan
 
-Status: approved for RDS/runtime secret provisioning.
+Status: provisioned and verified.
 
 Date: 2026-08-10
 
@@ -8,6 +8,12 @@ Provisioning entrypoint:
 
 ```text
 .github/workflows/phase6-runtime-provision.yml
+```
+
+Provision result:
+
+```text
+AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
 ```
 
 GitHub Environment:

@@ -31,6 +31,14 @@ AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
 .github/workflows/phase6-runtime-provision.yml
 ```
 
+Runtime provisioning result:
+
+```text
+AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31350032734
+result: success
+```
+
 ---
 
 ## 1. Scope Boundary

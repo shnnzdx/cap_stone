@@ -74,6 +74,12 @@ Phase 6 successful Runtime Secrets Readiness run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31349738285
 ```
 
+Phase 6 successful Runtime Provision run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31350032734
+```
+
 ---
 
 ## AWS Console Entry Points
@@ -194,6 +200,18 @@ Phase 6 runtime provision plan:
 
 ```text
 AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
+```
+
+Phase 6 runtime provision result:
+
+```text
+AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
+```
+
+RDS endpoint:
+
+```text
+tripsync-postgres.cqv0oqgogc0p.us-east-1.rds.amazonaws.com
 ```
 
 Master context:

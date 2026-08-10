@@ -1732,6 +1732,7 @@ Current Phase 6 files:
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
 AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
+AWS/PHASE6_RUNTIME_PROVISION_RESULT.md
 .github/workflows/runtime-secrets-readiness.yml
 .github/workflows/phase6-runtime-provision.yml
 ```
@@ -1776,18 +1777,23 @@ Do not create RDS, SSM parameters, Secrets Manager secrets, IAM policy changes, 
 
 Phase 6 RDS/runtime secret provisioning has been approved by the user.
 
-Planned runtime provision:
+Runtime provision result:
 
 ```text
 RDS PostgreSQL: tripsync-postgres
+RDS endpoint: tripsync-postgres.cqv0oqgogc0p.us-east-1.rds.amazonaws.com
 DB subnet group: tripsync-private-db-subnet-group
 SSM SecureString: /tripsync/backend/prod/database-url
 ECS task definition: inject DATABASE_URL through secrets field
 schema init: python -m app.db.init_schema from one-off ECS task
+GitHub Actions run: https://github.com/shnnzdx/cap_stone/actions/runs/31350032734
+result: success
 local env sync targets:
   C:\Users\ROG\Desktop\capstone\cap_stone-main\backend\.env
   C:\Users\ROG\Desktop\capstone\cap_stone-main\.env
 ```
+
+The deployed backend now has `DATABASE_URL` injected from SSM Parameter Store, but remains in proof/demo mode with `DISABLE_SCHEDULER=1` and `MOCK_AI=1`.
 
 ## Phase 7 — Frontend/Backend Integration
 
