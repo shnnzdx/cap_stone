@@ -11,6 +11,8 @@ New/
 .local-secrets/
 
 node_modules/
+test-results/
+frontend/test-results/
 dist/
 dist-ssr/
 .venv/

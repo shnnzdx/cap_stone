@@ -13,6 +13,7 @@
     "sync:trip-preview": "node scripts/sync-trip-preview.mjs",
     "start": "node scripts/run-vinext.mjs start",
     "test": "node scripts/run-vinext.mjs build && node --test tests/rendered-html.test.mjs tests/trip-preview-integration.test.mjs",
+    "e2e:aws": "node tests/aws-public-e2e.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

@@ -819,7 +819,7 @@ frontend/app/trip/preview-config.ts
 
 frontend/app/trip/page.tsx
   renders the iframe shell
-  src = /trip-app/#/
+  src = /trip-app/index.html#/
 
 frontend/scripts/sync-trip-preview.mjs
   optionally builds trip/
@@ -1340,7 +1340,7 @@ AWS infrastructure creation: not started
 Completed frontend/shared work:
 
 ```text
-shared preview contract aligned to /trip-app/#/
+shared preview contract aligned to /trip-app/index.html#/
 shared domain route helpers aligned to active Trip routes
 frontend /trip iframe shell reads shared preview config
 Trip static output regenerated into frontend/public/trip-app/

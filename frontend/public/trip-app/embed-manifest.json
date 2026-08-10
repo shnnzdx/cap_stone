@@ -1,13 +1,13 @@
 {
   "appBasePath": "/trip-app",
   "defaultHashRoute": "#/",
-  "frameSrc": "/trip-app/#/",
+  "frameSrc": "/trip-app/index.html#/",
   "sourceApp": "tripsync",
   "sourceVersion": "0.4.0",
-  "syncedAt": "2026-08-10T01:40:16.604Z",
+  "syncedAt": "2026-08-10T04:13:03.071Z",
   "files": [
     "assets/index-CE-irYS0.css",
-    "assets/index-Y77ZR_77.js",
+    "assets/index-DSZuqi4K.js",
     "index.html"
   ]
 }

@@ -15,7 +15,7 @@ export function normalizeTripPreviewHashRoute(route = tripPreviewDefaultHashRout
 }
 
 export function buildTripPreviewFrameSrc(route = tripPreviewDefaultHashRoute) {
-  return `${tripPreviewBasePath}/${normalizeTripPreviewHashRoute(route)}`;
+  return `${tripPreviewBasePath}/index.html${normalizeTripPreviewHashRoute(route)}`;
 }
 
 export function buildTripPreviewAbsoluteUrl(origin, route = tripPreviewDefaultHashRoute) {

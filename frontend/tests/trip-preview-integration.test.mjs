@@ -43,10 +43,10 @@ test("shares one preview routing contract across frontend and trip", async () =>
 
   assert.equal(tripPreviewBasePath, "/trip-app");
   assert.equal(tripPreviewDefaultHashRoute, "#/");
-  assert.equal(buildTripPreviewFrameSrc(), "/trip-app/#/");
+  assert.equal(buildTripPreviewFrameSrc(), "/trip-app/index.html#/");
   assert.equal(
     buildTripPreviewAbsoluteUrl("http://127.0.0.1:5173", "/join/chicago-birthday"),
-    "http://127.0.0.1:5173/trip-app/#/join/chicago-birthday",
+    "http://127.0.0.1:5173/trip-app/index.html#/join/chicago-birthday",
   );
   assert.match(previewConfig, /tripsync-preview-contract\.js/);
   assert.match(tripViteConfig, /base:\s*["']\/trip-app\/["']/);
