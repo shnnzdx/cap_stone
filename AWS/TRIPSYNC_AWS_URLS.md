@@ -39,6 +39,9 @@ https://github.com/shnnzdx/cap_stone/actions/runs/31355307955
 
 Phase 9 screenshot artifact:
 https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/9050425261
+
+Cloud Demo Login Upsert workflow:
+https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-login-upsert.yml
 ```
 
 ## Current AWS Console Links
@@ -121,6 +124,7 @@ AWS/README.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
 
@@ -142,6 +146,12 @@ hosted_zone_id=<existing Route 53 public hosted zone ID>
 ```
 
 No HTTPS/custom domain resources have been created yet.
+
+Cloud RDS remains private. Use `AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md` and the manual `Cloud Demo Login Upsert` workflow if the cloud database needs the demo organizer login:
+
+```text
+organizer@cadensy.local
+```
 
 ## Cost Reminder
 

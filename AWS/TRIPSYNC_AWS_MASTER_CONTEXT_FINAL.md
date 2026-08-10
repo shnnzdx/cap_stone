@@ -2310,6 +2310,7 @@ AWS/README.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
 
@@ -2320,6 +2321,15 @@ AWS/archive/completed-phases/
 ```
 
 `AWS/PHASE6_RUNTIME_SECRETS_PLAN.md` intentionally remains in the root because `.github/workflows/runtime-secrets-readiness.yml` validates that exact file path.
+
+For cloud demo login seeding, use:
+
+```text
+AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
+.github/workflows/cloud-demo-login-upsert.yml
+```
+
+This path keeps RDS private and writes the demo organizer login through a one-off ECS task instead of direct laptop-to-RDS access.
 
 ---
 
