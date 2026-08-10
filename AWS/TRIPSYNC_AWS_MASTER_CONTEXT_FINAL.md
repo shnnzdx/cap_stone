@@ -2361,6 +2361,21 @@ This path keeps the current private RDS model, preserves the deployed backend
 service shape, and updates ECS runtime config so the backend can switch between
 `MOCK_AI=1` demo mode and a real OpenAI-compatible provider.
 
+Backend AI runtime activation completed successfully:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31406205586
+```
+
+Current deployed AI runtime:
+
+```text
+MOCK_AI=0
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-flash
+OPENAI_API_KEY injected through SSM Parameter Store
+```
+
 ---
 
 # 28. Official AWS References

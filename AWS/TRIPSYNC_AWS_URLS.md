@@ -51,6 +51,9 @@ https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-seed-upsert.ym
 
 Backend AI Runtime Config workflow:
 https://github.com/shnnzdx/cap_stone/actions/workflows/backend-ai-runtime-config.yml
+
+Backend AI Runtime Config successful run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31406205586
 ```
 
 ## Current AWS Console Links
@@ -171,6 +174,14 @@ destructive reseeding.
 Use `AWS/BACKEND_AI_RUNTIME_RUNBOOK.md` and the manual `Backend AI Runtime
 Config` workflow if the deployed backend should stop using `MOCK_AI=1` and start
 using a real OpenAI-compatible provider.
+
+Current backend AI runtime:
+
+```text
+MOCK_AI=0
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-flash
+```
 
 ## Cost Reminder
 

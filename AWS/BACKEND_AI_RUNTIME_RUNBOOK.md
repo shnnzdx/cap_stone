@@ -1,6 +1,12 @@
 # TripSync Backend AI Runtime Runbook
 
-Status: ready for use.
+Status: completed successfully.
+
+Successful run:
+
+```text
+https://github.com/shnnzdx/cap_stone/actions/runs/31406205586
+```
 
 Purpose:
 
@@ -169,6 +175,15 @@ GET /api/health returns {"ok":true}
 
 After a successful run, planner/chat requests should stop using mock responses
 when `mock_ai=false`.
+
+Current deployed AI runtime after the successful run:
+
+```text
+MOCK_AI=0
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-flash
+OPENAI_API_KEY injected through SSM Parameter Store
+```
 
 ## Common Failures
 
