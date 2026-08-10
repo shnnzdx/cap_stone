@@ -1,0 +1,545 @@
+name: Phase 10 HTTPS Custom Domain
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain_name:
+        description: "Exact public domain, for example app.example.com"
+        required: true
+      hosted_zone_id:
+        description: "Existing Route 53 public hosted zone ID for the domain"
+        required: true
+      keep_localhost_cors:
+        description: "Keep localhost origins in backend CORS for demo/local testing"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+
+env:
+  ALB_NAME: tripsync-backend-alb
+  ALB_SG_NAME: tripsync-alb-sg
+  BACKEND_TARGET_GROUP_NAME: tripsync-backend-tg
+  FRONTEND_TARGET_GROUP_NAME: tripsync-frontend-tg
+  FRONTEND_ECR_REPOSITORY: tripsync-frontend
+  ECS_CLUSTER: tripsync-cluster
+  FRONTEND_SERVICE: tripsync-frontend-service
+  FRONTEND_TASK_FAMILY: tripsync-frontend
+  FRONTEND_CONTAINER_NAME: tripsync-frontend
+  FRONTEND_LOG_GROUP_NAME: /ecs/tripsync-frontend
+  BACKEND_SERVICE: tripsync-backend-service
+  BACKEND_TASK_FAMILY: tripsync-backend
+  BACKEND_CONTAINER_NAME: tripsync-backend
+  BACKEND_LOG_GROUP_NAME: /ecs/tripsync-backend
+
+jobs:
+  configure-https-domain:
+    name: Configure HTTPS Custom Domain
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Validate inputs and discover current ALB
+        id: discover
+        shell: bash
+        env:
+          INPUT_DOMAIN_NAME: ${{ inputs.domain_name }}
+          INPUT_HOSTED_ZONE_ID: ${{ inputs.hosted_zone_id }}
+        run: |
+          set -euo pipefail
+
+          DOMAIN_NAME="${INPUT_DOMAIN_NAME%.}"
+          HOSTED_ZONE_ID="${INPUT_HOSTED_ZONE_ID#/hostedzone/}"
+
+          if [[ ! "${DOMAIN_NAME}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]; then
+            echo "::error::domain_name must be a valid DNS name, for example app.example.com."
+            exit 1
+          fi
+
+          ZONE_NAME="$(aws route53 get-hosted-zone --id "${HOSTED_ZONE_ID}" --query 'HostedZone.Name' --output text)"
+          if [ -z "${ZONE_NAME}" ] || [ "${ZONE_NAME}" = "None" ]; then
+            echo "::error::Hosted zone was not found."
+            exit 1
+          fi
+
+          ZONE_NAME="${ZONE_NAME%.}"
+          if [[ "${DOMAIN_NAME}" != "${ZONE_NAME}" && "${DOMAIN_NAME}" != *".${ZONE_NAME}" ]]; then
+            echo "::error::domain_name ${DOMAIN_NAME} is not inside hosted zone ${ZONE_NAME}."
+            exit 1
+          fi
+
+          ALB_JSON="$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --output json)"
+          ALB_ARN="$(jq -r '.LoadBalancers[0].LoadBalancerArn' <<< "${ALB_JSON}")"
+          ALB_DNS="$(jq -r '.LoadBalancers[0].DNSName' <<< "${ALB_JSON}")"
+          ALB_ZONE_ID="$(jq -r '.LoadBalancers[0].CanonicalHostedZoneId' <<< "${ALB_JSON}")"
+          VPC_ID="$(jq -r '.LoadBalancers[0].VpcId' <<< "${ALB_JSON}")"
+
+          ALB_SG_ID="$(aws ec2 describe-security-groups \
+            --filters "Name=vpc-id,Values=${VPC_ID}" "Name=group-name,Values=${ALB_SG_NAME}" \
+            --query 'SecurityGroups[0].GroupId' \
+            --output text)"
+
+          if [ "${ALB_SG_ID}" = "None" ]; then
+            echo "::error::ALB security group ${ALB_SG_NAME} was not found."
+            exit 1
+          fi
+
+          {
+            echo "domain_name=${DOMAIN_NAME}"
+            echo "hosted_zone_id=${HOSTED_ZONE_ID}"
+            echo "zone_name=${ZONE_NAME}"
+            echo "alb_arn=${ALB_ARN}"
+            echo "alb_dns=${ALB_DNS}"
+            echo "alb_zone_id=${ALB_ZONE_ID}"
+            echo "alb_sg_id=${ALB_SG_ID}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Request or reuse ACM certificate
+        id: certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DOMAIN_NAME="${{ steps.discover.outputs.domain_name }}"
+
+          CERTIFICATE_ARN="$(aws acm list-certificates \
+            --certificate-statuses ISSUED PENDING_VALIDATION \
+            --query "CertificateSummaryList[?DomainName=='${DOMAIN_NAME}'].CertificateArn | [0]" \
+            --output text)"
+
+          if [ "${CERTIFICATE_ARN}" = "None" ] || [ -z "${CERTIFICATE_ARN}" ]; then
+            CERTIFICATE_ARN="$(aws acm request-certificate \
+              --domain-name "${DOMAIN_NAME}" \
+              --validation-method DNS \
+              --idempotency-token "$(echo "${DOMAIN_NAME}" | tr -cd '[:alnum:]' | cut -c 1-32)" \
+              --tags Key=Project,Value=TripSync Key=Phase,Value=10 \
+              --query CertificateArn \
+              --output text)"
+          fi
+
+          echo "certificate_arn=${CERTIFICATE_ARN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upsert ACM DNS validation record
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CERTIFICATE_ARN="${{ steps.certificate.outputs.certificate_arn }}"
+          HOSTED_ZONE_ID="${{ steps.discover.outputs.hosted_zone_id }}"
+
+          for attempt in {1..30}; do
+            VALIDATION_JSON="$(aws acm describe-certificate --certificate-arn "${CERTIFICATE_ARN}" --output json)"
+            RECORD_NAME="$(jq -r '.Certificate.DomainValidationOptions[0].ResourceRecord.Name // empty' <<< "${VALIDATION_JSON}")"
+            RECORD_TYPE="$(jq -r '.Certificate.DomainValidationOptions[0].ResourceRecord.Type // empty' <<< "${VALIDATION_JSON}")"
+            RECORD_VALUE="$(jq -r '.Certificate.DomainValidationOptions[0].ResourceRecord.Value // empty' <<< "${VALIDATION_JSON}")"
+
+            if [ -n "${RECORD_NAME}" ] && [ -n "${RECORD_TYPE}" ] && [ -n "${RECORD_VALUE}" ]; then
+              break
+            fi
+
+            echo "Waiting for ACM DNS validation record, attempt ${attempt}/30..."
+            sleep 10
+          done
+
+          if [ -z "${RECORD_NAME:-}" ] || [ -z "${RECORD_TYPE:-}" ] || [ -z "${RECORD_VALUE:-}" ]; then
+            echo "::error::ACM did not return a DNS validation record."
+            exit 1
+          fi
+
+          jq -n \
+            --arg name "${RECORD_NAME}" \
+            --arg type "${RECORD_TYPE}" \
+            --arg value "${RECORD_VALUE}" \
+            '{
+              Changes: [
+                {
+                  Action: "UPSERT",
+                  ResourceRecordSet: {
+                    Name: $name,
+                    Type: $type,
+                    TTL: 300,
+                    ResourceRecords: [{ Value: $value }]
+                  }
+                }
+              ]
+            }' > /tmp/acm-validation-change.json
+
+          CHANGE_ID="$(aws route53 change-resource-record-sets \
+            --hosted-zone-id "${HOSTED_ZONE_ID}" \
+            --change-batch file:///tmp/acm-validation-change.json \
+            --query ChangeInfo.Id \
+            --output text)"
+
+          aws route53 wait resource-record-sets-changed --id "${CHANGE_ID}"
+
+      - name: Wait for ACM certificate validation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CERTIFICATE_ARN="${{ steps.certificate.outputs.certificate_arn }}"
+
+          for attempt in {1..60}; do
+            STATUS="$(aws acm describe-certificate --certificate-arn "${CERTIFICATE_ARN}" --query 'Certificate.Status' --output text)"
+            echo "ACM certificate status: ${STATUS}"
+
+            if [ "${STATUS}" = "ISSUED" ]; then
+              exit 0
+            fi
+
+            if [ "${STATUS}" != "PENDING_VALIDATION" ]; then
+              echo "::error::Certificate entered unexpected status: ${STATUS}"
+              exit 1
+            fi
+
+            sleep 20
+          done
+
+          echo "::error::ACM certificate validation timed out. Confirm the domain uses this Route 53 hosted zone."
+          exit 1
+
+      - name: Configure Route 53 alias and ALB HTTPS listeners
+        id: alb
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DOMAIN_NAME="${{ steps.discover.outputs.domain_name }}"
+          HOSTED_ZONE_ID="${{ steps.discover.outputs.hosted_zone_id }}"
+          ALB_ARN="${{ steps.discover.outputs.alb_arn }}"
+          ALB_DNS="${{ steps.discover.outputs.alb_dns }}"
+          ALB_ZONE_ID="${{ steps.discover.outputs.alb_zone_id }}"
+          ALB_SG_ID="${{ steps.discover.outputs.alb_sg_id }}"
+          CERTIFICATE_ARN="${{ steps.certificate.outputs.certificate_arn }}"
+
+          authorize_ingress() {
+            local group_id="$1"
+            shift
+            if ! output="$(aws ec2 authorize-security-group-ingress --group-id "${group_id}" "$@" 2>&1)"; then
+              if ! grep -q 'InvalidPermission.Duplicate' <<< "${output}"; then
+                echo "${output}"
+                return 1
+              fi
+            fi
+          }
+
+          authorize_ingress "${ALB_SG_ID}" --ip-permissions 'IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=0.0.0.0/0,Description="HTTPS"}]'
+
+          FRONTEND_TG_ARN="$(aws elbv2 describe-target-groups --names "${FRONTEND_TARGET_GROUP_NAME}" --query 'TargetGroups[0].TargetGroupArn' --output text)"
+          BACKEND_TG_ARN="$(aws elbv2 describe-target-groups --names "${BACKEND_TARGET_GROUP_NAME}" --query 'TargetGroups[0].TargetGroupArn' --output text)"
+          HTTP_LISTENER_ARN="$(aws elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text)"
+          HTTPS_LISTENER_ARN="$(aws elbv2 describe-listeners --load-balancer-arn "${ALB_ARN}" --query 'Listeners[?Port==`443`].ListenerArn | [0]' --output text)"
+
+          if [ "${HTTPS_LISTENER_ARN}" = "None" ]; then
+            HTTPS_LISTENER_ARN="$(aws elbv2 create-listener \
+              --load-balancer-arn "${ALB_ARN}" \
+              --protocol HTTPS \
+              --port 443 \
+              --certificates "CertificateArn=${CERTIFICATE_ARN}" \
+              --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
+              --default-actions "Type=forward,TargetGroupArn=${FRONTEND_TG_ARN}" \
+              --query 'Listeners[0].ListenerArn' \
+              --output text)"
+          else
+            aws elbv2 modify-listener \
+              --listener-arn "${HTTPS_LISTENER_ARN}" \
+              --certificates "CertificateArn=${CERTIFICATE_ARN}" \
+              --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
+              --default-actions "Type=forward,TargetGroupArn=${FRONTEND_TG_ARN}" >/dev/null
+          fi
+
+          HTTPS_API_RULE="$(aws elbv2 describe-rules --listener-arn "${HTTPS_LISTENER_ARN}" --query "Rules[?Conditions[?Field=='path-pattern' && contains(Values, '/api/*')]].RuleArn | [0]" --output text)"
+          if [ "${HTTPS_API_RULE}" = "None" ]; then
+            aws elbv2 create-rule \
+              --listener-arn "${HTTPS_LISTENER_ARN}" \
+              --priority 10 \
+              --conditions Field=path-pattern,Values='/api/*' \
+              --actions "Type=forward,TargetGroupArn=${BACKEND_TG_ARN}" >/dev/null
+          else
+            aws elbv2 modify-rule \
+              --rule-arn "${HTTPS_API_RULE}" \
+              --conditions Field=path-pattern,Values='/api/*' \
+              --actions "Type=forward,TargetGroupArn=${BACKEND_TG_ARN}" >/dev/null
+          fi
+
+          if [ "${HTTP_LISTENER_ARN}" != "None" ]; then
+            jq -n '[
+              {
+                Type: "redirect",
+                RedirectConfig: {
+                  Protocol: "HTTPS",
+                  Port: "443",
+                  Host: "#{host}",
+                  Path: "/#{path}",
+                  Query: "#{query}",
+                  StatusCode: "HTTP_301"
+                }
+              }
+            ]' > /tmp/https-redirect-actions.json
+
+            HTTP_API_RULE="$(aws elbv2 describe-rules --listener-arn "${HTTP_LISTENER_ARN}" --query "Rules[?Conditions[?Field=='path-pattern' && contains(Values, '/api/*')]].RuleArn | [0]" --output text)"
+            if [ "${HTTP_API_RULE}" != "None" ]; then
+              aws elbv2 modify-rule \
+                --rule-arn "${HTTP_API_RULE}" \
+                --conditions Field=path-pattern,Values='/api/*' \
+                --actions file:///tmp/https-redirect-actions.json >/dev/null
+            fi
+
+            aws elbv2 modify-listener \
+              --listener-arn "${HTTP_LISTENER_ARN}" \
+              --default-actions file:///tmp/https-redirect-actions.json >/dev/null
+          fi
+
+          jq -n \
+            --arg domain "${DOMAIN_NAME}" \
+            --arg albDns "${ALB_DNS}" \
+            --arg albZoneId "${ALB_ZONE_ID}" \
+            '{
+              Changes: [
+                {
+                  Action: "UPSERT",
+                  ResourceRecordSet: {
+                    Name: $domain,
+                    Type: "A",
+                    AliasTarget: {
+                      DNSName: $albDns,
+                      HostedZoneId: $albZoneId,
+                      EvaluateTargetHealth: true
+                    }
+                  }
+                }
+              ]
+            }' > /tmp/domain-alias-change.json
+
+          CHANGE_ID="$(aws route53 change-resource-record-sets \
+            --hosted-zone-id "${HOSTED_ZONE_ID}" \
+            --change-batch file:///tmp/domain-alias-change.json \
+            --query ChangeInfo.Id \
+            --output text)"
+
+          aws route53 wait resource-record-sets-changed --id "${CHANGE_ID}"
+
+          {
+            echo "https_url=https://${DOMAIN_NAME}"
+            echo "frontend_tg_arn=${FRONTEND_TG_ARN}"
+            echo "backend_tg_arn=${BACKEND_TG_ARN}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Rebuild and redeploy frontend with HTTPS API base URL
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_TAG="${GITHUB_SHA}"
+          ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${FRONTEND_ECR_REPOSITORY}"
+          HTTPS_URL="${{ steps.alb.outputs.https_url }}"
+
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_URI%/*}"
+          docker build \
+            --file frontend/Dockerfile \
+            --tag "${ECR_URI}:${IMAGE_TAG}" \
+            --tag "${ECR_URI}:https-latest" \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="${HTTPS_URL}" \
+            --build-arg VITE_API_BASE_URL="${HTTPS_URL}" \
+            .
+          docker push "${ECR_URI}:${IMAGE_TAG}"
+          docker push "${ECR_URI}:https-latest"
+
+          CURRENT_TASK_DEF_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${FRONTEND_SERVICE}" --query 'services[0].taskDefinition' --output text)"
+          CURRENT_TASK_DEF="$(aws ecs describe-task-definition --task-definition "${CURRENT_TASK_DEF_ARN}" --output json)"
+          EXECUTION_ROLE_ARN="$(jq -r '.taskDefinition.executionRoleArn' <<< "${CURRENT_TASK_DEF}")"
+
+          cat > /tmp/task-definition-frontend-https.json <<JSON
+          {
+            "family": "${FRONTEND_TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+            "containerDefinitions": [
+              {
+                "name": "${FRONTEND_CONTAINER_NAME}",
+                "image": "${ECR_URI}:${IMAGE_TAG}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  { "name": "NODE_ENV", "value": "production" },
+                  { "name": "PORT", "value": "3000" },
+                  { "name": "NEXT_PUBLIC_API_BASE_URL", "value": "${HTTPS_URL}" },
+                  { "name": "VITE_API_BASE_URL", "value": "${HTTPS_URL}" }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${FRONTEND_LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/login').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 20
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition-frontend-https.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${FRONTEND_SERVICE}" \
+            --task-definition "${TASK_DEFINITION_ARN}" \
+            --desired-count 1 \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --health-check-grace-period-seconds 60 >/dev/null
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${FRONTEND_SERVICE}"
+
+      - name: Update backend frontend URL and CORS
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          HTTPS_URL="${{ steps.alb.outputs.https_url }}"
+          if [ "${{ inputs.keep_localhost_cors }}" = "true" ]; then
+            CORS_ORIGINS="${HTTPS_URL},http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
+          else
+            CORS_ORIGINS="${HTTPS_URL}"
+          fi
+
+          CURRENT_TASK_DEF_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${BACKEND_SERVICE}" --query 'services[0].taskDefinition' --output text)"
+          CURRENT_TASK_DEF="$(aws ecs describe-task-definition --task-definition "${CURRENT_TASK_DEF_ARN}" --output json)"
+
+          CURRENT_IMAGE="$(jq -r ".taskDefinition.containerDefinitions[] | select(.name == \"${BACKEND_CONTAINER_NAME}\") | .image" <<< "${CURRENT_TASK_DEF}")"
+          EXECUTION_ROLE_ARN="$(jq -r '.taskDefinition.executionRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          TASK_ROLE_ARN="$(jq -r '.taskDefinition.taskRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          DATABASE_URL_SECRET="$(jq -r ".taskDefinition.containerDefinitions[] | select(.name == \"${BACKEND_CONTAINER_NAME}\") | (.secrets // [])[] | select(.name == \"DATABASE_URL\") | .valueFrom" <<< "${CURRENT_TASK_DEF}")"
+
+          if [ -z "${DATABASE_URL_SECRET}" ] || [ "${DATABASE_URL_SECRET}" = "null" ]; then
+            echo "::error::DATABASE_URL secret is not present on the current backend task definition."
+            exit 1
+          fi
+
+          cat > /tmp/task-definition-backend-https.json <<JSON
+          {
+            "family": "${BACKEND_TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+            "taskRoleArn": "${TASK_ROLE_ARN}",
+            "containerDefinitions": [
+              {
+                "name": "${BACKEND_CONTAINER_NAME}",
+                "image": "${CURRENT_IMAGE}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  { "name": "APP_ENV", "value": "production" },
+                  { "name": "DISABLE_SCHEDULER", "value": "1" },
+                  { "name": "MOCK_AI", "value": "1" },
+                  { "name": "DEV_ALLOW_MEMBERSHIP_HEADER", "value": "0" },
+                  { "name": "FRONTEND_BASE_URL", "value": "${HTTPS_URL}" },
+                  { "name": "CORS_ORIGINS", "value": "${CORS_ORIGINS}" }
+                ],
+                "secrets": [
+                  {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "${DATABASE_URL_SECRET}"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${BACKEND_LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 20
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition-backend-https.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${BACKEND_SERVICE}" \
+            --task-definition "${TASK_DEFINITION_ARN}" \
+            --desired-count 1 \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --health-check-grace-period-seconds 60 >/dev/null
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${BACKEND_SERVICE}"
+
+      - name: Verify HTTPS custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          HTTPS_URL="${{ steps.alb.outputs.https_url }}"
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "${HTTPS_URL}/login" --output /tmp/tripsync-login.html; then
+              echo "HTTPS frontend /login passed."
+              break
+            fi
+
+            echo "Waiting for HTTPS frontend, attempt ${attempt}/30..."
+            sleep 10
+
+            if [ "${attempt}" = "30" ]; then
+              echo "::error::HTTPS frontend /login did not pass."
+              exit 1
+            fi
+          done
+
+          curl --fail --silent --show-error "${HTTPS_URL}/trip-app/index.html" --output /tmp/tripsync-trip-app.html
+          curl --fail --silent --show-error "${HTTPS_URL}/api/health"
+          echo
+          echo "HTTPS custom domain is ready: ${HTTPS_URL}"

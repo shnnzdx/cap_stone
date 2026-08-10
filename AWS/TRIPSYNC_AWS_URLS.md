@@ -338,6 +338,18 @@ Phase 9 screenshot artifact:
 https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/9050425261
 ```
 
+Phase 10 HTTPS custom domain plan:
+
+```text
+AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+```
+
+Phase 10 HTTPS custom domain workflow:
+
+```text
+https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase10-https-custom-domain.yml
+```
+
 RDS endpoint:
 
 ```text

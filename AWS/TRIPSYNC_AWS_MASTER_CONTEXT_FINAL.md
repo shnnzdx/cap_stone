@@ -2001,6 +2001,48 @@ Known non-blocking browser console noise:
 
 This is currently ignored by E2E because the public pages, iframe shell, embedded Trip static entry, and backend health endpoint pass.
 
+## Phase 10 - HTTPS / Custom Domain
+
+Status: workflow ready; blocked on domain input.
+
+Current files:
+
+```text
+AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
+.github/workflows/phase10-https-custom-domain.yml
+```
+
+Required inputs:
+
+```text
+domain_name=<owned custom domain, for example app.example.com>
+hosted_zone_id=<existing Route 53 public hosted zone ID>
+keep_localhost_cors=true or false
+```
+
+The workflow does not create a hosted zone and does not create a second ALB.
+
+Planned final routing:
+
+```text
+https://<domain_name>/ -> frontend
+https://<domain_name>/api/* -> backend
+http://<domain_name>/* -> 301 redirect to https://<domain_name>/*
+```
+
+The workflow creates or modifies only HTTPS/custom-domain-related resources:
+
+```text
+ACM public certificate
+ACM DNS validation record in Route 53
+Route 53 A alias to existing ALB
+ALB security group inbound 443
+ALB HTTPS listener
+HTTP-to-HTTPS redirect
+frontend ECS redeploy with HTTPS API base URL
+backend ECS runtime config with HTTPS FRONTEND_BASE_URL and CORS_ORIGINS
+```
+
 Document:
 
 ```text
