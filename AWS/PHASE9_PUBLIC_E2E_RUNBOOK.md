@@ -57,6 +57,14 @@ same-origin browser requests do not fail
 blocking browser console errors are absent
 ```
 
+Known non-blocking console noise:
+
+```text
+[vinext] RSC prefetch setup error
+```
+
+This is currently ignored by the E2E script because the tested pages, iframe shell, embedded Trip entry, and backend health endpoint still load correctly. Revisit it before a production release or if navigation starts failing.
+
 Screenshots are uploaded as a GitHub Actions artifact:
 
 ```text

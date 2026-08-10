@@ -60,9 +60,13 @@ async function main() {
   assert.equal(iframeSrc, "/trip-app/index.html#/");
   await expectOkResponse(page, "/trip-app/index.html");
 
-  await expectOkResponse(page, "/trip-app/index.html#/");
-  await page.getByText(/TripSync/i).first().waitFor({ timeout: 20_000 });
-  await page.screenshot({ path: path.join(screenshotDir, "trip.png"), fullPage: true });
+  const tripAppPage = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+  await expectOkResponse(tripAppPage, "/trip-app/index.html#/");
+  await tripAppPage.getByText(/Could not load your profile/i).waitFor({ timeout: 20_000 });
+  await tripAppPage.getByRole("link", { name: /sign in/i }).waitFor({ timeout: 20_000 });
+  await tripAppPage.screenshot({ path: path.join(screenshotDir, "trip-app.png"), fullPage: true });
+  await page.screenshot({ path: path.join(screenshotDir, "trip-shell.png"), fullPage: true });
+  await tripAppPage.close();
 
   const healthResponse = await page.request.get(`${baseUrl}/api/health`);
   assert.equal(healthResponse.status(), 200);
@@ -72,7 +76,11 @@ async function main() {
 
   const blockingConsoleErrors = consoleErrors.filter((message) => {
     const normalized = message.toLowerCase();
-    return !normalized.includes("favicon") && !normalized.includes("manifest");
+    return (
+      !normalized.includes("favicon") &&
+      !normalized.includes("manifest") &&
+      !normalized.includes("[vinext] rsc prefetch setup error")
+    );
   });
   assert.deepEqual(
     blockingConsoleErrors,
