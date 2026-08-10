@@ -1,0 +1,230 @@
+name: Cloud Demo Seed Upsert
+
+on:
+  workflow_dispatch:
+    inputs:
+      organizer_email:
+        description: Demo organizer email used for login verification
+        required: true
+        default: organizer@cadensy.local
+
+permissions:
+  contents: read
+
+env:
+  ECS_CLUSTER: tripsync-cluster
+  ECS_SERVICE: tripsync-backend-service
+  TASK_FAMILY: tripsync-backend-db-admin
+  CONTAINER_NAME: tripsync-backend-db-admin
+  SERVICE_CONTAINER_NAME: tripsync-backend
+  ECR_REPOSITORY: tripsync-backend
+  LOG_GROUP_NAME: /ecs/tripsync-backend
+  ALB_NAME: tripsync-backend-alb
+
+jobs:
+  upsert-demo-seed:
+    name: Upsert Demo Seed Through ECS
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Discover current backend runtime
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_TASK_DEF_ARN="$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+
+          CURRENT_TASK_DEF="$(aws ecs describe-task-definition \
+            --task-definition "${CURRENT_TASK_DEF_ARN}" \
+            --output json)"
+
+          EXECUTION_ROLE_ARN="$(jq -r '.taskDefinition.executionRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          TASK_ROLE_ARN="$(jq -r '.taskDefinition.taskRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          DATABASE_URL_SECRET="$(jq -r ".taskDefinition.containerDefinitions[] | select(.name == \"${SERVICE_CONTAINER_NAME}\") | (.secrets // [])[] | select(.name == \"DATABASE_URL\") | .valueFrom" <<< "${CURRENT_TASK_DEF}")"
+
+          if [ -z "${DATABASE_URL_SECRET}" ] || [ "${DATABASE_URL_SECRET}" = "null" ]; then
+            echo "::error::DATABASE_URL secret is not present on the current backend task definition."
+            exit 1
+          fi
+
+          SERVICE_JSON="$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --output json)"
+
+          SUBNETS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.subnets | join(",")' <<< "${SERVICE_JSON}")"
+          SECURITY_GROUPS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.securityGroups | join(",")' <<< "${SERVICE_JSON}")"
+          ASSIGN_PUBLIC_IP="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp' <<< "${SERVICE_JSON}")"
+
+          if [ -z "${SUBNETS}" ] || [ -z "${SECURITY_GROUPS}" ]; then
+            echo "::error::Backend service network configuration was not found."
+            exit 1
+          fi
+
+          {
+            echo "execution_role_arn=${EXECUTION_ROLE_ARN}"
+            echo "task_role_arn=${TASK_ROLE_ARN}"
+            echo "database_url_secret=${DATABASE_URL_SECRET}"
+            echo "subnets=${SUBNETS}"
+            echo "security_groups=${SECURITY_GROUPS}"
+            echo "assign_public_ip=${ASSIGN_PUBLIC_IP}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend image with cloud seed helper
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
+          IMAGE_TAG="cloud-demo-seed-${GITHUB_SHA}"
+
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_URI%/*}"
+          docker build -t "${ECR_URI}:${IMAGE_TAG}" backend
+          docker push "${ECR_URI}:${IMAGE_TAG}"
+
+          echo "image_uri=${ECR_URI}:${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Register one-off DB admin task definition
+        id: taskdef
+        shell: bash
+        env:
+          ORGANIZER_EMAIL: ${{ inputs.organizer_email }}
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/task-definition-cloud-demo-seed.json <<JSON
+          {
+            "family": "${TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${{ steps.runtime.outputs.execution_role_arn }}",
+            "taskRoleArn": "${{ steps.runtime.outputs.task_role_arn }}",
+            "containerDefinitions": [
+              {
+                "name": "${CONTAINER_NAME}",
+                "image": "${{ steps.image.outputs.image_uri }}",
+                "essential": true,
+                "command": ["python", "-m", "app.db.upsert_demo_seed"],
+                "environment": [
+                  { "name": "APP_ENV", "value": "production" },
+                  { "name": "DISABLE_SCHEDULER", "value": "1" },
+                  { "name": "MOCK_AI", "value": "1" },
+                  { "name": "SEED_ORGANIZER_EMAIL", "value": "${ORGANIZER_EMAIL}" }
+                ],
+                "secrets": [
+                  {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "${{ steps.runtime.outputs.database_url_secret }}"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-definition-cloud-demo-seed.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+
+          echo "task_definition_arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run one-off ECS task inside TripSync VPC
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TASK_ARN="$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --launch-type FARGATE \
+            --platform-version LATEST \
+            --task-definition "${{ steps.taskdef.outputs.task_definition_arn }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.runtime.outputs.subnets }}],securityGroups=[${{ steps.runtime.outputs.security_groups }}],assignPublicIp=${{ steps.runtime.outputs.assign_public_ip }}}" \
+            --query 'tasks[0].taskArn' \
+            --output text)"
+
+          if [ "${TASK_ARN}" = "None" ] || [ -z "${TASK_ARN}" ]; then
+            echo "::error::Cloud demo seed ECS task failed to start."
+            exit 1
+          fi
+
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}"
+
+          EXIT_CODE="$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${TASK_ARN}" \
+            --query "tasks[0].containers[?name=='${CONTAINER_NAME}'].exitCode | [0]" \
+            --output text)"
+
+          STOPPED_REASON="$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" \
+            --tasks "${TASK_ARN}" \
+            --query 'tasks[0].stoppedReason' \
+            --output text)"
+
+          if [ "${EXIT_CODE}" != "0" ]; then
+            echo "::error::Cloud demo seed task failed. Stopped reason: ${STOPPED_REASON}"
+            exit 1
+          fi
+
+          echo "Cloud demo seed upsert task completed successfully."
+
+      - name: Verify demo plan through public API
+        shell: bash
+        env:
+          ORGANIZER_EMAIL: ${{ inputs.organizer_email }}
+        run: |
+          set -euo pipefail
+
+          ALB_DNS="$(aws elbv2 describe-load-balancers \
+            --names "${ALB_NAME}" \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)"
+
+          jq -n \
+            --arg email "${ORGANIZER_EMAIL}" \
+            --arg password "12345678" \
+            '{email: $email, password: $password}' > /tmp/login-payload.json
+
+          curl --fail --silent --show-error \
+            -H "Content-Type: application/json" \
+            -d @/tmp/login-payload.json \
+            "http://${ALB_DNS}/api/auth/login" > /tmp/login-response.json
+
+          jq -e '.token and (.default_membership.trip_id)' /tmp/login-response.json >/dev/null
+          TRIP_ID="$(jq -r '.default_membership.trip_id' /tmp/login-response.json)"
+
+          curl --fail --silent --show-error \
+            "http://${ALB_DNS}/api/trips/${TRIP_ID}/plans/current" > /tmp/plan-response.json
+
+          jq -e '[(.days[]?.items[]?)] | length >= 9' /tmp/plan-response.json >/dev/null
+          echo "Demo seed verified through the public backend API."

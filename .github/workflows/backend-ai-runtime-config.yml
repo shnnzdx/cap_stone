@@ -1,0 +1,232 @@
+name: Backend AI Runtime Config
+
+on:
+  workflow_dispatch:
+    inputs:
+      mock_ai:
+        description: "Keep MOCK_AI enabled. false switches the backend to the real AI provider."
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      openai_api_key_parameter:
+        description: "SSM parameter name that stores the AI provider API key"
+        required: true
+        default: /tripsync/backend/prod/openai-api-key
+      openai_base_url:
+        description: "Optional OpenAI-compatible base URL. Leave empty for OpenAI default."
+        required: false
+        default: ""
+      openai_model:
+        description: "Model name used by backend agents"
+        required: true
+        default: gpt-4o-mini
+
+permissions:
+  contents: read
+
+env:
+  ECS_CLUSTER: tripsync-cluster
+  ECS_SERVICE: tripsync-backend-service
+  TASK_FAMILY: tripsync-backend
+  CONTAINER_NAME: tripsync-backend
+  LOG_GROUP_NAME: /ecs/tripsync-backend
+  ALB_NAME: tripsync-backend-alb
+
+jobs:
+  update-ai-runtime:
+    name: Update Backend AI Runtime
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Discover current backend task definition
+        id: discover
+        shell: bash
+        env:
+          INPUT_MOCK_AI: ${{ inputs.mock_ai }}
+          INPUT_OPENAI_API_KEY_PARAMETER: ${{ inputs.openai_api_key_parameter }}
+          INPUT_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
+          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
+        run: |
+          set -euo pipefail
+
+          CURRENT_TASK_DEF_ARN="$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+
+          CURRENT_TASK_DEF="$(aws ecs describe-task-definition \
+            --task-definition "${CURRENT_TASK_DEF_ARN}" \
+            --output json)"
+
+          EXECUTION_ROLE_ARN="$(jq -r '.taskDefinition.executionRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          TASK_ROLE_ARN="$(jq -r '.taskDefinition.taskRoleArn' <<< "${CURRENT_TASK_DEF}")"
+          CPU="$(jq -r '.taskDefinition.cpu' <<< "${CURRENT_TASK_DEF}")"
+          MEMORY="$(jq -r '.taskDefinition.memory' <<< "${CURRENT_TASK_DEF}")"
+          BACKEND_CONTAINER="$(jq -c ".taskDefinition.containerDefinitions[] | select(.name == \"${CONTAINER_NAME}\")" <<< "${CURRENT_TASK_DEF}")"
+
+          if [ -z "${BACKEND_CONTAINER}" ] || [ "${BACKEND_CONTAINER}" = "null" ]; then
+            echo "::error::Backend container ${CONTAINER_NAME} was not found on the current task definition."
+            exit 1
+          fi
+
+          DATABASE_URL_SECRET="$(jq -r '.secrets[]? | select(.name == "DATABASE_URL") | .valueFrom' <<< "${BACKEND_CONTAINER}")"
+          if [ -z "${DATABASE_URL_SECRET}" ] || [ "${DATABASE_URL_SECRET}" = "null" ]; then
+            echo "::error::DATABASE_URL secret is not present on the current backend task definition."
+            exit 1
+          fi
+
+          OPENAI_API_KEY_SECRET_ARN=""
+          if [ "${INPUT_MOCK_AI}" = "false" ]; then
+            OPENAI_API_KEY_SECRET_ARN="$(aws ssm describe-parameters \
+              --parameter-filters "Key=Name,Option=Equals,Values=${INPUT_OPENAI_API_KEY_PARAMETER}" \
+              --query 'Parameters[0].ARN' \
+              --output text)"
+
+            if [ -z "${OPENAI_API_KEY_SECRET_ARN}" ] || [ "${OPENAI_API_KEY_SECRET_ARN}" = "None" ]; then
+              echo "::error::SSM parameter ${INPUT_OPENAI_API_KEY_PARAMETER} was not found."
+              exit 1
+            fi
+          fi
+
+          APP_ENV="$(jq -r '.environment[]? | select(.name == "APP_ENV") | .value' <<< "${BACKEND_CONTAINER}")"
+          DISABLE_SCHEDULER="$(jq -r '.environment[]? | select(.name == "DISABLE_SCHEDULER") | .value' <<< "${BACKEND_CONTAINER}")"
+          DEV_ALLOW_MEMBERSHIP_HEADER="$(jq -r '.environment[]? | select(.name == "DEV_ALLOW_MEMBERSHIP_HEADER") | .value' <<< "${BACKEND_CONTAINER}")"
+          FRONTEND_BASE_URL="$(jq -r '.environment[]? | select(.name == "FRONTEND_BASE_URL") | .value' <<< "${BACKEND_CONTAINER}")"
+          CORS_ORIGINS="$(jq -r '.environment[]? | select(.name == "CORS_ORIGINS") | .value' <<< "${BACKEND_CONTAINER}")"
+          SETTLE_TICK_SECONDS="$(jq -r '.environment[]? | select(.name == "SETTLE_TICK_SECONDS") | .value' <<< "${BACKEND_CONTAINER}")"
+
+          APP_ENV="${APP_ENV:-production}"
+          DISABLE_SCHEDULER="${DISABLE_SCHEDULER:-1}"
+          DEV_ALLOW_MEMBERSHIP_HEADER="${DEV_ALLOW_MEMBERSHIP_HEADER:-0}"
+          FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-http://localhost:3000}"
+          CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173}"
+          SETTLE_TICK_SECONDS="${SETTLE_TICK_SECONDS:-60}"
+
+          {
+            echo "execution_role_arn=${EXECUTION_ROLE_ARN}"
+            echo "task_role_arn=${TASK_ROLE_ARN}"
+            echo "cpu=${CPU}"
+            echo "memory=${MEMORY}"
+            echo "database_url_secret=${DATABASE_URL_SECRET}"
+            echo "openai_api_key_secret_arn=${OPENAI_API_KEY_SECRET_ARN}"
+            echo "app_env=${APP_ENV}"
+            echo "disable_scheduler=${DISABLE_SCHEDULER}"
+            echo "dev_allow_membership_header=${DEV_ALLOW_MEMBERSHIP_HEADER}"
+            echo "frontend_base_url=${FRONTEND_BASE_URL}"
+            echo "cors_origins=${CORS_ORIGINS}"
+            echo "settle_tick_seconds=${SETTLE_TICK_SECONDS}"
+            echo "backend_container_json<<EOF"
+            echo "${BACKEND_CONTAINER}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Register task definition with AI runtime config
+        id: taskdef
+        shell: bash
+        env:
+          INPUT_MOCK_AI: ${{ inputs.mock_ai }}
+          INPUT_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
+          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
+        run: |
+          set -euo pipefail
+
+          UPDATED_CONTAINER="$(
+            jq -c \
+              --arg app_env "${{ steps.discover.outputs.app_env }}" \
+              --arg disable_scheduler "${{ steps.discover.outputs.disable_scheduler }}" \
+              --arg mock_ai "${INPUT_MOCK_AI}" \
+              --arg dev_allow_membership_header "${{ steps.discover.outputs.dev_allow_membership_header }}" \
+              --arg frontend_base_url "${{ steps.discover.outputs.frontend_base_url }}" \
+              --arg cors_origins "${{ steps.discover.outputs.cors_origins }}" \
+              --arg settle_tick_seconds "${{ steps.discover.outputs.settle_tick_seconds }}" \
+              --arg openai_base_url "${INPUT_OPENAI_BASE_URL}" \
+              --arg openai_model "${INPUT_OPENAI_MODEL}" \
+              --arg database_url_secret "${{ steps.discover.outputs.database_url_secret }}" \
+              --arg openai_api_key_secret_arn "${{ steps.discover.outputs.openai_api_key_secret_arn }}" \
+              '
+              def upsert_env($name; $value):
+                .environment = ((.environment // []) | map(select(.name != $name)) + [{name: $name, value: $value}]);
+              def upsert_secret($name; $valueFrom):
+                .secrets = ((.secrets // []) | map(select(.name != $name)) + [{name: $name, valueFrom: $valueFrom}]);
+              def remove_secret($name):
+                .secrets = ((.secrets // []) | map(select(.name != $name)));
+              .
+              | upsert_env("APP_ENV"; $app_env)
+              | upsert_env("DISABLE_SCHEDULER"; $disable_scheduler)
+              | upsert_env("MOCK_AI"; $mock_ai)
+              | upsert_env("DEV_ALLOW_MEMBERSHIP_HEADER"; $dev_allow_membership_header)
+              | upsert_env("FRONTEND_BASE_URL"; $frontend_base_url)
+              | upsert_env("CORS_ORIGINS"; $cors_origins)
+              | upsert_env("SETTLE_TICK_SECONDS"; $settle_tick_seconds)
+              | upsert_env("OPENAI_BASE_URL"; $openai_base_url)
+              | upsert_env("OPENAI_MODEL"; $openai_model)
+              | upsert_secret("DATABASE_URL"; $database_url_secret)
+              | if ($openai_api_key_secret_arn | length) > 0
+                then upsert_secret("OPENAI_API_KEY"; $openai_api_key_secret_arn)
+                else remove_secret("OPENAI_API_KEY")
+                end
+              ' <<< '${{ steps.discover.outputs.backend_container_json }}'
+          )"
+
+          jq -n \
+            --arg family "${TASK_FAMILY}" \
+            --arg network_mode "awsvpc" \
+            --arg execution_role_arn "${{ steps.discover.outputs.execution_role_arn }}" \
+            --arg task_role_arn "${{ steps.discover.outputs.task_role_arn }}" \
+            --arg cpu "${{ steps.discover.outputs.cpu }}" \
+            --arg memory "${{ steps.discover.outputs.memory }}" \
+            --argjson container "${UPDATED_CONTAINER}" \
+            '{
+              family: $family,
+              networkMode: $network_mode,
+              requiresCompatibilities: ["FARGATE"],
+              cpu: $cpu,
+              memory: $memory,
+              executionRoleArn: $execution_role_arn,
+              taskRoleArn: $task_role_arn,
+              containerDefinitions: [$container]
+            }' > /tmp/task-definition-backend-ai-runtime.json
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/task-definition-backend-ai-runtime.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+
+          echo "task_definition_arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update ECS service
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${{ steps.taskdef.outputs.task_definition_arn }}" \
+            --desired-count 1 \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --health-check-grace-period-seconds 60 >/dev/null
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+
+      - name: Verify backend health
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALB_DNS="$(aws elbv2 describe-load-balancers --names "${ALB_NAME}" --query 'LoadBalancers[0].DNSName' --output text)"
+          curl --fail --silent --show-error "http://${ALB_DNS}/api/health"
+          echo
+          echo "Backend health check passed after AI runtime config update."

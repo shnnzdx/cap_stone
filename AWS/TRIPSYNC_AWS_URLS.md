@@ -45,6 +45,12 @@ https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-login-upsert.y
 
 Cloud Demo Login Upsert successful run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
+
+Cloud Demo Seed Upsert workflow:
+https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-seed-upsert.yml
+
+Backend AI Runtime Config workflow:
+https://github.com/shnnzdx/cap_stone/actions/workflows/backend-ai-runtime-config.yml
 ```
 
 ## Current AWS Console Links
@@ -128,6 +134,8 @@ AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
+AWS/CLOUD_DEMO_SEED_RUNBOOK.md
+AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
 
@@ -155,6 +163,14 @@ Cloud RDS remains private. Use `AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md` and the manual 
 ```text
 organizer@cadensy.local
 ```
+
+Use `AWS/CLOUD_DEMO_SEED_RUNBOOK.md` and the manual `Cloud Demo Seed Upsert`
+workflow if the cloud database needs the full demo trip dataset without
+destructive reseeding.
+
+Use `AWS/BACKEND_AI_RUNTIME_RUNBOOK.md` and the manual `Backend AI Runtime
+Config` workflow if the deployed backend should stop using `MOCK_AI=1` and start
+using a real OpenAI-compatible provider.
 
 ## Cost Reminder
 

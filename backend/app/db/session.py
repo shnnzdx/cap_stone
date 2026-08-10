@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-load_dotenv()
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(BACKEND_ROOT / ".env", override=False)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+psycopg://localhost/tripsync"

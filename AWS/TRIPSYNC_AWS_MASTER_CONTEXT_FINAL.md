@@ -2311,6 +2311,8 @@ AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
+AWS/CLOUD_DEMO_SEED_RUNBOOK.md
+AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
 
@@ -2336,6 +2338,28 @@ Successful cloud demo login run:
 ```text
 https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
 ```
+
+For cloud demo dataset upsert, use:
+
+```text
+AWS/CLOUD_DEMO_SEED_RUNBOOK.md
+.github/workflows/cloud-demo-seed-upsert.yml
+```
+
+This path keeps RDS private and writes the full demo trip dataset through a
+one-off ECS task instead of direct laptop-to-RDS access or destructive cloud
+reseeding.
+
+For backend AI runtime activation, use:
+
+```text
+AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
+.github/workflows/backend-ai-runtime-config.yml
+```
+
+This path keeps the current private RDS model, preserves the deployed backend
+service shape, and updates ECS runtime config so the backend can switch between
+`MOCK_AI=1` demo mode and a real OpenAI-compatible provider.
 
 ---
 

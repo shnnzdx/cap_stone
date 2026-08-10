@@ -14,13 +14,15 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 from ..domain.constraints.types import Classification
 
-load_dotenv()
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(BACKEND_ROOT / ".env", override=False)
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # DeepSeek、通义、本地 Ollama 等都提供 OpenAI 兼容接口 —— 改这一个地址就能换供应商，
