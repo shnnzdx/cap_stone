@@ -1731,7 +1731,9 @@ Current Phase 6 files:
 ```text
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
+AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
 .github/workflows/runtime-secrets-readiness.yml
+.github/workflows/phase6-runtime-provision.yml
 ```
 
 Move runtime application secrets to SSM Parameter Store SecureString or Secrets Manager only after the resource creation path is approved.
@@ -1771,6 +1773,21 @@ Then switch backend from infrastructure proof toward real runtime mode.
 ```
 
 Do not create RDS, SSM parameters, Secrets Manager secrets, IAM policy changes, or ECS secret injection without explicit human approval.
+
+Phase 6 RDS/runtime secret provisioning has been approved by the user.
+
+Planned runtime provision:
+
+```text
+RDS PostgreSQL: tripsync-postgres
+DB subnet group: tripsync-private-db-subnet-group
+SSM SecureString: /tripsync/backend/prod/database-url
+ECS task definition: inject DATABASE_URL through secrets field
+schema init: python -m app.db.init_schema from one-off ECS task
+local env sync targets:
+  C:\Users\ROG\Desktop\capstone\cap_stone-main\backend\.env
+  C:\Users\ROG\Desktop\capstone\cap_stone-main\.env
+```
 
 ## Phase 7 — Frontend/Backend Integration
 

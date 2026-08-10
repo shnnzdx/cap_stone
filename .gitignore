@@ -8,6 +8,7 @@ New/
 !.env.example
 !.env.*.example
 *.local
+.local-secrets/
 
 node_modules/
 dist/

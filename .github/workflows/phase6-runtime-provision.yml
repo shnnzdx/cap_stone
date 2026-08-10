@@ -1,0 +1,288 @@
+name: Phase 6 Runtime Provision
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION_FALLBACK: us-east-1
+  DB_INSTANCE_ID: tripsync-postgres
+  DB_SUBNET_GROUP: tripsync-private-db-subnet-group
+  DB_NAME: tripsync
+  DB_USERNAME: tripsync_app
+  DB_INSTANCE_CLASS: db.t4g.micro
+  DB_ALLOCATED_STORAGE: "20"
+  DB_PARAMETER_NAME: /tripsync/backend/prod/database-url
+  ECS_CLUSTER: tripsync-cluster
+  ECS_SERVICE: tripsync-backend-service
+  TASK_FAMILY: tripsync-backend
+  CONTAINER_NAME: tripsync-backend
+  EXECUTION_ROLE_NAME: tripsync-ecs-execution-role
+  TASK_ROLE_NAME: tripsync-backend-task-role
+  LOG_GROUP_NAME: /ecs/tripsync-backend
+
+jobs:
+  provision-runtime:
+    name: Provision Runtime Database Secret
+    runs-on: ubuntu-latest
+    environment: Main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Check required runtime configuration
+        shell: bash
+        env:
+          HAS_DB_PASSWORD: ${{ secrets.TRIPSYNC_DB_PASSWORD != '' && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [ "${HAS_DB_PASSWORD}" != "true" ]; then
+            echo "::error::TRIPSYNC_DB_PASSWORD is not available in the Main environment secrets."
+            exit 1
+          fi
+
+          aws sts get-caller-identity --output json
+          echo "Runtime region: ${AWS_REGION:-${AWS_REGION_FALLBACK}}"
+
+      - name: Create or reuse RDS PostgreSQL
+        id: rds
+        shell: bash
+        env:
+          TRIPSYNC_DB_PASSWORD: ${{ secrets.TRIPSYNC_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          VPC_ID="$(aws ec2 describe-vpcs --filters Name=tag:Name,Values=tripsync-vpc --query 'Vpcs[0].VpcId' --output text)"
+          PRIVATE_DB_SUBNET_A_ID="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" Name=tag:Name,Values=tripsync-private-db-subnet-a --query 'Subnets[0].SubnetId' --output text)"
+          PRIVATE_DB_SUBNET_B_ID="$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=${VPC_ID}" Name=tag:Name,Values=tripsync-private-db-subnet-b --query 'Subnets[0].SubnetId' --output text)"
+          RDS_SG_ID="$(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=${VPC_ID}" Name=group-name,Values=tripsync-rds-sg --query 'SecurityGroups[0].GroupId' --output text)"
+
+          if [ "${VPC_ID}" = "None" ] || [ "${PRIVATE_DB_SUBNET_A_ID}" = "None" ] || [ "${PRIVATE_DB_SUBNET_B_ID}" = "None" ] || [ "${RDS_SG_ID}" = "None" ]; then
+            echo "::error::Phase 5 VPC, private DB subnets, or RDS security group are missing."
+            exit 1
+          fi
+
+          if ! aws rds describe-db-subnet-groups --db-subnet-group-name "${DB_SUBNET_GROUP}" >/dev/null 2>&1; then
+            aws rds create-db-subnet-group \
+              --db-subnet-group-name "${DB_SUBNET_GROUP}" \
+              --db-subnet-group-description "TripSync private DB subnet group" \
+              --subnet-ids "${PRIVATE_DB_SUBNET_A_ID}" "${PRIVATE_DB_SUBNET_B_ID}" \
+              --tags Key=Project,Value=TripSync Key=Phase,Value=6 >/dev/null
+          fi
+
+          if ! aws rds describe-db-instances --db-instance-identifier "${DB_INSTANCE_ID}" >/dev/null 2>&1; then
+            aws rds create-db-instance \
+              --db-instance-identifier "${DB_INSTANCE_ID}" \
+              --db-instance-class "${DB_INSTANCE_CLASS}" \
+              --engine postgres \
+              --allocated-storage "${DB_ALLOCATED_STORAGE}" \
+              --storage-type gp3 \
+              --db-name "${DB_NAME}" \
+              --master-username "${DB_USERNAME}" \
+              --master-user-password "${TRIPSYNC_DB_PASSWORD}" \
+              --vpc-security-group-ids "${RDS_SG_ID}" \
+              --db-subnet-group-name "${DB_SUBNET_GROUP}" \
+              --backup-retention-period 1 \
+              --no-publicly-accessible \
+              --no-multi-az \
+              --no-deletion-protection \
+              --copy-tags-to-snapshot \
+              --tags Key=Name,Value="${DB_INSTANCE_ID}" Key=Project,Value=TripSync Key=Phase,Value=6 >/dev/null
+          fi
+
+          aws rds wait db-instance-available --db-instance-identifier "${DB_INSTANCE_ID}"
+
+          DB_ENDPOINT="$(aws rds describe-db-instances --db-instance-identifier "${DB_INSTANCE_ID}" --query 'DBInstances[0].Endpoint.Address' --output text)"
+          DATABASE_URL="postgresql+psycopg://${DB_USERNAME}:${TRIPSYNC_DB_PASSWORD}@${DB_ENDPOINT}:5432/${DB_NAME}"
+
+          aws ssm put-parameter \
+            --name "${DB_PARAMETER_NAME}" \
+            --type SecureString \
+            --value "${DATABASE_URL}" \
+            --overwrite >/dev/null
+
+          DB_PARAMETER_ARN="$(aws ssm get-parameter --name "${DB_PARAMETER_NAME}" --query 'Parameter.ARN' --output text)"
+
+          {
+            echo "db_endpoint=${DB_ENDPOINT}"
+            echo "db_parameter_arn=${DB_PARAMETER_ARN}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Grant ECS execution role access to DATABASE_URL parameter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          PARAMETER_ARN="${{ steps.rds.outputs.db_parameter_arn }}"
+
+          cat > /tmp/ecs-ssm-read-policy.json <<JSON
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "ssm:GetParameters",
+                "Resource": "${PARAMETER_ARN}"
+              }
+            ]
+          }
+          JSON
+
+          aws iam put-role-policy \
+            --role-name "${EXECUTION_ROLE_NAME}" \
+            --policy-name tripsync-read-runtime-parameters \
+            --policy-document file:///tmp/ecs-ssm-read-policy.json
+
+      - name: Register task definition with DATABASE_URL secret
+        id: taskdef
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_TASK_DEF_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].taskDefinition' --output text)"
+          CURRENT_IMAGE="$(aws ecs describe-task-definition --task-definition "${CURRENT_TASK_DEF_ARN}" --query "taskDefinition.containerDefinitions[?name=='${CONTAINER_NAME}'].image | [0]" --output text)"
+          EXECUTION_ROLE_ARN="$(aws iam get-role --role-name "${EXECUTION_ROLE_NAME}" --query 'Role.Arn' --output text)"
+          TASK_ROLE_ARN="$(aws iam get-role --role-name "${TASK_ROLE_NAME}" --query 'Role.Arn' --output text)"
+
+          cat > /tmp/task-definition-runtime.json <<JSON
+          {
+            "family": "${TASK_FAMILY}",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+            "taskRoleArn": "${TASK_ROLE_ARN}",
+            "containerDefinitions": [
+              {
+                "name": "${CONTAINER_NAME}",
+                "image": "${CURRENT_IMAGE}",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  { "name": "APP_ENV", "value": "production" },
+                  { "name": "DISABLE_SCHEDULER", "value": "1" },
+                  { "name": "MOCK_AI", "value": "1" }
+                ],
+                "secrets": [
+                  {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "${{ steps.rds.outputs.db_parameter_arn }}"
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "${LOG_GROUP_NAME}",
+                    "awslogs-region": "${AWS_REGION}",
+                    "awslogs-stream-prefix": "ecs",
+                    "mode": "blocking"
+                  }
+                },
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
+                  "interval": 30,
+                  "timeout": 5,
+                  "retries": 3,
+                  "startPeriod": 20
+                }
+              }
+            ]
+          }
+          JSON
+
+          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition-runtime.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+          echo "task_definition_arn=${TASK_DEFINITION_ARN}" >> "${GITHUB_OUTPUT}"
+
+      - name: Initialize RDS schema from one-off ECS task
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SERVICE_JSON="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --output json)"
+          SUBNETS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.subnets | join(",")' <<< "${SERVICE_JSON}")"
+          SECURITY_GROUPS="$(jq -r '.services[0].networkConfiguration.awsvpcConfiguration.securityGroups | join(",")' <<< "${SERVICE_JSON}")"
+
+          TASK_ARN="$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --launch-type FARGATE \
+            --platform-version LATEST \
+            --task-definition "${{ steps.taskdef.outputs.task_definition_arn }}" \
+            --network-configuration "awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SECURITY_GROUPS}],assignPublicIp=ENABLED}" \
+            --overrides "{\"containerOverrides\":[{\"name\":\"${CONTAINER_NAME}\",\"command\":[\"python\",\"-m\",\"app.db.init_schema\"]}]}" \
+            --query 'tasks[0].taskArn' \
+            --output text)"
+
+          if [ "${TASK_ARN}" = "None" ] || [ -z "${TASK_ARN}" ]; then
+            echo "::error::Schema init ECS task failed to start."
+            exit 1
+          fi
+
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}"
+
+          EXIT_CODE="$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}" --query "tasks[0].containers[?name=='${CONTAINER_NAME}'].exitCode | [0]" --output text)"
+          STOPPED_REASON="$(aws ecs describe-tasks --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}" --query 'tasks[0].stoppedReason' --output text)"
+
+          if [ "${EXIT_CODE}" != "0" ]; then
+            echo "::error::Schema init task failed. Stopped reason: ${STOPPED_REASON}"
+            exit 1
+          fi
+
+          echo "RDS schema initialization task completed successfully."
+
+      - name: Update ECS service to runtime task definition
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${{ steps.taskdef.outputs.task_definition_arn }}" \
+            --desired-count 1 \
+            --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+            --health-check-grace-period-seconds 60 >/dev/null
+
+          aws ecs wait services-stable --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}"
+
+      - name: Verify backend health after runtime injection
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ALB_DNS="$(aws elbv2 describe-load-balancers --names tripsync-backend-alb --query 'LoadBalancers[0].DNSName' --output text)"
+          ALB_URL="http://${ALB_DNS}/api/health"
+
+          for attempt in {1..30}; do
+            if curl --fail --silent "${ALB_URL}"; then
+              echo
+              echo "Backend health check passed after runtime secret injection."
+              echo "Backend ALB URL: http://${ALB_DNS}"
+              echo "RDS endpoint: ${{ steps.rds.outputs.db_endpoint }}"
+              exit 0
+            fi
+
+            echo "Waiting for backend health after runtime injection, attempt ${attempt}/30..."
+            sleep 10
+          done
+
+          echo "::error::Backend health check did not pass after runtime secret injection."
+          exit 1

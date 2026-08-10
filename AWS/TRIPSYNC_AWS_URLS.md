@@ -62,6 +62,12 @@ Phase 6 readiness workflow file:
 https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/runtime-secrets-readiness.yml
 ```
 
+Phase 6 runtime provision workflow file:
+
+```text
+https://github.com/shnnzdx/cap_stone/blob/main/.github/workflows/phase6-runtime-provision.yml
+```
+
 Phase 6 successful Runtime Secrets Readiness run:
 
 ```text
@@ -182,6 +188,12 @@ Phase 6 runtime secrets readiness result:
 
 ```text
 AWS/PHASE6_RUNTIME_SECRETS_READINESS_RESULT.md
+```
+
+Phase 6 runtime provision plan:
+
+```text
+AWS/PHASE6_RUNTIME_PROVISION_PLAN.md
 ```
 
 Master context:
