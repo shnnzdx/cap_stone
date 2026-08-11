@@ -132,6 +132,33 @@ Updated:
 
 This moves stable product workflow copy, product principles, and Trip demo fallback data into shared modules. `trip/src/final/tripContent.js` remains as a compatibility layer so existing Trip workspace imports keep working.
 
+### 8. Shared workspace navigation and session seams
+
+Added:
+
+- `shared/trip-navigation-route/`
+- `shared/trip-navigation-policy/`
+- `shared/session-runtime/`
+
+Updated:
+
+- `trip/src/final/workspace-navigation-model.js`
+- `trip/src/final/navigation-normalizers.js`
+- `trip/src/final/TripAppState.jsx`
+- `trip/src/final/FinalApp.jsx`
+- `frontend/app/login/page.tsx`
+
+This later architecture pass established two deep shared seams without merging the apps:
+
+- `trip-navigation-policy` owns workspace destination policy, route reachability, restoration fallback, and invite/join destination decisions
+- `session-runtime` owns raw `tripsync:*` key policy, bearer-token mechanics, request identity derivation, invite adoption cache persistence, invalid-session clearing, and logout technical-session sequencing
+
+The remaining runtime split is intentional:
+
+- `frontend` still owns the host `/trip` shell
+- `trip` still owns workspace rendering and domain hydration
+- browser navigation execution still lives outside the shared policy/runtime modules
+
 ## Why This Approach
 
 We did not hard-merge the two apps immediately.
@@ -148,7 +175,7 @@ This reduces regression risk while the team still has two active code shapes.
 
 ## Current State
 
-As of Sunday, August 9, 2026:
+As of Tuesday, August 11, 2026:
 
 - `frontend` builds successfully
 - `trip` builds successfully
@@ -158,6 +185,9 @@ As of Sunday, August 9, 2026:
   `#/`, `#/create`, `#/account/:section`, `#/trip/:tripId/:section`, and `#/join/:token`
 - `frontend` now reads product workflow/principle content from `shared`
 - `trip` now reads demo fallback data from `shared`
+- workspace route guards, restoration fallback, and invite/join destination ownership now flow through `shared/trip-navigation-policy/`
+- technical session restore/adopt/invalidate/logout and request identity ownership now flow through `shared/session-runtime/`
+- raw `tripsync:*` session key knowledge is now isolated to `shared/session-runtime/`
 - `frontend/public/trip-app/` has been regenerated from the current `trip` build
 - AWS identity validation has succeeded through GitHub Actions using repository secrets and `aws sts get-caller-identity`
 
@@ -212,6 +242,8 @@ Still true:
 | --- | --- | --- |
 | Phase 1: route/embed contract alignment | Complete | `shared/tripsync-preview-contract.js`, `shared/tripsync-domain.js`, manifest, and tests now match the active Trip routes. |
 | Phase 2: shared product/demo data | Complete for first pass | Stable product content and Trip fallback data now live in `shared/`; existing UI imports remain compatible. |
+| Candidate 1: workspace navigation seam | Complete | `shared/trip-navigation-policy/` now owns workspace destination policy while `frontend` and `trip` keep execution/rendering local. |
+| Candidate 2: technical session seam | Complete | `shared/session-runtime/` now owns raw session persistence, bearer token mechanics, request identity, invite-cache persistence, invalidation, and logout sequencing. |
 | Phase 3: deeper runtime merge | Paused | Do not move Trip workspace pages into `frontend/app` yet. |
 | AWS deployment | Not started | Identity validation succeeded; no billable AWS resources should be created until deployment architecture is approved. |
 

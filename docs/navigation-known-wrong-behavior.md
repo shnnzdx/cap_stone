@@ -14,12 +14,15 @@ current observable behavior that should not be silently frozen as desired produc
 
 ## Restored Trip Selection
 
-- `TripAppState` restores `tripsync:tripId` directly into `activeTripId` and uses it for
-  trip-scoped API requests.
-- There is no centralized fallback that selects another reachable trip when the restored
-  trip is stale or inaccessible.
-- Current failure handling is user-visible load error / sign-in / retry behavior rather
-  than product-policy destination fallback.
+- The runtime still distinguishes:
+  - technical trip context used to start backend hydration
+  - restored product intent used to decide the initial workspace destination
+- Those are no longer the same ownership path:
+  `shared/session-runtime` restores technical session material, while
+  `tripNavigationPolicy.resolveDestination()` owns the post-hydration product destination.
+- The remaining known limitation is not the restored-selection policy itself; it is that
+  pre-login transport still only carries a host-level `next` string rather than a
+  structured workspace return intent.
 
 ## Organizer-Only Workspace Routes
 
@@ -56,10 +59,13 @@ current observable behavior that should not be silently frozen as desired produc
 - Frozen policy cases: `restored-selection-used-when-no-stronger-valid-intent-exists`,
   `stale-restored-selection-absent-from-trip-facts-falls-back-to-default`, and
   `restored-selection-with-unknown-state-is-accepted-when-trip-is-reachable`.
-- Remaining Candidate 2 debt: account bootstrap still starts with the stored
-  `tripsync:tripId` as technical request context, so a stale stored trip that blocks
-  initial session hydration is still a session-layer concern rather than a resolved
-  product-policy fallback.
+
+## Candidate 2 Closeout Note
+
+- Technical session restore, request identity derivation, invite adoption cache
+  persistence, invalid-session clearing, and logout clear sequencing are now centralized
+  in `shared/session-runtime`.
+- Runtime callers no longer own raw `tripsync:*` keys or bearer-token mechanics directly.
 
 ## Host / Workspace Handoff
 

@@ -24,6 +24,7 @@ Shared files you will touch most often:
 - `shared/tripsync-preview-contract.js`
 - `shared/trip-navigation-route/`
 - `shared/trip-navigation-policy/`
+- `shared/session-runtime/`
 - `shared/tripsync-product-content.js`
 - `shared/tripsync-demo-data.js`
 
@@ -36,6 +37,8 @@ Completed:
 - Shared embed theme between the shell and the Trip workspace
 - Shared embed path contract for `/trip-app` and the default `#/` workspace route
 - Shared workspace route codec and Trip navigation policy seams
+- Shared technical session runtime for browser persistence, invite adoption cache, and logout/invalidation sequencing
+- Shared request identity derivation for `Authorization`, `X-Trip-Id`, and `X-Membership-Id`
 - Automated sync from `trip/dist` into `frontend/public/trip-app`
 - Embed manifest output for the mounted Trip build
 - Compatibility tests around the integration contract
@@ -50,6 +53,22 @@ Still not done:
 - Moving Trip workspace pages into `frontend/app`
 - Replacing the static embed with one shared runtime
 - Production AWS deployment beyond identity validation
+
+## Current runtime ownership
+
+The two deepest shared seams are now:
+
+- `shared/trip-navigation-policy/`
+  - owns workspace-level destination policy, route reachability, restoration fallback, and invite/join destination decisions
+- `shared/session-runtime/`
+  - owns raw `tripsync:*` storage keys, bearer-token mechanics, request identity headers, invite adoption cache persistence, and logout / invalid-session clear sequencing
+
+Runtime ownership around those seams is intentionally split:
+
+- `frontend/app/trip/` owns the host `/trip` shell and iframe handoff
+- `trip/src/final/FinalApp.jsx` owns workspace rendering and browser navigation execution
+- `trip/src/final/TripAppState.jsx` owns Trip domain hydration, polling, and endpoint scope classification
+- `backend/` owns membership, invite, and trip facts, not frontend destination policy
 
 ## Project structure
 
