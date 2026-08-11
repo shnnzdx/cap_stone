@@ -26,11 +26,12 @@ current observable behavior that should not be silently frozen as desired produc
 
 ## Organizer-Only Workspace Routes
 
-- Organizer-only entries are hidden in the `TripShell` tabs for non-organizers.
-- The route declarations for `/trip/:tripId/members` and `/trip/:tripId/invite` still
-  exist unconditionally in `FinalApp`.
-- Current behavior therefore relies on UI visibility plus page-level logic instead of a
-  single workspace route-policy owner.
+- Organizer-only entries are still declared as workspace routes in `FinalApp`, because
+  `FinalApp` remains the workspace route mount and composition layer.
+- This is no longer a known-wrong authorization path by itself.
+- Current reachability and fallback behavior is owned centrally by
+  `tripNavigationPolicy.resolveDestination()`, not by tab hiding or page-local fallback
+  logic.
 
 ## Phase 7 Audit Note
 
@@ -66,6 +67,17 @@ current observable behavior that should not be silently frozen as desired produc
   persistence, invalid-session clearing, and logout clear sequencing are now centralized
   in `shared/session-runtime`.
 - Runtime callers no longer own raw `tripsync:*` keys or bearer-token mechanics directly.
+
+## Candidate 3 Closeout Note
+
+- `FinalApp` no longer owns Plan workspace orchestration directly.
+- The `/trip/:tripId/plan` route now mounts `PlanFeature`, while browser navigation
+  execution still remains in `FinalApp` through the command boundary.
+- Plan-specific selection, comments, map/list coordination, menu/booking behavior,
+  drawer lifecycle, and Cadensy change-request flow now live under
+  `trip/src/final/plan-feature/`.
+- This document should therefore continue to describe navigation limitations and
+  host/workspace handoff limitations, not stale Plan-page ownership assumptions.
 
 ## Host / Workspace Handoff
 
