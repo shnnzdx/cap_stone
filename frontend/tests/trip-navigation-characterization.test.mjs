@@ -90,7 +90,7 @@ test("characterizes current route declarations and redirects", async () => {
   const { finalApp } = await loadSources();
 
   assert.match(finalApp, /<Route path="\*" element={<Navigate to="\/" replace\/>}\/>/);
-  assert.match(finalApp, /<Route path="\/trip\/:tripId\/plan" element={<PlanPage\/>}\/>/);
+  assert.match(finalApp, /<Route path="\/trip\/:tripId\/plan" element={<PlanRoute\/>}\/>/);
   assert.match(finalApp, /<Route path="\/trip\/:tripId\/chat" element={<ChatWorkspace thread="personal"\/>}\/>/);
   assert.match(finalApp, /<Route path="\/trip\/:tripId\/members" element={<MembersPage\/>}\/>/);
   assert.match(finalApp, /<Route path="\/trip\/:tripId\/invite" element={<InvitePage\/>}\/>/);

@@ -147,6 +147,9 @@ Updated:
 - `trip/src/final/TripAppState.jsx`
 - `trip/src/final/FinalApp.jsx`
 - `frontend/app/login/page.tsx`
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
+- `trip/src/final/plan-feature/useAssistantChangeRequestFlow.js`
 
 This later architecture pass established two deep shared seams without merging the apps:
 
@@ -157,6 +160,8 @@ The remaining runtime split is intentional:
 
 - `frontend` still owns the host `/trip` shell
 - `trip` still owns workspace rendering and domain hydration
+- `FinalApp` now mounts the Plan route and executes Plan feature navigation commands, but no longer owns Plan workspace orchestration directly
+- `PlanFeature` is now the single public Plan workspace boundary, with deep internal seams for interaction state/effects and assistant/change-request flow
 - browser navigation execution still lives outside the shared policy/runtime modules
 
 ## Why This Approach
@@ -188,6 +193,7 @@ As of Tuesday, August 11, 2026:
 - workspace route guards, restoration fallback, and invite/join destination ownership now flow through `shared/trip-navigation-policy/`
 - technical session restore/adopt/invalidate/logout and request identity ownership now flow through `shared/session-runtime/`
 - raw `tripsync:*` session key knowledge is now isolated to `shared/session-runtime/`
+- Plan workspace orchestration now flows through `trip/src/final/plan-feature/PlanFeature.jsx` instead of living directly inside `trip/src/final/FinalApp.jsx`
 - `frontend/public/trip-app/` has been regenerated from the current `trip` build
 - AWS identity validation has succeeded through GitHub Actions using repository secrets and `aws sts get-caller-identity`
 
@@ -244,6 +250,7 @@ Still true:
 | Phase 2: shared product/demo data | Complete for first pass | Stable product content and Trip fallback data now live in `shared/`; existing UI imports remain compatible. |
 | Candidate 1: workspace navigation seam | Complete | `shared/trip-navigation-policy/` now owns workspace destination policy while `frontend` and `trip` keep execution/rendering local. |
 | Candidate 2: technical session seam | Complete | `shared/session-runtime/` now owns raw session persistence, bearer token mechanics, request identity, invite-cache persistence, invalidation, and logout sequencing. |
+| Candidate 3: FinalApp Plan workspace seam | Complete | `PlanFeature` is now the single public Plan boundary; `usePlanInteractionRuntime` and `useAssistantChangeRequestFlow` own the deeper Plan interaction and assistant/change-request behavior. |
 | Phase 3: deeper runtime merge | Paused | Do not move Trip workspace pages into `frontend/app` yet. |
 | AWS deployment | Not started | Identity validation succeeded; no billable AWS resources should be created until deployment architecture is approved. |
 

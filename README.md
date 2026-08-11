@@ -38,6 +38,7 @@ Completed:
 - Shared embed path contract for `/trip-app` and the default `#/` workspace route
 - Shared workspace route codec and Trip navigation policy seams
 - Shared technical session runtime for browser persistence, invite adoption cache, and logout/invalidation sequencing
+- Extracted Plan workspace orchestration behind one public `PlanFeature` boundary with deep interaction and assistant/change-request seams
 - Shared request identity derivation for `Authorization`, `X-Trip-Id`, and `X-Membership-Id`
 - Automated sync from `trip/dist` into `frontend/public/trip-app`
 - Embed manifest output for the mounted Trip build
@@ -66,7 +67,10 @@ The two deepest shared seams are now:
 Runtime ownership around those seams is intentionally split:
 
 - `frontend/app/trip/` owns the host `/trip` shell and iframe handoff
-- `trip/src/final/FinalApp.jsx` owns workspace rendering and browser navigation execution
+- `trip/src/final/FinalApp.jsx` owns workspace rendering, route composition, and browser navigation execution
+- `trip/src/final/plan-feature/PlanFeature.jsx` owns the public Plan workspace feature boundary
+- `trip/src/final/plan-feature/usePlanInteractionRuntime.js` owns Plan selection, comments, map/list coordination, menu state, and booking interactions
+- `trip/src/final/plan-feature/useAssistantChangeRequestFlow.js` owns drawer-local Cadensy conversation and change-request orchestration
 - `trip/src/final/TripAppState.jsx` owns Trip domain hydration, polling, and endpoint scope classification
 - `backend/` owns membership, invite, and trip facts, not frontend destination policy
 
