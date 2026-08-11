@@ -1,22 +1,31 @@
-## Agent Skills
+# AI Compatibility Note
 
-### Issue Tracker
+This file is kept as a compatibility pointer for tools or workflows that still look for
+`AI.md` at the repo root.
 
-Issues for this repo are tracked in GitHub Issues for `shnnzdx/cap_stone`. See `docs/agents/issue-tracker.md`.
+## Read First
 
-### Domain Docs
+If you are an AI agent starting work in this repository, read these files in this order:
 
-This repo uses a single-context domain-doc layout rooted at `CONTEXT.md` with ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+1. `AGENTS.md`
+2. `README.md`
+3. `INTEGRATION-ROADMAP.md`
+4. `交接.md`
 
-## Project Context
+If the task is backend cleanup or repo-level refactor planning, also read:
 
-- The main product site lives in `frontend/`.
-- The `trip/` directory contains the TripSync workspace app.
-- The built TripSync static assets are copied into `frontend/public/trip-app/`.
-- Project docs and supporting files live under `docs/`.
+- `docs/HANDOFF_PROMPT_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
+- `docs/navigation-known-wrong-behavior.md`
 
-## Working Notes For Agents
+## Quick Context
 
-- Prefer reading `README.md` before making workspace-level changes.
-- When working on product code, inspect whether the change belongs in `frontend/` or `trip/` before editing.
-- If domain terms or important architectural decisions become clearer during implementation, capture them in `CONTEXT.md` or `docs/adr/` rather than leaving them only in chat.
+- `frontend/` is the main product site and `/trip` host shell.
+- `trip/` is still the source for the embedded Trip workspace.
+- `backend/` is the FastAPI + PostgreSQL backend.
+- `shared/` contains the established cross-app seams.
+
+## Important
+
+Do not treat this file as the main repo rule document.
+The active AI working rules now live in `AGENTS.md`.

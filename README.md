@@ -89,7 +89,8 @@ Runtime ownership around those seams is intentionally split:
 |-- shared/                      Shared integration contracts and tokens
 |-- docs/                        Project notes and supporting documents
 |-- AWS/                         AWS deployment source-of-truth and archived phase notes
-|-- AI.md                        Local agent setup note for this repo
+|-- AGENTS.md                    Primary working rules for AI agents in this repo
+|-- AI.md                        Compatibility pointer for older AI workflows
 |-- INTEGRATION-ROADMAP.md       Compatibility summary and future plan
 `-- README.md
 ```
@@ -248,9 +249,12 @@ Local agent and skill installation artifacts are kept outside this repository un
 
 ## Related docs
 
+- [AGENTS.md](./AGENTS.md)
 - [INTEGRATION-ROADMAP.md](./INTEGRATION-ROADMAP.md)
 - [AWS/README.md](./AWS/README.md)
 - [AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md](./AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md)
+- [docs/HANDOFF_PROMPT_2026-08-11.md](./docs/HANDOFF_PROMPT_2026-08-11.md)
+- [docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md](./docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md)
 - [docs/PRODUCT.md](./docs/PRODUCT.md)
 - [docs/PROPOSAL.md](./docs/PROPOSAL.md)
 - [docs/PROPOSAL_EN.md](./docs/PROPOSAL_EN.md)
