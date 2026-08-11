@@ -15,7 +15,7 @@ function accountUser(overrides = {}) {
 function resolveRestoration(overrides = {}) {
   return resolveRestoredWorkspaceDestination({
     currentRoutePath: "/",
-    authToken: "token-1",
+    hasAccountSession: true,
     membershipId: "m-1",
     currentUser: accountUser(),
     tripSummaries: [
@@ -111,14 +111,24 @@ test("phase 9 runtime resolves restoration inside the workspace guard while leav
 
 test("phase 9 TripAppState keeps storage and request-header ownership while adding authoritative trip summaries for restoration", async () => {
   const source = await readFile(new URL("../../trip/src/final/TripAppState.jsx", import.meta.url), "utf8");
+  const bootstrapSource = await readFile(new URL("../../trip/src/final/technicalSessionBootstrap.js", import.meta.url), "utf8");
 
-  assert.match(source, /const \[restoredTripId\] = useState\(\(\) => readLocal\('tripsync:tripId'\)/);
-  assert.match(source, /const \[activeTripId, setActiveTripId\] = useState\(\(\) => readLocal\('tripsync:tripId'\)/);
-  assert.match(source, /writeLocal\('tripsync:membershipId', nextMembershipId\)/);
-  assert.match(source, /writeLocal\('tripsync:tripId', nextTripId\)/);
-  assert.match(source, /\.\.\.\(activeTripId \? \{ 'X-Trip-Id': activeTripId \} : \{\}\),/);
-  assert.match(source, /\.\.\.\(DEV_ALLOW_MEMBERSHIP_HEADER && membershipId \? \{ 'X-Membership-Id': membershipId \} : \{\}\),/);
+  assert.match(source, /import \{ restoreTripAppBootstrapState \} from '\.\/technicalSessionBootstrap\.js'/);
+  assert.match(source, /const \[hasAccountSession, setHasAccountSession\] = useState\(\(\) => bootstrapSession\.hasAccountSession\)/);
+  assert.match(source, /const \[restoredTripId\] = useState\(\(\) => bootstrapSession\.restoredTripId\)/);
+  assert.match(source, /const \[activeTripId, setActiveTripId\] = useState\(\(\) => bootstrapSession\.activeTripId\)/);
+  assert.match(source, /const adoptTechnicalTripContext = useCallback\(\(\{ membershipId: nextMembershipId, tripId: nextTripId, inviteToken, profile \}\) => \{/);
+  assert.match(source, /sessionRuntime\.adoptTechnicalTripContext\(\{\s*membershipId: nextMembershipId,\s*activeTripId: nextTripId,/s);
+  assert.match(source, /const identityHeadersFor = useCallback\(scope => \{\s*const identity = sessionRuntime\.requestIdentityFor\(scope, technicalSessionFacts\)/s);
   assert.match(source, /const raw = await accountRequestJson\('\/api\/trips'\)/);
+  assert.match(source, /const created = await accountRequestJson\('\/api\/trips', \{/);
   assert.match(source, /setTripSummariesStatus\('failed'\)/);
-  assert.match(source, /writeLocal\(`\$\{INVITE_SESSION_PREFIX\}\$\{inviteToken\}`/);
+  assert.match(source, /const readInviteAdoption = useCallback\(token => \{/);
+  assert.match(bootstrapSource, /const \{ facts, restorationHint \} = sessionRuntime\.restoreTechnicalSession\(\)/);
+  assert.match(bootstrapSource, /hasAccountSession: facts\.kind === 'account'/);
+  assert.doesNotMatch(bootstrapSource, /requestIdentityFor\('account'/);
+  assert.doesNotMatch(bootstrapSource, /Authorization/);
+  assert.doesNotMatch(bootstrapSource, /Bearer /);
+  assert.match(bootstrapSource, /restoredTripId: tripBootstrapValue\(\{\s*tripId: restorationHint\?\.tripId \|\| ''/s);
+  assert.match(bootstrapSource, /activeTripId: tripBootstrapValue\(\{\s*tripId: facts\.kind === 'guest' \? facts\.activeTripId : facts\.kind === 'account' \? \(facts\.activeTripId \|\| ''\) : ''/s);
 });

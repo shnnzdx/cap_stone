@@ -129,11 +129,11 @@ test("phase 8 runtime keeps preview tripId absent in backend preview and consume
   assert.match(backendSource, /def invite_preview\(db: Session, token: str\) -> dict:/);
   assert.match(backendSource, /"organizer_name": organizer_user\.name if organizer_user else "Organizer",/);
   assert.doesNotMatch(backendSource, /"trip_id": invite\.trip_id/);
-  assert.match(finalAppSource, /const savedInviteSession = useMemo\(\(\) => readInviteSession\(token\), \[token\]\)/);
+  assert.match(finalAppSource, /const savedInviteSession = useMemo\(\(\) => app\.readInviteAdoption\(token\), \[app, token\]\)/);
   assert.match(finalAppSource, /resolveInviteJoinRoute\(\{/);
   assert.match(finalAppSource, /inviteTripId: savedInviteSession\?\.tripId \|\| null/);
   assert.doesNotMatch(finalAppSource, /navigate\(`\/trip\/\$\{saved\.tripId\}\/plan`, \{ replace: true \}\)/);
   assert.doesNotMatch(finalAppSource, /navigate\(`\/trip\/\$\{joined\.trip_id\}\/preferences`, \{ replace: true \}\)/);
-  assert.match(tripAppStateSource, /const INVITE_SESSION_PREFIX = 'tripsync:invite:'/);
-  assert.match(tripAppStateSource, /writeLocal\(`\$\{INVITE_SESSION_PREFIX\}\$\{inviteToken\}`/);
+  assert.match(tripAppStateSource, /const readInviteAdoption = useCallback\(token => \{/);
+  assert.match(tripAppStateSource, /sessionRuntime\.adoptTechnicalTripContext\(\{/);
 });

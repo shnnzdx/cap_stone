@@ -142,7 +142,7 @@ export function resolveCurrentWorkspaceRoute(input) {
  *
  * @param {{
  *   currentRoutePath: string,
- *   authToken?: string | null,
+ *   hasAccountSession?: boolean,
  *   membershipId?: string | null,
  *   currentUser?: Record<string, any> | null,
  *   tripSummaries?: Array<Record<string, any>> | null,
@@ -157,7 +157,7 @@ export function resolveRestoredWorkspaceDestination(input) {
   let normalized;
   try {
     normalized = normalizeWorkspaceSessionFacts({
-      authToken: input.authToken,
+      hasAccountSession: input.hasAccountSession,
       membershipId: input.membershipId,
       currentUser: input.currentUser,
       tripSummaries: input.tripSummaries,

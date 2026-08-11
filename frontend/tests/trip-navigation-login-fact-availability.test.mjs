@@ -22,7 +22,7 @@ test("phase 10 successful account login with memberships can construct trip-sess
   };
 
   const normalized = normalizeWorkspaceSessionFacts({
-    authToken: loginResponse.token,
+    hasAccountSession: true,
     memberships: loginResponse.memberships,
   });
 
@@ -40,7 +40,7 @@ test("phase 10 successful account login with memberships can construct trip-sess
 
 test("phase 10 successful account login with no memberships constructs session-no-trip-access from authoritative response", () => {
   const normalized = normalizeWorkspaceSessionFacts({
-    authToken: "token-no-trips",
+    hasAccountSession: true,
     memberships: [],
   });
 
@@ -51,7 +51,7 @@ test("phase 10 successful account login with no memberships constructs session-n
 
 test("phase 10 missing trip state can remain unknown without inventing planning", () => {
   const normalized = normalizeWorkspaceSessionFacts({
-    authToken: "token-unknown",
+    hasAccountSession: true,
     memberships: [loginMembership("t1", "participant")],
     tripSummaries: [{ id: "t1", status: null }],
   });
@@ -76,7 +76,7 @@ test("phase 10 default_membership is not required as a pre-resolved destination 
   };
 
   const normalized = normalizeWorkspaceSessionFacts({
-    authToken: loginResponse.token,
+    hasAccountSession: true,
     memberships: loginResponse.memberships,
   });
 
@@ -109,9 +109,8 @@ test("phase 11 login source still only supports host-level next and default sess
   assert.match(loginPage, /const \[nextPath, setNextPath\] = useState\("\/trip"\);/);
   assert.match(loginPage, /if \(next\?\.startsWith\("\/"\)\) setNextPath\(next\);/);
   assert.match(loginPage, /const membership = result\.default_membership \|\| result\.memberships\?\.\[0\];/);
-  assert.match(loginPage, /window\.localStorage\.setItem\("tripsync:authToken", result\.token\);/);
-  assert.match(loginPage, /window\.localStorage\.setItem\("tripsync:membershipId", membership\.membership_id\);/);
-  assert.match(loginPage, /window\.localStorage\.setItem\("tripsync:tripId", membership\.trip_id\);/);
+  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*activeTripId: membership\.trip_id,\s*membershipId: membership\.membership_id,\s*\}\);/s);
+  assert.match(loginPage, /if \(hasPersistenceWarning\(adoption\.warnings\)\) \{/);
   assert.match(loginPage, /window\.location\.href = nextPath;/);
   assert.doesNotMatch(loginPage, /window\.location\.href = `\/trip\/\$\{.*\}\/.*/);
 });

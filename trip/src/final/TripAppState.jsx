@@ -1,5 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { baseUpdates as fallbackBaseUpdates, initialDays as fallbackDays, personalUpdates as fallbackPersonalUpdates, trip as fallbackTrip } from './tripContent.js'
+import { restoreTripAppBootstrapState } from './technicalSessionBootstrap.js'
+import { createSessionRuntime, SESSION_RUNTIME_CODES } from '../../../shared/session-runtime/index.js'
+import { classifyTechnicalSessionInvalidation } from './technicalSessionInvalidation.js'
 
 const TripAppContext = createContext(null)
 
@@ -9,32 +12,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:800
 const TRIP_ID = import.meta.env.VITE_TRIP_ID
 const MEMBERSHIP_ID = import.meta.env.VITE_MEMBERSHIP_ID
 const DEV_ALLOW_MEMBERSHIP_HEADER = import.meta.env.VITE_DEV_ALLOW_MEMBERSHIP_HEADER === '1'
-const INVITE_SESSION_PREFIX = 'tripsync:invite:'
 const loginUrl = () => `${window.location.origin}/login?next=/trip`
-
-const readLocal = key => {
-  try {
-    return window.localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-const writeLocal = (key, value) => {
-  try {
-    window.localStorage.setItem(key, value)
-  } catch {
-    // Private browsing can reject storage. The current in-memory session still works.
-  }
-}
-
-const removeLocal = key => {
-  try {
-    window.localStorage.removeItem(key)
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-}
 
 const makeDefaultDate = (month, day) => new Date(2026, month, day)
 
@@ -235,11 +213,47 @@ const mergeProposals = (incoming, current) => {
   ]
 }
 
+const technicalSessionFactsFromState = ({ hasAccountSession, membershipId, activeTripId }) => {
+  if (hasAccountSession) {
+    return {
+      kind: 'account',
+      accountAuth: true,
+      activeTripId: activeTripId || null,
+      membershipId: membershipId || null,
+    }
+  }
+
+  if (membershipId && activeTripId) {
+    return {
+      kind: 'guest',
+      activeTripId,
+      membershipId,
+    }
+  }
+
+  return { kind: 'none' }
+}
+
+const missingContextError = (message, code) => {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
 export function TripAppProvider({ children }) {
-  const [authToken, setAuthToken] = useState(() => readLocal('tripsync:authToken') || '')
-  const [membershipId, setMembershipId] = useState(() => DEV_ALLOW_MEMBERSHIP_HEADER ? (readLocal('tripsync:membershipId') || MEMBERSHIP_ID || '') : '')
-  const [restoredTripId] = useState(() => readLocal('tripsync:tripId') || (DEV_ALLOW_MEMBERSHIP_HEADER ? TRIP_ID : '') || '')
-  const [activeTripId, setActiveTripId] = useState(() => readLocal('tripsync:tripId') || (DEV_ALLOW_MEMBERSHIP_HEADER ? TRIP_ID : '') || '')
+  const [sessionRuntime] = useState(() => createSessionRuntime({
+    emitCompatibilityMembershipHeader: DEV_ALLOW_MEMBERSHIP_HEADER,
+  }))
+  const [bootstrapSession] = useState(() => restoreTripAppBootstrapState({
+    sessionRuntime,
+    devAllowMembershipHeader: DEV_ALLOW_MEMBERSHIP_HEADER,
+    defaultMembershipId: MEMBERSHIP_ID || '',
+    defaultTripId: TRIP_ID || '',
+  }))
+  const [hasAccountSession, setHasAccountSession] = useState(() => bootstrapSession.hasAccountSession)
+  const [membershipId, setMembershipId] = useState(() => bootstrapSession.membershipId)
+  const [restoredTripId] = useState(() => bootstrapSession.restoredTripId)
+  const [activeTripId, setActiveTripId] = useState(() => bootstrapSession.activeTripId)
   const [trip, setTrip] = useState(fallbackTrip)
   const [currentUser, setCurrentUser] = useState(null)
   const [days, setDays] = useState(fallbackDays)
@@ -257,7 +271,7 @@ export function TripAppProvider({ children }) {
   const [error, setError] = useState('')
   const [trips, setTrips] = useState([])
   const [tripSummaries, setTripSummaries] = useState([])
-  const [tripSummariesStatus, setTripSummariesStatus] = useState(() => (readLocal('tripsync:authToken') ? 'idle' : 'not-needed'))
+  const [tripSummariesStatus, setTripSummariesStatus] = useState(() => (bootstrapSession.hasAccountSession ? 'idle' : 'not-needed'))
   const [inviteCopied, setInviteCopied] = useState(false)
   const [preferencesSubmittedFor, setPreferencesSubmittedFor] = useState([])
   const [preferences, setPreferences] = useState({
@@ -276,6 +290,11 @@ export function TripAppProvider({ children }) {
   const pollTimerRef = useRef(null)
   const pollFailuresRef = useRef(0)
   const pollDelayRef = useRef(5000)
+  const technicalSessionFacts = useMemo(() => technicalSessionFactsFromState({
+    hasAccountSession,
+    membershipId,
+    activeTripId,
+  }), [activeTripId, hasAccountSession, membershipId])
 
   const notify = useCallback(message => {
     setToast(message)
@@ -301,49 +320,80 @@ export function TripAppProvider({ children }) {
     return response.json()
   }, [])
 
-  const accountRequestJson = useCallback(async (path, options = {}) => {
-    if (!authToken) throw new Error('Missing account session')
+  const identityHeadersFor = useCallback(scope => {
+    const identity = sessionRuntime.requestIdentityFor(scope, technicalSessionFacts)
+    if (identity.ok) return identity.headers
+
+    switch (identity.code) {
+      case SESSION_RUNTIME_CODES.missingContext.MISSING_ACCOUNT_AUTH:
+        throw missingContextError('Missing account session', identity.code)
+      case SESSION_RUNTIME_CODES.missingContext.MISSING_ACTIVE_TRIP_CONTEXT:
+        throw missingContextError('Missing trip session', identity.code)
+      case SESSION_RUNTIME_CODES.missingContext.MISSING_MEMBERSHIP_IDENTITY:
+        throw missingContextError('Missing membership session', identity.code)
+      default:
+        throw missingContextError('Missing session context', identity.code)
+    }
+  }, [sessionRuntime, technicalSessionFacts])
+
+  const applyTechnicalSessionInvalidation = useCallback((cause, message) => {
+    const invalidated = sessionRuntime.invalidateTechnicalSession(technicalSessionFacts, cause)
+    const nextFacts = invalidated.facts
+
+    if (nextFacts.kind !== 'account') {
+      setHasAccountSession(false)
+      setTripSummaries([])
+      setTripSummariesStatus('not-needed')
+    } else {
+      setHasAccountSession(true)
+      setTripSummariesStatus('idle')
+    }
+
+    setMembershipId(nextFacts.kind === 'none' ? '' : (nextFacts.membershipId || ''))
+    setActiveTripId(nextFacts.kind === 'none' ? '' : (nextFacts.activeTripId || ''))
+    setCurrentUser(null)
+    setError(message)
+    return invalidated
+  }, [sessionRuntime, technicalSessionFacts])
+
+  const sessionRequestJson = useCallback(async (scope, path, options = {}) => {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
+        ...identityHeadersFor(scope),
         ...(options.headers || {}),
       },
     })
     if (!response.ok) {
       const body = await response.json().catch(() => ({}))
       const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
+      const invalidationCause = classifyTechnicalSessionInvalidation({
+        scope,
+        facts: technicalSessionFacts,
+        status: response.status,
+      })
+      if (invalidationCause) {
+        applyTechnicalSessionInvalidation(invalidationCause, message)
+      }
       const error = new Error(message)
       error.status = response.status
+      if (invalidationCause) {
+        error.invalidationCause = invalidationCause
+      }
       throw error
     }
     return response.json()
-  }, [authToken])
+  }, [applyTechnicalSessionInvalidation, identityHeadersFor, technicalSessionFacts])
+
+  const accountRequestJson = useCallback(async (path, options = {}) => {
+    return sessionRequestJson('account', path, options)
+  }, [sessionRequestJson])
 
   const requestJson = useCallback(async (path, options = {}) => {
-    if (!authToken && !membershipId) throw new Error('Missing membership session')
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        ...(activeTripId ? { 'X-Trip-Id': activeTripId } : {}),
-        ...(DEV_ALLOW_MEMBERSHIP_HEADER && membershipId ? { 'X-Membership-Id': membershipId } : {}),
-        ...(options.headers || {}),
-      },
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
-      const error = new Error(message)
-      error.status = response.status
-      throw error
-    }
-    return response.json()
-  }, [activeTripId, authToken, membershipId])
+    return sessionRequestJson('trip', path, options)
+  }, [sessionRequestJson])
 
   const refreshTrip = useCallback(async () => {
     if (!activeTripId) throw new Error('Missing trip session')
@@ -395,7 +445,7 @@ export function TripAppProvider({ children }) {
   }, [activeTripId, myVotes, requestJson])
 
   const refreshTripSummaries = useCallback(async () => {
-    if (!authToken) {
+    if (!hasAccountSession) {
       setTripSummaries([])
       setTripSummariesStatus('not-needed')
       return []
@@ -405,10 +455,10 @@ export function TripAppProvider({ children }) {
     setTripSummaries(raw)
     setTripSummariesStatus('ready')
     return raw
-  }, [accountRequestJson, authToken])
+  }, [accountRequestJson, hasAccountSession])
 
   const refreshAll = useCallback(async ({ background = false } = {}) => {
-    if ((!authToken && !membershipId) || !activeTripId) {
+    if ((!hasAccountSession && !membershipId) || !activeTripId) {
       if (!background) setLoading(current => ({ ...current, initial: false }))
       return false
     }
@@ -420,7 +470,7 @@ export function TripAppProvider({ children }) {
         refreshPlan(),
         refreshUpdates(),
         refreshActions(),
-        authToken
+        hasAccountSession
           ? refreshTripSummaries().catch(() => {
             setTripSummariesStatus('failed')
             return null
@@ -437,24 +487,24 @@ export function TripAppProvider({ children }) {
       }
       return false
     } finally {
-      if (!authToken) setTripSummariesStatus('not-needed')
+      if (!hasAccountSession) setTripSummariesStatus('not-needed')
       if (!background) setLoading(current => ({ ...current, initial: false }))
     }
-  }, [activeTripId, authToken, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates])
+  }, [activeTripId, hasAccountSession, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates])
 
   useEffect(() => {
-    if (!authToken) {
+    if (!hasAccountSession) {
       setTripSummaries([])
       setTripSummariesStatus('not-needed')
     }
-  }, [authToken])
+  }, [hasAccountSession])
 
   useEffect(() => {
     refreshAll()
   }, [refreshAll])
 
   useEffect(() => {
-    if ((!authToken && !membershipId) || !activeTripId) return undefined
+    if ((!hasAccountSession && !membershipId) || !activeTripId) return undefined
     let cancelled = false
 
     const clearTimer = () => {
@@ -494,13 +544,26 @@ export function TripAppProvider({ children }) {
       clearTimer()
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [activeTripId, authToken, membershipId, refreshAll])
+  }, [activeTripId, hasAccountSession, membershipId, refreshAll])
 
-  const adoptMembership = useCallback(({ membershipId: nextMembershipId, tripId: nextTripId, inviteToken, profile }) => {
+  const readInviteAdoption = useCallback(token => {
+    if (!token) return null
+    const { record } = sessionRuntime.readInviteAdoption(token)
+    if (!record) return null
+    return {
+      membershipId: record.membershipId,
+      tripId: record.activeTripId,
+    }
+  }, [sessionRuntime])
+
+  const adoptTechnicalTripContext = useCallback(({ membershipId: nextMembershipId, tripId: nextTripId, inviteToken, profile }) => {
+    sessionRuntime.adoptTechnicalTripContext({
+      membershipId: nextMembershipId,
+      activeTripId: nextTripId,
+      ...(inviteToken ? { inviteToken } : {}),
+    })
     setMembershipId(nextMembershipId)
     setActiveTripId(nextTripId)
-    writeLocal('tripsync:membershipId', nextMembershipId)
-    writeLocal('tripsync:tripId', nextTripId)
     if (profile) {
       setCurrentUser({
         membershipId: nextMembershipId,
@@ -513,40 +576,30 @@ export function TripAppProvider({ children }) {
         isGuest: Boolean(profile.isGuest),
       })
     }
-    if (inviteToken) {
-      writeLocal(`${INVITE_SESSION_PREFIX}${inviteToken}`, JSON.stringify({
-        membershipId: nextMembershipId,
-        tripId: nextTripId,
-      }))
-    }
-  }, [])
+  }, [sessionRuntime])
 
   const logout = useCallback(async () => {
-    const token = authToken
-    setAuthToken('')
-    setMembershipId('')
-    setActiveTripId('')
+    const result = await sessionRuntime.logoutTechnicalSession(technicalSessionFacts, {
+      revoke: async () => publicRequestJson('/api/auth/logout', {
+        method: 'POST',
+        headers: identityHeadersFor('account'),
+      }),
+    })
+    setHasAccountSession(false)
+    setMembershipId(result.facts.kind === 'none' ? '' : (result.facts.membershipId || ''))
+    setActiveTripId(result.facts.kind === 'none' ? '' : (result.facts.activeTripId || ''))
     setCurrentUser(null)
     setTripSummaries([])
     setTripSummariesStatus('not-needed')
-    removeLocal('tripsync:authToken')
-    removeLocal('tripsync:membershipId')
-    removeLocal('tripsync:tripId')
-    if (token) {
-      await publicRequestJson('/api/auth/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {})
-    }
     window.top.location.href = loginUrl()
-  }, [authToken, publicRequestJson])
+  }, [identityHeadersFor, publicRequestJson, sessionRuntime, technicalSessionFacts])
 
   // 真的在后端建一个 trip。以前这里造一个 draft- 开头的假 id 塞进内存，
   // 后端根本不知道这趟旅行存在 —— 所以生成行程、邀请、偏好全都点不动。
   const createTrip = useCallback(async payload => {
     setLoading(current => ({ ...current, action: true }))
     try {
-      const created = await requestJson('/api/trips', {
+      const created = await accountRequestJson('/api/trips', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
@@ -554,7 +607,7 @@ export function TripAppProvider({ children }) {
       // 你在新 trip 里是另一个 membership。不切过去的话，
       // 邀请、生成、偏好全都会因为"身份属于别的旅行"被拒。
       if (created.membership_id) {
-        adoptMembership({ membershipId: created.membership_id, tripId: created.id })
+        adoptTechnicalTripContext({ membershipId: created.membership_id, tripId: created.id })
       }
       return created
     } catch (err) {
@@ -563,7 +616,7 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [adoptMembership, requestJson])
+  }, [accountRequestJson, adoptTechnicalTripContext])
 
   const createInvite = useCallback(async tripId => {
     return requestJson(`/api/trips/${tripId}/invite`, { method: 'POST' })
@@ -962,7 +1015,7 @@ export function TripAppProvider({ children }) {
 
   const value = useMemo(() => ({
     trip, currentUser, days, planId,
-    authToken,
+    hasAccountSession,
     membershipId,
     activeTripId,
     restoredTripId,
@@ -993,7 +1046,8 @@ export function TripAppProvider({ children }) {
     objectToNotice,
     resetDemo,
     refreshAll,
-    adoptMembership,
+    adoptTechnicalTripContext,
+    readInviteAdoption,
     createInvite,
     revokeInvite,
     getInvite,
@@ -1023,14 +1077,14 @@ export function TripAppProvider({ children }) {
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptMembership, authToken, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')
     if (isJoinRoute) {
       return <TripAppContext.Provider value={value}>{children}{toast && <div className="toast">{toast}</div>}</TripAppContext.Provider>
     }
-    const missingSession = (!authToken && !membershipId) || !activeTripId
+    const missingSession = (!hasAccountSession && !membershipId) || !activeTripId
     const loadError = error || (missingSession ? 'Join from an invite link or configure a membership session.' : '')
     return <TripAppContext.Provider value={value}>
       <main className="homePage">

@@ -33,7 +33,7 @@ export class NavigationNormalizationError extends Error {
  * backend auth/trip shapes into policy-ready access facts.
  *
  * @param {{
- *   authToken?: string | null,
+ *   hasAccountSession?: boolean,
  *   membershipId?: string | null,
  *   activeTripId?: string | null,
  *   currentUser?: Record<string, any> | null,
@@ -366,7 +366,7 @@ function normalizeRouteInput(route, routePath, code) {
 
 /**
  * @param {{
- *   authToken?: string | null,
+ *   hasAccountSession?: boolean,
  *   membershipId?: string | null,
  *   activeTripId?: string | null,
  *   currentUser?: Record<string, any> | null,
@@ -378,8 +378,9 @@ function normalizeAccessState(input, relevantTripsById) {
   const hasMembership = Object.values(relevantTripsById).some((fact) => Boolean(fact.membership));
   if (hasMembership) return "trip-session";
 
+  const hasAccountSession = input.hasAccountSession === true;
   const hasSessionSignal = Boolean(
-    input.authToken ||
+    hasAccountSession ||
     input.membershipId ||
     input.activeTripId ||
     input.currentUser ||

@@ -27,14 +27,6 @@ const nightsBetween = range => range.start && range.end ? Math.max(0, Math.round
 const formatShortDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'
 const formatDateRange = range => range.start && range.end ? `${formatShortDate(range.start)} – ${formatShortDate(range.end)}, 2026` : 'Select dates'
 const formatInviteDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
-const inviteSessionKey = token => `tripsync:invite:${token}`
-const readInviteSession = token => {
-  try {
-    return JSON.parse(window.localStorage.getItem(inviteSessionKey(token)) || 'null')
-  } catch {
-    return null
-  }
-}
 // 改动卡上的日期。写成 "Sat, Aug 15" —— 换天的改动只看时间是分不清的。
 // 日期选择器给的是 Date 对象，后端要 YYYY-MM-DD
 const toISODate = value => {
@@ -290,17 +282,17 @@ function WorkspaceRouteGuard() {
     !restorationResolvedRef.current &&
     location.pathname === initialPathRef.current &&
     app.currentUser &&
-    app.authToken &&
+    app.hasAccountSession &&
     app.tripSummariesStatus === 'loading',
   )
   const restorationResolution = useMemo(() => {
     if (restorationResolvedRef.current) return null
     if (location.pathname !== initialPathRef.current) return null
     if (!app.currentUser || app.loading.initial) return null
-    if (app.authToken && app.tripSummariesStatus !== 'ready') return null
+    if (app.hasAccountSession && app.tripSummariesStatus !== 'ready') return null
     return resolveRestoredWorkspaceDestination({
       currentRoutePath: location.pathname,
-      authToken: app.authToken,
+      hasAccountSession: app.hasAccountSession,
       membershipId: app.membershipId,
       currentUser: app.currentUser,
       tripSummaries: app.tripSummaries,
@@ -310,7 +302,7 @@ function WorkspaceRouteGuard() {
     })
   }, [
     app.activeTripId,
-    app.authToken,
+    app.hasAccountSession,
     app.currentUser,
     app.loading.initial,
     app.membershipId,
@@ -334,10 +326,10 @@ function WorkspaceRouteGuard() {
       return
     }
     if (!app.currentUser || app.loading.initial) return
-    if (!app.authToken || ['ready', 'failed', 'not-needed'].includes(app.tripSummariesStatus)) {
+    if (!app.hasAccountSession || ['ready', 'failed', 'not-needed'].includes(app.tripSummariesStatus)) {
       restorationResolvedRef.current = true
     }
-  }, [app.authToken, app.currentUser, app.loading.initial, app.tripSummariesStatus, location.pathname])
+  }, [app.hasAccountSession, app.currentUser, app.loading.initial, app.tripSummariesStatus, location.pathname])
 
   if (restorationFactsPending) {
     return null
@@ -1663,7 +1655,7 @@ function JoinInvitePage() {
   const [joining, setJoining] = useState(false)
   const [invalid, setInvalid] = useState(false)
   const [error, setError] = useState('')
-  const savedInviteSession = useMemo(() => readInviteSession(token), [token])
+  const savedInviteSession = useMemo(() => app.readInviteAdoption(token), [app, token])
   const dateText = preview ? [formatInviteDate(preview.preferred_start_date), formatInviteDate(preview.preferred_end_date)].filter(Boolean).join(' – ') : ''
   useEffect(() => {
     let cancelled = false
@@ -1681,7 +1673,7 @@ function JoinInvitePage() {
             app.activeTripId !== savedInviteSession.tripId
           )
         ) {
-          app.adoptMembership({
+          app.adoptTechnicalTripContext({
             membershipId: savedInviteSession.membershipId,
             tripId: savedInviteSession.tripId,
             inviteToken: token,
@@ -1700,7 +1692,7 @@ function JoinInvitePage() {
     return () => {
       cancelled = true
     }
-  }, [app.activeTripId, app.adoptMembership, app.getInvite, app.membershipId, savedInviteSession, token])
+  }, [app.activeTripId, app.adoptTechnicalTripContext, app.getInvite, app.membershipId, savedInviteSession, token])
   const inviteOpenResolution = useMemo(() => {
     if (!token || (!preview && !invalid)) return null
     return resolveInviteJoinRoute({
@@ -1737,7 +1729,7 @@ function JoinInvitePage() {
         display_name: name.trim(),
         ...(withAccount ? { email: email.trim() } : {}),
       })
-      app.adoptMembership({
+      app.adoptTechnicalTripContext({
         membershipId: joined.membership_id,
         tripId: joined.trip_id,
         inviteToken: token,

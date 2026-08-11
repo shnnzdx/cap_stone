@@ -3,9 +3,16 @@
 import Link from "next/link";
 import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { createSessionRuntime, SESSION_RUNTIME_CODES } from "../../../shared/session-runtime/index.js";
 import BrandLogo from "../BrandLogo";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const sessionRuntime = createSessionRuntime();
+
+function hasPersistenceWarning(warnings: string[]): boolean {
+  return warnings.includes(SESSION_RUNTIME_CODES.warnings.PERSISTENCE_UNAVAILABLE) ||
+    warnings.includes(SESSION_RUNTIME_CODES.warnings.PERSISTENCE_WRITE_FAILED);
+}
 
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
@@ -73,9 +80,15 @@ export default function LoginPage() {
         setError("This account is not connected to a trip yet.");
         return;
       }
-      window.localStorage.setItem("tripsync:authToken", result.token);
-      window.localStorage.setItem("tripsync:membershipId", membership.membership_id);
-      window.localStorage.setItem("tripsync:tripId", membership.trip_id);
+      const adoption = sessionRuntime.adoptAccountAuth({
+        token: result.token,
+        activeTripId: membership.trip_id,
+        membershipId: membership.membership_id,
+      });
+      if (hasPersistenceWarning(adoption.warnings)) {
+        setError("Could not reach the backend. Make sure the API is running.");
+        return;
+      }
       window.location.href = nextPath;
     } catch {
       setError("Could not reach the backend. Make sure the API is running.");

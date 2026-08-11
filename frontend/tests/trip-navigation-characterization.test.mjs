@@ -28,9 +28,9 @@ test("characterizes current login redirect and session persistence behavior", as
   assert.match(loginPage, /const \[nextPath, setNextPath\] = useState\("\/trip"\);/);
   assert.match(loginPage, /const next = params\.get\("next"\);/);
   assert.match(loginPage, /if \(next\?\.startsWith\("\/"\)\) setNextPath\(next\);/);
-  assert.match(loginPage, /window\.localStorage\.setItem\("tripsync:authToken", result\.token\);/);
-  assert.match(loginPage, /window\.localStorage\.setItem\("tripsync:membershipId", membership\.membership_id\);/);
-  assert.match(loginPage, /window\.localStorage\.setItem\("tripsync:tripId", membership\.trip_id\);/);
+  assert.match(loginPage, /createSessionRuntime, SESSION_RUNTIME_CODES/);
+  assert.match(loginPage, /const membership = result\.default_membership \|\| result\.memberships\?\.\[0\];/);
+  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*activeTripId: membership\.trip_id,\s*membershipId: membership\.membership_id,\s*\}\);/s);
   assert.match(loginPage, /window\.location\.href = nextPath;/);
 });
 
@@ -47,8 +47,8 @@ test("characterizes current workspace host entry as a fixed preview iframe hando
 test("characterizes current restored-trip session behavior in TripAppState", async () => {
   const { tripAppState } = await loadSources();
 
-  assert.match(tripAppState, /const \[activeTripId, setActiveTripId\] = useState\(\(\) => readLocal\('tripsync:tripId'\)/);
-  assert.match(tripAppState, /\.\.\.\(activeTripId \? \{ 'X-Trip-Id': activeTripId \} : \{\}\),/);
+  assert.match(tripAppState, /const \[activeTripId, setActiveTripId\] = useState\(\(\) => bootstrapSession\.activeTripId\)/);
+  assert.match(tripAppState, /const identityHeadersFor = useCallback\(scope => \{\s*const identity = sessionRuntime\.requestIdentityFor\(scope, technicalSessionFacts\)/s);
   assert.match(tripAppState, /const raw = await requestJson\(`\/api\/trips\/\$\{activeTripId\}`\)/);
   assert.match(tripAppState, /const raw = await requestJson\(`\/api\/trips\/\$\{activeTripId\}\/plans\/current`\)/);
   assert.match(tripAppState, /const loadError = error \|\| \(missingSession \? 'Join from an invite link or configure a membership session\.' : ''\)/);
@@ -57,7 +57,7 @@ test("characterizes current restored-trip session behavior in TripAppState", asy
 test("characterizes current invite fact availability and policy-driven join destinations", async () => {
   const { finalApp, tripAppState, backendTripService } = await loadSources();
 
-  assert.match(finalApp, /const savedInviteSession = useMemo\(\(\) => readInviteSession\(token\), \[token\]\)/);
+  assert.match(finalApp, /const savedInviteSession = useMemo\(\(\) => app\.readInviteAdoption\(token\), \[app, token\]\)/);
   assert.match(finalApp, /app\.getInvite\(token\)/);
   assert.match(finalApp, /resolveInviteJoinRoute\(\{/);
   assert.match(finalApp, /inviteTripId: savedInviteSession\?\.tripId \|\| null/);
@@ -66,8 +66,7 @@ test("characterizes current invite fact availability and policy-driven join dest
   assert.match(finalApp, /This link is no longer active/);
   assert.doesNotMatch(finalApp, /navigate\(`\/trip\/\$\{saved\.tripId\}\/plan`, \{ replace: true \}\)/);
   assert.doesNotMatch(finalApp, /navigate\(`\/trip\/\$\{joined\.trip_id\}\/preferences`, \{ replace: true \}\)/);
-  assert.match(tripAppState, /const INVITE_SESSION_PREFIX = 'tripsync:invite:'/);
-  assert.match(tripAppState, /writeLocal\(`\$\{INVITE_SESSION_PREFIX\}\$\{inviteToken\}`/);
+  assert.match(tripAppState, /sessionRuntime\.adoptTechnicalTripContext\(\{/);
   assert.match(backendTripService, /def invite_preview\(db: Session, token: str\) -> dict:/);
   assert.doesNotMatch(backendTripService, /"trip_id": invite\.trip_id/);
   assert.match(backendTripService, /return JoinedInvite\(membership=membership, trip_id=invite\.trip_id\)/);

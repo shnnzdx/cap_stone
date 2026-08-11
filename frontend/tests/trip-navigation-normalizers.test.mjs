@@ -23,7 +23,7 @@ function toResolutionInput(workspaceFacts, extras = {}) {
 
 test("normalizeWorkspaceSessionFacts maps multiple account-backed memberships and trip states", () => {
   const actual = normalizeWorkspaceSessionFacts({
-    authToken: "token-1",
+    hasAccountSession: true,
     memberships: [
       { membership_id: "m-1", trip_id: "t-1", role: "organizer" },
       { membership_id: "m-2", trip_id: "t-2", role: "participant" },
@@ -86,7 +86,7 @@ test("normalizeWorkspaceSessionFacts keeps state-only trip facts and missing sta
 
 test("normalizeWorkspaceSessionFacts derives session-no-trip-access without manufacturing memberships", () => {
   const actual = normalizeWorkspaceSessionFacts({
-    authToken: "token-2",
+    hasAccountSession: true,
   });
 
   assert.equal(actual.accessState, "session-no-trip-access");
@@ -96,7 +96,7 @@ test("normalizeWorkspaceSessionFacts derives session-no-trip-access without manu
 
 test("normalizeWorkspaceSessionFacts can delegate route-path parsing to the shared workspace route codec", () => {
   const actual = normalizeWorkspaceSessionFacts({
-    authToken: "token-3",
+    hasAccountSession: true,
     memberships: [{ membership_id: "m-1", trip_id: "t-1", role: "participant" }],
     activeTrip: { id: "t-1", status: "planning" },
     restoredTripId: "t-stale",
