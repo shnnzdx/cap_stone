@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { TripAppProvider, useTripApp } from './TripAppState.jsx'
 import { otherTrips, trip, tripMembers, tripStyles } from './tripContent.js'
 import TripMap from './TripMap.jsx'
+import { serializeWorkspaceRoute } from '../../../shared/trip-navigation-route/index.js'
+import { buildTripPreviewAbsoluteUrl } from '../../../shared/tripsync-preview-contract.js'
+import {
+  buildWorkspaceNavigationModel,
+  resolveCurrentWorkspaceRoute,
+  resolveInviteJoinRoute,
+  resolveRestoredWorkspaceDestination,
+} from './workspace-navigation-model.js'
 
 const visibleStatus = status => ['Booked', 'Updated'].includes(status) ? status : ''
 const statusTone = status => status === 'Booked' ? 'purple' : status === 'Updated' ? 'green' : 'blue'
@@ -95,6 +103,29 @@ const pathClass = {
   reopen_round: 'pathB',
   confirm: 'pathC',
 }
+const tripNavigationLabels = {
+  plan: 'Plan',
+  chat: 'Chat',
+  updates: 'Updates',
+  preferences: 'Preferences',
+  members: 'Members',
+  invite: 'Invite',
+}
+const accountNavigationLabels = {
+  'account-profile': 'Profile',
+  'account-travel': 'Travel profile',
+  'account-notifications': 'Notifications',
+  'account-settings': 'Settings',
+}
+const workspaceHomeHref = () => serializeWorkspaceRoute({ kind: 'home' })
+const workspaceCreateHref = () => serializeWorkspaceRoute({ kind: 'create-trip' })
+const accountHref = section => serializeWorkspaceRoute({ kind: 'account', section })
+const tripHref = (tripId, section) => serializeWorkspaceRoute({ kind: 'trip', tripId, section })
+const joinHref = token => serializeWorkspaceRoute({ kind: 'join', token })
+const tripPlanHref = (tripId, focusItemId) => {
+  const href = tripHref(tripId, 'plan')
+  return focusItemId ? `${href}?focus=${encodeURIComponent(focusItemId)}` : href
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -186,9 +217,10 @@ function ActionBell() {
   const [open, setOpen] = useState(false)
   const ref = useClickOutside(open, () => setOpen(false))
   const currentTrip = app.trip || trip
+  const updatesHref = tripHref(currentTrip.id, 'updates')
   const actions = []
-  app.activeRounds?.filter(round => round.status === 'open').forEach(round => actions.push({ trip: currentTrip.name, text: `${round.itemTitle || 'A block'} has a group round open`, to: `/trip/${currentTrip.id}/updates` }))
-  app.activeProposals?.filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).forEach(proposal => actions.push({ trip: currentTrip.name, text: proposal.status === 'escalated' ? `${proposal.before?.title || 'A proposal'} is with the organizer` : `${proposal.before?.title || 'A proposal'} is waiting for confirmation`, to: `/trip/${currentTrip.id}/updates` }))
+  app.activeRounds?.filter(round => round.status === 'open').forEach(round => actions.push({ trip: currentTrip.name, text: `${round.itemTitle || 'A block'} has a group round open`, to: updatesHref }))
+  app.activeProposals?.filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).forEach(proposal => actions.push({ trip: currentTrip.name, text: proposal.status === 'escalated' ? `${proposal.before?.title || 'A proposal'} is with the organizer` : `${proposal.before?.title || 'A proposal'} is waiting for confirmation`, to: updatesHref }))
   return <div className="actionBellWrap" ref={ref}>
     <button className={cx('actionBell', actions.length && 'hasActions')} type="button" onClick={() => setOpen(current => !current)} aria-label="Action inbox">🔔</button>
     {open && <div className="actionInbox">
@@ -198,7 +230,7 @@ function ActionBell() {
         <strong>{action.trip}</strong>
         <span>{action.text}</span>
       </Link>)}
-      {actions.length > 0 && <Link className="actionInboxFooter" to={`/trip/${currentTrip.id}/updates`}>Open trip actions →</Link>}
+      {actions.length > 0 && <Link className="actionInboxFooter" to={updatesHref}>Open trip actions →</Link>}
     </div>}
   </div>
 }
@@ -209,10 +241,10 @@ function ProfileMenu() {
   const [open, setOpen] = useState(false)
   const ref = useClickOutside(open, () => setOpen(false))
   const menuLinks = [
-    { to: '/account/profile', icon: '◌', label: 'Profile', detail: 'Name, email, account' },
-    { to: '/account/travel', icon: '✈', label: 'Travel profile', detail: 'Defaults for new trips' },
-    { to: '/account/notifications', icon: '◍', label: 'Notifications', detail: 'Trip alerts and reminders' },
-    { to: '/account/settings', icon: '⚙', label: 'Settings', detail: 'Privacy and appearance' },
+    { to: accountHref('profile'), icon: '◌', label: 'Profile', detail: 'Name, email, account' },
+    { to: accountHref('travel'), icon: '✈', label: 'Travel profile', detail: 'Defaults for new trips' },
+    { to: accountHref('notifications'), icon: '◍', label: 'Notifications', detail: 'Trip alerts and reminders' },
+    { to: accountHref('settings'), icon: '⚙', label: 'Settings', detail: 'Privacy and appearance' },
   ]
   return <div className="profileMenuWrap" ref={ref}>
     <button className="profileButton" type="button" onClick={() => setOpen(current => !current)} aria-label="Profile menu">{currentUser.initials}</button>
@@ -233,7 +265,7 @@ const cardPhotos = ['photoLake', 'photoMountain', 'photoNight', 'photoChicago']
 function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to }) {
   const app = useTripApp()
   const currentTrip = app.trip || trip
-  return <Link className="dashboardTripCard" to={to || `/trip/${currentTrip.id}/plan`}>
+  return <Link className="dashboardTripCard" to={to || tripHref(currentTrip.id, 'plan')}>
     <div className={`tripPhoto ${imageClass}`}><Badge tone={tone}>{status}</Badge></div>
     <div className="dashboardTripBody">
       <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
@@ -249,26 +281,97 @@ function ActivityPhoto({ item }) {
   return <div className="activityPhoto"><img src={item.photoUrl} alt="" loading="lazy" onError={() => setFailed(true)}/></div>
 }
 
+function WorkspaceRouteGuard() {
+  const location = useLocation()
+  const app = useTripApp()
+  const initialPathRef = useRef(location.pathname)
+  const restorationResolvedRef = useRef(false)
+  const restorationFactsPending = Boolean(
+    !restorationResolvedRef.current &&
+    location.pathname === initialPathRef.current &&
+    app.currentUser &&
+    app.authToken &&
+    app.tripSummariesStatus === 'loading',
+  )
+  const restorationResolution = useMemo(() => {
+    if (restorationResolvedRef.current) return null
+    if (location.pathname !== initialPathRef.current) return null
+    if (!app.currentUser || app.loading.initial) return null
+    if (app.authToken && app.tripSummariesStatus !== 'ready') return null
+    return resolveRestoredWorkspaceDestination({
+      currentRoutePath: location.pathname,
+      authToken: app.authToken,
+      membershipId: app.membershipId,
+      currentUser: app.currentUser,
+      tripSummaries: app.tripSummaries,
+      activeTrip: app.trip || trip,
+      activeTripId: app.activeTripId,
+      restoredTripId: app.restoredTripId,
+    })
+  }, [
+    app.activeTripId,
+    app.authToken,
+    app.currentUser,
+    app.loading.initial,
+    app.membershipId,
+    app.restoredTripId,
+    app.trip,
+    app.tripSummaries,
+    app.tripSummariesStatus,
+    location.pathname,
+  ])
+  const resolution = useMemo(() => resolveCurrentWorkspaceRoute({
+    currentRoutePath: location.pathname,
+    currentUser: app.currentUser,
+    activeTrip: app.trip || trip,
+    activeTripId: app.activeTripId,
+  }), [app.activeTripId, app.currentUser, app.trip, location.pathname])
+
+  useEffect(() => {
+    if (restorationResolvedRef.current) return
+    if (location.pathname !== initialPathRef.current) {
+      restorationResolvedRef.current = true
+      return
+    }
+    if (!app.currentUser || app.loading.initial) return
+    if (!app.authToken || ['ready', 'failed', 'not-needed'].includes(app.tripSummariesStatus)) {
+      restorationResolvedRef.current = true
+    }
+  }, [app.authToken, app.currentUser, app.loading.initial, app.tripSummariesStatus, location.pathname])
+
+  if (restorationFactsPending) {
+    return null
+  }
+
+  if (restorationResolution?.disposition === 'redirect') {
+    return <Navigate to={restorationResolution.destinationHref} replace/>
+  }
+
+  if (resolution?.disposition === 'redirect') {
+    return <Navigate to={resolution.destinationHref} replace/>
+  }
+
+  return <Outlet/>
+}
+
 function Home() {
   const app = useTripApp()
-  const currentUser = app.currentUser
   // Guest 没有账户,也就没有跨 trip 的仪表盘。直连过来就送回他所在的那趟旅行。
   const currentTrip = app.trip || trip
-  if (currentUser.role === 'guest') return <Navigate to={`/trip/${currentTrip.id}/plan`} replace/>
   const roundOpen = app.activeRounds?.some(round => round.status === 'open')
   const proposalPending = app.activeProposals?.some(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
   return <main className="homePage">
-    <header className="editorialNav"><Logo/><nav><Link className="active" to="/">MY TRIPS</Link><Link to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
+    <header className="editorialNav"><Logo/><nav><Link className="active" to={workspaceHomeHref()}>MY TRIPS</Link><Link to={workspaceCreateHref()}>NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
     <section className="homeContent">
       <div className="dashboardMasthead">
         <div><span className="eyebrow">My trips</span><h1>Upcoming trips</h1><p>Pick up where the group left off.</p></div>
       </div>
-      <Link className="createTripStrip featureCreateTrip" to="/create"><div><span className="roleChip">Create new trip</span><h2>Start a group trip frame</h2><p>Choose destination, dates, budget, and invite people when the frame is ready.</p></div><strong>New trip →</strong></Link>
-      {roundOpen && <Link className="dashboardAlert" to={`/trip/${currentTrip.id}/updates`}><span>◇</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option — it closes on its own.</p></div><b>Choose →</b></Link>}
-      {proposalPending && <Link className="dashboardAlert" to={`/trip/${currentTrip.id}/updates`}><span>!</span><div><strong>A proposal is waiting for confirmation</strong><p>The current plan stays active until the affected members accept.</p></div><b>Review →</b></Link>}
+      <Link className="createTripStrip featureCreateTrip" to={workspaceCreateHref()}><div><span className="roleChip">Create new trip</span><h2>Start a group trip frame</h2><p>Choose destination, dates, budget, and invite people when the frame is ready.</p></div><strong>New trip →</strong></Link>
+      {roundOpen && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>◇</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option — it closes on its own.</p></div><b>Choose →</b></Link>}
+      {proposalPending && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>!</span><div><strong>A proposal is waiting for confirmation</strong><p>The current plan stays active until the affected members accept.</p></div><b>Review →</b></Link>}
       <section className="dashboardGrid">
-        {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Ready to plan" to={`/trip/${created.id}/plan`}/>)}
-        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Aug 14–17'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Awaiting confirmation' : 'Current plan'} to={`/trip/${currentTrip.id}/plan`} />
+        {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Ready to plan" to={tripHref(created.id, 'plan')}/>)}
+        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Aug 14–17'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Awaiting confirmation' : 'Current plan'} to={tripHref(currentTrip.id, 'plan')} />
         {otherTrips.map(other => <DashboardCard key={other.id} title={other.name} location={other.destination} dates={other.dates} status={other.status} tone={other.tone} imageClass={other.photo} detail={other.detail}/>)}
       </section>
     </section>
@@ -282,28 +385,29 @@ function TripShell({ children }) {
   const currentTrip = useCurrentTrip()
   const pending = (app.activeRounds || []).filter(round => round.status === 'open').length +
     (app.activeProposals || []).filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).length
-  const segment = location.pathname.split('/').filter(Boolean).pop()
-  const active = segment === 'conflict' ? 'chat' : segment
+  const navigation = useMemo(() => buildWorkspaceNavigationModel({
+    currentRoutePath: location.pathname,
+    currentUser,
+    activeTrip: currentTrip,
+    activeTripId: app.activeTripId,
+  }), [app.activeTripId, currentTrip, currentUser, location.pathname])
   // 组织者不是超级用户,只是多了几个「维护公共框架」的入口。
   // Plan / Chat / Updates / Preferences 三种角色完全一致。
-  const isOrganizer = currentUser.role === 'organizer'
   const isGuest = currentUser.role === 'guest'
   return <div className="tripPage">
     <header className="tripUnifiedHeader">
       {/* trip 页里 logo 和「My Trips」原本是两个指向同一处的链接,合并成一个返回入口 */}
       <div className="tripUnifiedBrand">
-        {isGuest
+        {!navigation.contextHref
           ? <span className="brandBack" aria-label="Cadensy"><span className="logoMark">C</span><span>Cadensy</span></span>
-          : <Link className="brandBack" to="/"><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
+          : <Link className="brandBack" to={navigation.contextHref}><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
       </div>
       <div className="tripUnifiedCenter">
         <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
-          <Link className={active === 'plan' ? 'active' : ''} to={`/trip/${currentTrip.id}/plan`}>Plan</Link>
-          <Link className={active === 'chat' ? 'active' : ''} to={`/trip/${currentTrip.id}/chat`}>Chat</Link>
-          <Link className={active === 'updates' ? 'active' : ''} to={`/trip/${currentTrip.id}/updates`}>Updates{pending > 0 && <i>{pending}</i>}</Link>
-          <Link className={active === 'preferences' ? 'active' : ''} to={`/trip/${currentTrip.id}/preferences`}>Preferences</Link>
-          {isOrganizer && <Link className={active === 'members' ? 'active' : ''} to={`/trip/${currentTrip.id}/members`}>Members</Link>}
-          {isOrganizer && <Link className={active === 'invite' ? 'active' : ''} to={`/trip/${currentTrip.id}/invite`}>Invite</Link>}
+          {navigation.entries.map(entry => <Link key={entry.id} className={entry.active ? 'active' : ''} to={entry.href}>
+            {tripNavigationLabels[entry.id] || entry.id}
+            {entry.id === 'updates' && pending > 0 && <i>{pending}</i>}
+          </Link>)}
         </nav></div>
       </div>
       <div className="tripUnifiedRight">
@@ -346,8 +450,6 @@ function SaveToAccount() {
 // 组织者专属。只显示「加没加入 / 交没交偏好」,永远不显示偏好内容。
 function MembersPage() {
   const app = useTripApp()
-  const currentUser = app.currentUser
-  const currentTrip = useCurrentTrip()
   const [roster, setRoster] = useState(null)
   const [reminded, setReminded] = useState({})
   const [remindingId, setRemindingId] = useState('')
@@ -387,9 +489,6 @@ function MembersPage() {
     } finally {
       setRemindingId('')
     }
-  }
-  if (currentUser.role !== 'organizer') {
-    return <TripShell><div className="emptyState quietEmptyState"><span></span><h2>Organizer only</h2><p>The member roster is part of maintaining the trip frame. Your own preferences and the shared plan are unaffected.</p><Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/plan`}>Back to plan</Link></div></TripShell>
   }
   return <TripShell>
     <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Members</span><h1>Who is on this trip</h1></div></div>
@@ -459,7 +558,7 @@ function DecisionRoundCard({ round, compact }) {
   const tally = round.tally || {}
   const leading = Math.max(1, ...Object.values(tally))
   const isReopen = round.kind === 'reopen'
-  const planTarget = `/trip/${currentTrip.id}/plan${round.itemId ? `?focus=${round.itemId}` : ''}`
+  const planTarget = tripPlanHref(currentTrip.id, round.itemId)
   const extend = async () => {
     try {
       await app.extendRound(round.id)
@@ -502,7 +601,7 @@ function DecisionRoundCard({ round, compact }) {
       <span>Anonymous — nobody sees who picked what.</span>
       <div className="roundFooterActions">
         {isOrganizer && <button type="button" className="roundDiscuss" disabled={app.loading.action} onClick={extend}>{app.loading.action ? 'Extending...' : 'Extend'}</button>}
-        <button type="button" className="roundDiscuss" onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>None of these work — discuss instead</button>
+        <button type="button" className="roundDiscuss" onClick={() => navigate(tripHref(currentTrip.id, 'conflict'))}>None of these work — discuss instead</button>
       </div>
     </div>}
     {closed && <div className="roundFooter">
@@ -568,7 +667,7 @@ function NewTripPlan({ currentTrip }) {
         </div>
         <div className="collectBar"><i style={{ width: `${Math.min(100, (submitted / total) * 100)}%` }}/></div>
         {!isOrganizer && <p className="fieldHint">Waiting for the organizer to generate the itinerary.</p>}
-        {isOrganizer && !meSubmitted && <p className="fieldHint">Share your own preferences first; the itinerary should be checked against what you need too. <Link className="inlineAction" to={`/trip/${currentTrip.id}/preferences`}>Open preferences →</Link></p>}
+        {isOrganizer && !meSubmitted && <p className="fieldHint">Share your own preferences first; the itinerary should be checked against what you need too. <Link className="inlineAction" to={tripHref(currentTrip.id, 'preferences')}>Open preferences →</Link></p>}
         {isOrganizer && meSubmitted && missing > 0 && <div className="generateCopy"><p>{progressText}</p><p>{missing} {missing === 1 ? 'person has' : 'people have'} not shared theirs; their hard limits will not be taken into account.</p></div>}
         {isOrganizer && meSubmitted && missing === 0 && <p className="fieldHint">Everyone's requirements will be checked.</p>}
         {blockedReason && <div className="generationError"><strong>{blockedReason}</strong><p>You can loosen requirements or adjust the dates.</p></div>}
@@ -578,8 +677,8 @@ function NewTripPlan({ currentTrip }) {
       <div className="proposalCard tripFrameLine"><span>Trip frame</span><h3>{currentTrip.destination} · {currentTrip.dates}</h3><p>{currentTrip.assumptions || 'Share the invite link.'}</p></div>
       <div className="btnRow">
         {isOrganizer && <Button disabled={!canGenerate} onClick={generate}>{app.loading.action ? 'Generating...' : 'Generate itinerary'}</Button>}
-        {isOrganizer && <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/members`}>See who's in →</Link>}
-        <Link className="btn btnSecondary" to={`/trip/${currentTrip.id}/preferences`}>{submitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
+        {isOrganizer && <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'members')}>See who's in →</Link>}
+        <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>{submitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
       </div>
     </div>
   </>
@@ -699,7 +798,7 @@ function PlanPage() {
         <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Button secondary className="askCadensyBtn" onClick={() => openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask Cadensy</Button></div></div>
         {app.loading.initial && <div className="planNotice"><span>…</span><div><strong>Loading trip data</strong><p>Fetching the current plan from the backend.</p></div></div>}
         {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
-        {app.conflictCreated && !app.decisionResolved && <Link className="planNotice" to={`/trip/${currentTrip.id}/updates`}><span>!</span><div><strong>Proposed change waiting for confirmation</strong><p>A hard constraint is involved. The current plan remains active until the affected members accept.</p></div><b>Review →</b></Link>}
+        {app.conflictCreated && !app.decisionResolved && <Link className="planNotice" to={tripHref(currentTrip.id, 'updates')}><span>!</span><div><strong>Proposed change waiting for confirmation</strong><p>A hard constraint is involved. The current plan remains active until the affected members accept.</p></div><b>Review →</b></Link>}
         {app.decisionResolved && <div className="successNotice"><span>✓</span><div><strong>The plan was updated</strong><p>Every affected member confirmed. Bookings elsewhere in the plan are unchanged.</p></div></div>}
         <div className="accordionPlan">
           {days.map(day => {
@@ -872,7 +971,7 @@ function AssistantDrawer({ item, mode, onClose, onOutcome, inline = false }) {
         onOutcome?.(outcome, targetItem)
       } else {
         setPendingRedirect('Affected members need to confirm. Opening the conversation...')
-        window.setTimeout(() => navigate(`/trip/${(app.trip || trip).id}/conflict`), 850)
+        window.setTimeout(() => navigate(tripHref((app.trip || trip).id, 'conflict')), 850)
       }
     } catch (err) {
       const applyError = err.status === 409
@@ -979,8 +1078,8 @@ function ChatWorkspace({ thread }) {
     <div className="chatLayout">
       <aside className="conversationList">
         <div className="conversationHead"><span className="eyebrow">Conversations</span><h2>Chat</h2></div>
-        <Link className={cx('conversation', thread === 'personal' && 'active')} to={`/trip/${currentTrip.id}/chat`}><span className="aiAvatar">C</span><div><strong>Cadensy</strong><small>Personal planning assistant</small></div></Link>
-        {showTradeoff && <Link className={cx('conversation', thread === 'tradeoff' && 'active')} to={`/trip/${currentTrip.id}/conflict`}><span className="pairAvatar anon">◍</span><div><strong>Constraint tradeoff</strong><small>Anonymous · affected members only</small></div></Link>}
+        <Link className={cx('conversation', thread === 'personal' && 'active')} to={tripHref(currentTrip.id, 'chat')}><span className="aiAvatar">C</span><div><strong>Cadensy</strong><small>Personal planning assistant</small></div></Link>
+        {showTradeoff && <Link className={cx('conversation', thread === 'tradeoff' && 'active')} to={tripHref(currentTrip.id, 'conflict')}><span className="pairAvatar anon">◍</span><div><strong>Constraint tradeoff</strong><small>Anonymous · affected members only</small></div></Link>}
       </aside>
       {thread === 'tradeoff' && showTradeoff ? <TradeoffThread/> : thread === 'tradeoff' ? <EmptyTradeoffPanel tripId={currentTrip.id}/> : <PersonalThread/>}
     </div>
@@ -991,7 +1090,7 @@ function EmptyTradeoffPanel({ tripId }) {
   return <section className="chatPanel">
     <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>No active conversation</p></div></div></header>
     <div className="messages">
-      <div className="emptyState quietEmptyState"><span></span><h2>Nothing to resolve</h2><p>Most changes never reach a conversation. One opens here only when a change touches a hard constraint that cannot be settled by choosing an option.</p><Link className="btn btnSecondary" to={`/trip/${tripId}/plan`}>Back to plan</Link></div>
+      <div className="emptyState quietEmptyState"><span></span><h2>Nothing to resolve</h2><p>Most changes never reach a conversation. One opens here only when a change touches a hard constraint that cannot be settled by choosing an option.</p><Link className="btn btnSecondary" to={tripHref(tripId, 'plan')}>Back to plan</Link></div>
     </div>
   </section>
 }
@@ -1055,7 +1154,7 @@ function TradeoffThread() {
   const proposal = app.activeProposal
   if (!proposal) return null
   const { before, after, affectedMembers } = proposal
-  const planTarget = `/trip/${currentTrip.id}/plan${proposal.sourceItemId ? `?focus=${proposal.sourceItemId}` : ''}`
+  const planTarget = tripPlanHref(currentTrip.id, proposal.sourceItemId)
   const applied = app.decisionResolved || proposal.status === 'applied'
   const unchanged = ['declined', 'withdrawn', 'expired'].includes(proposal.status)
   const escalated = proposal.status === 'escalated'
@@ -1126,7 +1225,7 @@ function UpdatesPage() {
           <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can split or clear this block.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
           <div className="changeCompare"><div><small>Current{proposal.before.dayLabel ? ` · ${proposal.before.dayLabel}` : ''}</small><strong>{proposal.before.time} · {proposal.before.title}</strong><span>{proposal.before.place}</span></div><b>→</b><div className="new"><small>Proposed{proposal.after.dayLabel ? ` · ${proposal.after.dayLabel}` : ''}</small><strong>{proposal.after.time} · {proposal.after.title}</strong><span>{proposal.after.place}</span></div></div>
           <div className="impactRow">{proposal.affectedMembers.map(member => <span key={member.id}>{member.label}: {member.status === 'accepted' ? 'accepted' : 'needs decision'}</span>)}<span>Names hidden</span></div>
-          <div className="decisionActions"><Button onClick={() => navigate(`/trip/${currentTrip.id}/conflict`)}>Open the conversation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
+          <div className="decisionActions"><Button onClick={() => navigate(tripHref(currentTrip.id, 'conflict'))}>Open the conversation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
         </article>)}
       </>}
       {app.updateFilter === 'all' && <>
@@ -1377,12 +1476,13 @@ function PreferencesPage() {
 function AccountPage({ section = 'profile' }) {
   const app = useTripApp()
   const currentUser = app.currentUser
-  const tabs = [
-    { id: 'profile', label: 'Profile', to: '/account/profile' },
-    { id: 'travel', label: 'Travel profile', to: '/account/travel' },
-    { id: 'notifications', label: 'Notifications', to: '/account/notifications' },
-    { id: 'settings', label: 'Settings', to: '/account/settings' },
-  ]
+  const location = useLocation()
+  const tabs = useMemo(() => buildWorkspaceNavigationModel({
+    currentRoutePath: location.pathname,
+    currentUser,
+    activeTrip: app.trip || trip,
+    activeTripId: app.activeTripId,
+  }).entries, [app.activeTripId, app.trip, currentUser, location.pathname])
   const pages = {
     profile: {
       eyebrow: 'Account',
@@ -1427,13 +1527,13 @@ function AccountPage({ section = 'profile' }) {
   }
   const content = pages[section] || pages.profile
   return <div className="simplePage accountPage">
-    <header className="editorialNav glassTop"><Logo/><nav><Link to="/">MY TRIPS</Link><Link to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
+    <header className="editorialNav glassTop"><Logo/><nav><Link to={workspaceHomeHref()}>MY TRIPS</Link><Link to={workspaceCreateHref()}>NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
     <main className="accountShell">
       <aside className="accountSide">
         <span className="profilePhoto accountPhoto">{currentUser.initials}</span>
         <h2>{currentUser.name}</h2>
         <p>{currentUser.email || 'Guest account'}</p>
-        <nav>{tabs.map(tab => <Link key={tab.id} className={section === tab.id ? 'active' : ''} to={tab.to}>{tab.label}</Link>)}</nav>
+        <nav>{tabs.map(tab => <Link key={tab.id} className={tab.active ? 'active' : ''} to={tab.href}>{accountNavigationLabels[tab.id] || tab.id}</Link>)}</nav>
       </aside>
       <section className="accountPanel">
         <span className="eyebrow">{content.eyebrow}</span>
@@ -1472,14 +1572,14 @@ function CreateTrip() {
       })
       app.setInviteCopied(false)
       app.notify('Trip created')
-      navigate(`/trip/${created.id}/invite`)
+      navigate(tripHref(created.id, 'invite'))
     } catch {
       /* provider already surfaced it */
     } finally {
       setCreating(false)
     }
   }
-  return <div className="simplePage createPage"><header className="editorialNav glassTop"><Logo/><nav><Link to="/">MY TRIPS</Link><Link className="active" to="/create">NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header><main className="createEditorial">
+  return <div className="simplePage createPage"><header className="editorialNav glassTop"><Logo/><nav><Link to={workspaceHomeHref()}>MY TRIPS</Link><Link className="active" to={workspaceCreateHref()}>NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header><main className="createEditorial">
     <section className="createHero"><div><span className="roleChip">Organizer</span><h1>Create the trip frame.</h1><p>Set the destination, date window, group size, and shared assumptions. Guests add their preferences after joining.</p></div><div className="createHeroPhoto"><Badge tone="blue">New trip</Badge></div></section>
     <section className="preferenceCard createGrid createFlow">
       <div className="formChapter wide"><span>01</span><h2>Where and why</h2></div>
@@ -1503,7 +1603,7 @@ function InvitePage() {
   const [invite, setInvite] = useState(null)
   const [loadingInvite, setLoadingInvite] = useState(false)
   const [inviteError, setInviteError] = useState('')
-  const inviteUrl = invite ? `${window.location.origin}${window.location.pathname}#/join/${invite.token}` : ''
+  const inviteUrl = invite ? buildTripPreviewAbsoluteUrl(window.location.origin, joinHref(invite.token)) : ''
   useEffect(() => {
     let cancelled = false
     setLoadingInvite(true)
@@ -1544,7 +1644,7 @@ function InvitePage() {
       <section className="linkPanel">
         <div><span className="roleChip">{app.inviteCopied ? 'Link copied' : 'Ready to share'}</span><h2>{currentTrip.name}</h2><p>{currentTrip.destination} · {currentTrip.dates}</p></div>
         <label>Invite link<input readOnly value={loadingInvite ? 'Creating link...' : inviteError || inviteUrl}/></label>
-        <div className="copyActions"><Button disabled={!inviteUrl} onClick={copyLink}>{app.inviteCopied ? 'Copied' : 'Copy link'}</Button><Button secondary onClick={() => navigate(`/trip/${currentTrip.id}/plan`)}>Start planning</Button>{invite && <Button ghost onClick={revokeLink}>Revoke link</Button>}</div>
+        <div className="copyActions"><Button disabled={!inviteUrl} onClick={copyLink}>{app.inviteCopied ? 'Copied' : 'Copy link'}</Button><Button secondary onClick={() => navigate(tripHref(currentTrip.id, 'plan'))}>Start planning</Button>{invite && <Button ghost onClick={revokeLink}>Revoke link</Button>}</div>
         {app.inviteCopied && <div className="copiedState"><strong>Link ready to share</strong></div>}
         {inviteError && <div className="copiedState"><strong>{inviteError}</strong></div>}
       </section>
@@ -1563,28 +1663,29 @@ function JoinInvitePage() {
   const [joining, setJoining] = useState(false)
   const [invalid, setInvalid] = useState(false)
   const [error, setError] = useState('')
+  const savedInviteSession = useMemo(() => readInviteSession(token), [token])
   const dateText = preview ? [formatInviteDate(preview.preferred_start_date), formatInviteDate(preview.preferred_end_date)].filter(Boolean).join(' – ') : ''
   useEffect(() => {
-    const saved = readInviteSession(token)
     let cancelled = false
     setLoadingInvite(true)
     setInvalid(false)
     app.getInvite(token)
       .then(data => {
         if (cancelled) return
-        if (saved?.membershipId && saved?.tripId) {
-          // Temporary local identity until real login exists: the invite token
-          // maps to the membership created on this browser. The preview request
-          // above still confirms a revoked or expired link before auto-entering.
+        setPreview(data)
+        if (
+          savedInviteSession?.membershipId &&
+          savedInviteSession?.tripId &&
+          (
+            app.membershipId !== savedInviteSession.membershipId ||
+            app.activeTripId !== savedInviteSession.tripId
+          )
+        ) {
           app.adoptMembership({
-            membershipId: saved.membershipId,
-            tripId: saved.tripId,
+            membershipId: savedInviteSession.membershipId,
+            tripId: savedInviteSession.tripId,
             inviteToken: token,
-            profile: { name: 'Guest', role: 'guest', isGuest: true },
           })
-          navigate(`/trip/${saved.tripId}/plan`, { replace: true })
-        } else {
-          setPreview(data)
         }
       })
       .catch(err => {
@@ -1599,7 +1700,27 @@ function JoinInvitePage() {
     return () => {
       cancelled = true
     }
-  }, [app.adoptMembership, app.getInvite, navigate, token])
+  }, [app.activeTripId, app.adoptMembership, app.getInvite, app.membershipId, savedInviteSession, token])
+  const inviteOpenResolution = useMemo(() => {
+    if (!token || (!preview && !invalid)) return null
+    return resolveInviteJoinRoute({
+      currentRoutePath: joinHref(token),
+      currentUser: app.currentUser,
+      activeTrip: app.trip || trip,
+      activeTripId: app.activeTripId,
+      membershipId: app.membershipId,
+      token,
+      step: 'open',
+      invitePreview: preview,
+      inviteErrorStatus: invalid ? 404 : null,
+      inviteTripId: savedInviteSession?.tripId || null,
+    })
+  }, [app.activeTripId, app.currentUser, app.membershipId, app.trip, invalid, preview, savedInviteSession, token])
+  useEffect(() => {
+    if (inviteOpenResolution?.disposition === 'redirect') {
+      navigate(inviteOpenResolution.destinationHref, { replace: true })
+    }
+  }, [inviteOpenResolution, navigate])
   const join = async withAccount => {
     if (!name.trim()) {
       setError('Enter your name to join this trip.')
@@ -1627,7 +1748,23 @@ function JoinInvitePage() {
           isGuest: !withAccount,
         },
       })
-      navigate(`/trip/${joined.trip_id}/preferences`, { replace: true })
+      const completionResolution = resolveInviteJoinRoute({
+        currentRoutePath: joinHref(token),
+        currentUser: {
+          tripId: joined.trip_id,
+          role: withAccount ? joined.role : 'guest',
+          isGuest: !withAccount,
+        },
+        activeTrip: {
+          id: joined.trip_id,
+        },
+        activeTripId: joined.trip_id,
+        membershipId: joined.membership_id,
+        token,
+        step: 'complete',
+        joinResult: joined,
+      })
+      navigate(completionResolution.destinationHref, { replace: true })
     } catch (err) {
       if (err.status === 404) setInvalid(true)
       else setError(err.message || 'Could not join this trip')
@@ -1667,19 +1804,21 @@ function JoinInvitePage() {
 export default function FinalApp() {
   return <TripAppProvider><Routes>
     <Route path="*" element={<Navigate to="/" replace/>}/>
-    <Route path="/" element={<Home/>}/>
-    <Route path="/create" element={<CreateTrip/>}/>
-    <Route path="/account/profile" element={<AccountPage section="profile"/>}/>
-    <Route path="/account/travel" element={<AccountPage section="travel"/>}/>
-    <Route path="/account/notifications" element={<AccountPage section="notifications"/>}/>
-    <Route path="/account/settings" element={<AccountPage section="settings"/>}/>
-    <Route path="/trip/:tripId/plan" element={<PlanPage/>}/>
-    <Route path="/trip/:tripId/chat" element={<ChatWorkspace thread="personal"/>}/>
-    <Route path="/trip/:tripId/conflict" element={<ChatWorkspace thread="tradeoff"/>}/>
-    <Route path="/trip/:tripId/updates" element={<UpdatesPage/>}/>
-    <Route path="/trip/:tripId/preferences" element={<PreferencesPage/>}/>
-    <Route path="/trip/:tripId/members" element={<MembersPage/>}/>
-    <Route path="/trip/:tripId/invite" element={<InvitePage/>}/>
+    <Route element={<WorkspaceRouteGuard/>}>
+      <Route path="/" element={<Home/>}/>
+      <Route path="/create" element={<CreateTrip/>}/>
+      <Route path="/account/profile" element={<AccountPage section="profile"/>}/>
+      <Route path="/account/travel" element={<AccountPage section="travel"/>}/>
+      <Route path="/account/notifications" element={<AccountPage section="notifications"/>}/>
+      <Route path="/account/settings" element={<AccountPage section="settings"/>}/>
+      <Route path="/trip/:tripId/plan" element={<PlanPage/>}/>
+      <Route path="/trip/:tripId/chat" element={<ChatWorkspace thread="personal"/>}/>
+      <Route path="/trip/:tripId/conflict" element={<ChatWorkspace thread="tradeoff"/>}/>
+      <Route path="/trip/:tripId/updates" element={<UpdatesPage/>}/>
+      <Route path="/trip/:tripId/preferences" element={<PreferencesPage/>}/>
+      <Route path="/trip/:tripId/members" element={<MembersPage/>}/>
+      <Route path="/trip/:tripId/invite" element={<InvitePage/>}/>
+    </Route>
     <Route path="/join/:token" element={<JoinInvitePage/>}/>
   </Routes><ScrollToTop/></TripAppProvider>
 }

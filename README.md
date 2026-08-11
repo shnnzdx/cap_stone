@@ -22,7 +22,8 @@ Shared files you will touch most often:
 
 - `shared/tripsync-preview-theme.css`
 - `shared/tripsync-preview-contract.js`
-- `shared/tripsync-domain.js`
+- `shared/trip-navigation-route/`
+- `shared/trip-navigation-policy/`
 - `shared/tripsync-product-content.js`
 - `shared/tripsync-demo-data.js`
 
@@ -34,7 +35,7 @@ Completed:
 
 - Shared embed theme between the shell and the Trip workspace
 - Shared embed path contract for `/trip-app` and the default `#/` workspace route
-- Shared domain helpers for workspace, account, trip-section, and invite paths
+- Shared workspace route codec and Trip navigation policy seams
 - Automated sync from `trip/dist` into `frontend/public/trip-app`
 - Embed manifest output for the mounted Trip build
 - Compatibility tests around the integration contract

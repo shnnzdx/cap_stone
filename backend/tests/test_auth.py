@@ -39,6 +39,28 @@ def test_login_returns_token_and_trip_membership(db: Session, full_trip: dict):
     assert body["default_membership"]["role"] == "organizer"
 
 
+def test_login_returns_no_memberships_for_account_without_trips(db: Session):
+    user = User(
+        name="Solo User",
+        email="solo@cadensy.local",
+        password_hash=auth.hash_password("12345678"),
+    )
+    db.add(user)
+    db.flush()
+
+    with _client(db) as client:
+        response = client.post(
+            "/api/auth/login",
+            json={"email": "solo@cadensy.local", "password": "12345678"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token"]
+    assert body["memberships"] == []
+    assert body["default_membership"] is None
+
+
 def test_bearer_token_uses_membership_for_requested_trip(db: Session, full_trip: dict):
     user = db.get(User, full_trip["members"][0].user_id)
     user.email = "organizer@cadensy.local"

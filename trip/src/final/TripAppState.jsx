@@ -238,6 +238,7 @@ const mergeProposals = (incoming, current) => {
 export function TripAppProvider({ children }) {
   const [authToken, setAuthToken] = useState(() => readLocal('tripsync:authToken') || '')
   const [membershipId, setMembershipId] = useState(() => DEV_ALLOW_MEMBERSHIP_HEADER ? (readLocal('tripsync:membershipId') || MEMBERSHIP_ID || '') : '')
+  const [restoredTripId] = useState(() => readLocal('tripsync:tripId') || (DEV_ALLOW_MEMBERSHIP_HEADER ? TRIP_ID : '') || '')
   const [activeTripId, setActiveTripId] = useState(() => readLocal('tripsync:tripId') || (DEV_ALLOW_MEMBERSHIP_HEADER ? TRIP_ID : '') || '')
   const [trip, setTrip] = useState(fallbackTrip)
   const [currentUser, setCurrentUser] = useState(null)
@@ -255,6 +256,8 @@ export function TripAppProvider({ children }) {
   const [loading, setLoading] = useState({ initial: true, action: false })
   const [error, setError] = useState('')
   const [trips, setTrips] = useState([])
+  const [tripSummaries, setTripSummaries] = useState([])
+  const [tripSummariesStatus, setTripSummariesStatus] = useState(() => (readLocal('tripsync:authToken') ? 'idle' : 'not-needed'))
   const [inviteCopied, setInviteCopied] = useState(false)
   const [preferencesSubmittedFor, setPreferencesSubmittedFor] = useState([])
   const [preferences, setPreferences] = useState({
@@ -297,6 +300,27 @@ export function TripAppProvider({ children }) {
     }
     return response.json()
   }, [])
+
+  const accountRequestJson = useCallback(async (path, options = {}) => {
+    if (!authToken) throw new Error('Missing account session')
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        ...(options.headers || {}),
+      },
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`
+      const error = new Error(message)
+      error.status = response.status
+      throw error
+    }
+    return response.json()
+  }, [authToken])
 
   const requestJson = useCallback(async (path, options = {}) => {
     if (!authToken && !membershipId) throw new Error('Missing membership session')
@@ -370,6 +394,19 @@ export function TripAppProvider({ children }) {
     return raw
   }, [activeTripId, myVotes, requestJson])
 
+  const refreshTripSummaries = useCallback(async () => {
+    if (!authToken) {
+      setTripSummaries([])
+      setTripSummariesStatus('not-needed')
+      return []
+    }
+    setTripSummariesStatus('loading')
+    const raw = await accountRequestJson('/api/trips')
+    setTripSummaries(raw)
+    setTripSummariesStatus('ready')
+    return raw
+  }, [accountRequestJson, authToken])
+
   const refreshAll = useCallback(async ({ background = false } = {}) => {
     if ((!authToken && !membershipId) || !activeTripId) {
       if (!background) setLoading(current => ({ ...current, initial: false }))
@@ -377,7 +414,19 @@ export function TripAppProvider({ children }) {
     }
     if (!background) setLoading(current => ({ ...current, initial: true }))
     try {
-      await Promise.all([refreshCurrentUser(), refreshTrip(), refreshPlan(), refreshUpdates(), refreshActions()])
+      await Promise.all([
+        refreshCurrentUser(),
+        refreshTrip(),
+        refreshPlan(),
+        refreshUpdates(),
+        refreshActions(),
+        authToken
+          ? refreshTripSummaries().catch(() => {
+            setTripSummariesStatus('failed')
+            return null
+          })
+          : Promise.resolve([]),
+      ])
       setError('')
       return true
     } catch (err) {
@@ -388,9 +437,17 @@ export function TripAppProvider({ children }) {
       }
       return false
     } finally {
+      if (!authToken) setTripSummariesStatus('not-needed')
       if (!background) setLoading(current => ({ ...current, initial: false }))
     }
-  }, [activeTripId, authToken, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshUpdates])
+  }, [activeTripId, authToken, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates])
+
+  useEffect(() => {
+    if (!authToken) {
+      setTripSummaries([])
+      setTripSummariesStatus('not-needed')
+    }
+  }, [authToken])
 
   useEffect(() => {
     refreshAll()
@@ -470,6 +527,8 @@ export function TripAppProvider({ children }) {
     setMembershipId('')
     setActiveTripId('')
     setCurrentUser(null)
+    setTripSummaries([])
+    setTripSummariesStatus('not-needed')
     removeLocal('tripsync:authToken')
     removeLocal('tripsync:membershipId')
     removeLocal('tripsync:tripId')
@@ -906,6 +965,7 @@ export function TripAppProvider({ children }) {
     authToken,
     membershipId,
     activeTripId,
+    restoredTripId,
     appliedPatches: {},
     contestedSlots: [],
     notices,
@@ -944,6 +1004,8 @@ export function TripAppProvider({ children }) {
     updateFilter,
     setUpdateFilter,
     trips,
+    tripSummaries,
+    tripSummariesStatus,
     createTrip,
     inviteCopied,
     setInviteCopied,
@@ -961,7 +1023,7 @@ export function TripAppProvider({ children }) {
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptMembership, authToken, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptMembership, authToken, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')

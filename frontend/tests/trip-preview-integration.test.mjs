@@ -11,19 +11,7 @@ import {
   tripPreviewBasePath,
   tripPreviewDefaultHashRoute,
 } from "../../shared/tripsync-preview-contract.js";
-import {
-  buildGuestInvitePath,
-  buildOrganizerCreatePath,
-  buildOrganizerHomePath,
-  buildOrganizerSettingsPath,
-  buildOrganizerTripStagePath,
-  buildParticipantTripPath,
-  buildTripAccountPath,
-  buildTripCreatePath,
-  buildTripInvitePath,
-  buildTripWorkspaceHomePath,
-  buildTripWorkspaceSectionPath,
-} from "../../shared/tripsync-domain.js";
+import { serializeWorkspaceRoute } from "../../shared/trip-navigation-route/index.js";
 import {
   demoInitialDays,
   demoTrip,
@@ -55,19 +43,14 @@ test("shares one preview routing contract across frontend and trip", async () =>
   assert.match(tripFinalApp, /path="\/join\/:token"/);
 });
 
-test("maps shared Trip domain helpers to the active workspace routes", () => {
-  assert.equal(buildTripWorkspaceHomePath(), "/");
-  assert.equal(buildTripCreatePath(), "/create");
-  assert.equal(buildTripAccountPath("settings"), "/account/settings");
-  assert.equal(buildTripWorkspaceSectionPath("demo-trip", "chat"), "/trip/demo-trip/chat");
-  assert.equal(buildTripInvitePath("invite-token"), "/join/invite-token");
-
-  assert.equal(buildOrganizerHomePath(), "/");
-  assert.equal(buildOrganizerCreatePath(), "/create");
-  assert.equal(buildOrganizerSettingsPath(), "/account/settings");
-  assert.equal(buildOrganizerTripStagePath("demo-trip", "updates"), "/trip/demo-trip/updates");
-  assert.equal(buildParticipantTripPath("demo-trip"), "/trip/demo-trip/plan");
-  assert.equal(buildGuestInvitePath("invite-token"), "/join/invite-token");
+test("maps shared workspace route refs to the active workspace routes", () => {
+  assert.equal(serializeWorkspaceRoute({ kind: "home" }), "/");
+  assert.equal(serializeWorkspaceRoute({ kind: "create-trip" }), "/create");
+  assert.equal(serializeWorkspaceRoute({ kind: "account", section: "settings" }), "/account/settings");
+  assert.equal(serializeWorkspaceRoute({ kind: "trip", tripId: "demo-trip", section: "chat" }), "/trip/demo-trip/chat");
+  assert.equal(serializeWorkspaceRoute({ kind: "join", token: "invite-token" }), "/join/invite-token");
+  assert.equal(serializeWorkspaceRoute({ kind: "trip", tripId: "demo-trip", section: "updates" }), "/trip/demo-trip/updates");
+  assert.equal(serializeWorkspaceRoute({ kind: "trip", tripId: "demo-trip", section: "plan" }), "/trip/demo-trip/plan");
 });
 
 test("keeps the Trip preview contract and shell connected", async () => {
