@@ -1,5 +1,9 @@
 # TripSync Capstone Workspace
 
+## AI First Step
+
+If an AI agent starts work in this repository, read `AGENTS.md` first before making architecture, session, navigation, or Trip workspace behavior changes.
+
 TripSync currently lives in one repository, but it still has two frontend surfaces:
 
 - `frontend/`: the main marketing site and product shell
