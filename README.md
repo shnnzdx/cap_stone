@@ -120,6 +120,12 @@ npm install
 
 ## Local development
 
+Important:
+
+- the public marketing pages can run with `frontend/` alone
+- the `/login` flow and the post-login `/trip` experience require `backend/` plus PostgreSQL
+- seeing FastAPI at `/docs` is not enough by itself; the runtime database must also contain a valid login account and trip membership
+
 Run the main site:
 
 ```bash
@@ -132,6 +138,19 @@ Default URL:
 ```text
 http://localhost:3000
 ```
+
+If you plan to test login or `/trip`, start the backend first:
+
+```bash
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+On some Windows machines, `python` is not available on `PATH` even after the virtual
+environment exists. In that case:
+
+- create the venv once with your installed interpreter, for example `D:\ANACONDA\python.exe -m venv .venv`
+- then use `backend/.venv/Scripts/python.exe` for all backend commands after that
 
 Run the Trip workspace directly:
 

@@ -10,6 +10,6 @@ export default function HowItWorks() {
       {planningFlowSteps.map((step) => <article className="flow-step" id={step.title.toLowerCase()} key={step.number}><div className="flow-copy"><span>{step.number}</span><h2>{step.title}</h2><p>{step.text}</p></div><div className={`image-placeholder flow-image tone-${((Number(step.number)-1)%4)+1}`}><span>PRODUCT VIEW</span><strong>{step.productView}</strong><small>See what the group sees at this stage</small></div></article>)}
     </section>
     <Responsibilities />
-    <section className="final-cta"><div className="shell"><p className="eyebrow">READY TO PLAN TOGETHER</p><h2>Different needs.<br />One shared plan.</h2><Link className="button light" href="/signup?next=/trips/new">Create a trip</Link></div></section><Footer />
+    <section className="final-cta" data-header-theme="dark"><div className="shell"><p className="eyebrow">READY TO PLAN TOGETHER</p><h2>Different needs.<br />One shared plan.</h2><Link className="button light" href="/signup?next=/trips/new">Create a trip</Link></div></section><Footer />
   </main>;
 }

@@ -35,6 +35,15 @@ installed interpreter when creating the virtual environment, for example:
 D:\ANACONDA\python.exe -m venv .venv
 ```
 
+After `.venv` has been created successfully, do not switch back to bare `python` on
+this machine. Use:
+
+```powershell
+.\.venv\Scripts\python.exe
+```
+
+for installs, seeding, uvicorn, and pytest.
+
 ## 3. Create the Local Test Database
 
 From PowerShell, if `createdb` is already on your `PATH`:
@@ -169,6 +178,69 @@ If `DATABASE_URL` points at cloud RDS and that host is not reachable from this m
 uvicorn startup or the first request may fail or time out. In that case, either fix
 network access to the cloud database or temporarily point `DATABASE_URL` back to a local
 PostgreSQL database for local-only work.
+
+## 7.5 Login Checklist
+
+For `http://localhost:3000/login` to enter the post-login Trip workspace, we need all of
+these to be true:
+
+- the frontend is running
+- the backend is running on `127.0.0.1:8000`
+- `DATABASE_URL` points at the database the backend is actually using
+- that database contains the demo organizer login and a real trip membership
+
+The frontend login page posts to:
+
+```text
+http://127.0.0.1:8000/api/auth/login
+```
+
+The default demo login is:
+
+```text
+email: organizer@cadensy.local
+password: 12345678
+```
+
+This is the fastest verification flow:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.db.seed
+.\.venv\Scripts\python.exe -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Then open another terminal:
+
+```powershell
+cd frontend
+npm run dev
+```
+
+Then log in at:
+
+```text
+http://localhost:3000/login
+```
+
+If the backend already has local data you want to keep, use this instead of reseeding:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.db.enable_auth
+```
+
+What the login errors usually mean:
+
+- `Invalid email or password.`: the database does not contain the demo organizer password login yet
+- `Could not log in. Try again.`: the backend replied, but not with a valid login success response
+- `Could not reach the backend. Make sure the API is running.`: the frontend could not complete the request; this may be a real connection problem or a backend 500, so always check the uvicorn terminal
+
+One subtle but important point:
+
+- being able to open `http://127.0.0.1:8000/docs` is not enough by itself
+- `/docs` proves the API server started
+- it does not prove the runtime database has the organizer account, password hash, or trip membership
 
 ## 8. Start the Frontend
 

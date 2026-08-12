@@ -43,6 +43,16 @@ createdb tripsync_test
 .\.venv\Scripts\python.exe -m uvicorn app.api.main:app --port 8000 --reload
 ```
 
+If you see `Python was not found` after creating `.venv`, that usually means the
+Windows `python` command is not on `PATH`. That is fine. After `.venv` exists, stop
+using bare `python` commands and use:
+
+```powershell
+.\.venv\Scripts\python.exe
+```
+
+for every backend step instead.
+
 Open:
 
 - [http://localhost:8000/docs](http://localhost:8000/docs)
@@ -58,6 +68,48 @@ $env:DISABLE_SCHEDULER='1'
 
 `.\.venv\Scripts\python.exe -m app.db.seed` will reset and rebuild demo data, so only
 use it for local development or disposable demo databases.
+
+## Login Works Only When These Three Things Are True
+
+For the `frontend` login page to enter the Trip workspace successfully, all three must
+be true at the same time:
+
+1. The backend is running on `http://127.0.0.1:8000`
+2. `backend/.env` points at a reachable PostgreSQL database
+3. That database already contains the demo organizer login and its trip membership
+
+The default demo login is:
+
+```text
+email: organizer@cadensy.local
+password: 12345678
+```
+
+Important:
+
+- opening `http://127.0.0.1:8000/docs` only proves the API process started
+- it does not prove the database contains the login account
+- it does not prove the account is attached to a trip
+
+If login fails with `Invalid email or password`, the usual cause is that the database
+was never seeded, or an older local database exists without the password hash.
+
+If login fails after the backend starts cleanly, run one of these:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.db.seed
+```
+
+or, if you want to keep the existing local data and only restore the demo organizer
+password login:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.db.enable_auth
+```
+
+After that, restart uvicorn and try the login again.
 
 ---
 

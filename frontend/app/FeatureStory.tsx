@@ -143,7 +143,7 @@ export default function FeatureStory() {
   };
 
   return (
-    <section className="feature-story" id="process" ref={sectionRef} aria-label="How CADENSY works">
+    <section className="feature-story" data-header-theme="dark" id="process" ref={sectionRef} aria-label="How CADENSY works">
       <div className="story-stage" ref={stageRef}>
         <div className="process-navy-backdrop" aria-hidden="true" />
         <div className="story-topbar" ref={topbarRef}>

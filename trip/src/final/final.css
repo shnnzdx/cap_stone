@@ -1731,3 +1731,126 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .generationError{margin-top:14px;padding:12px 14px;border:1px solid #d8d2c6;border-radius:8px;background:#faf8f4}
 .generationError strong{display:block;margin-bottom:4px}
 .generationError p{margin:0!important;font-size:12px}
+
+/* Workspace and navbar refinement: calmer chrome, clearer hierarchy, tighter product rhythm. */
+.tripPage{
+  background:
+    linear-gradient(rgba(80,108,132,.028) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(80,108,132,.028) 1px,transparent 1px),
+    radial-gradient(circle at 14% 8%,rgba(255,255,255,.5),rgba(255,255,255,0) 32%),
+    linear-gradient(180deg,#fcfbf8 0,#f4f0e8 44%,#f7f3ec 100%)!important;
+  background-size:80px 80px,80px 80px,auto,auto!important;
+}
+
+
+.workspaceContent{
+  position:relative;
+  max-width:1280px!important;
+  padding:34px clamp(18px,3vw,34px) 96px!important;
+}
+
+.workspaceContent:before{
+  content:"";
+  position:absolute;
+  inset:8px 0 auto;
+  height:190px;
+  border-radius:36px;
+  background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
+  pointer-events:none;
+  z-index:-1;
+}
+
+.tripPill{
+  display:inline-flex!important;
+  flex-wrap:wrap;
+  gap:10px;
+  margin:0 0 30px!important;
+  padding:10px 16px!important;
+  border:1px solid rgba(45,83,111,.11)!important;
+  border-radius:999px!important;
+  background:rgba(255,255,255,.78)!important;
+  box-shadow:0 16px 34px rgba(45,83,111,.06)!important;
+}
+
+.tripPill span,
+.tripPill .pillStatus,
+.tripPill .pillRole{
+  color:var(--text-primary)!important;
+}
+
+.tripPill .pillRole{
+  border:1px solid rgba(45,83,111,.12)!important;
+  background:rgba(255,255,255,.52)!important;
+}
+
+.tripPill i{
+  background:rgba(45,83,111,.14)!important;
+}
+
+.tripPill .pillDot{
+  background:var(--text-primary)!important;
+}
+
+.pageHeading,
+.editorialPageHeading{
+  margin-bottom:28px!important;
+}
+
+.pageHeading h1,
+.editorialPageHeading h1{
+  max-width:12ch;
+  font-size:clamp(32px,3vw,44px)!important;
+  line-height:1.02!important;
+  letter-spacing:-.045em!important;
+}
+
+.pageHeading p,
+.editorialPageHeading p{
+  max-width:64ch;
+  font-size:15px!important;
+  line-height:1.6!important;
+}
+
+.chatLayout,
+.preferenceCard,
+.decisionCard,
+.roundCard,
+.memberList,
+.organizerLimits,
+.tripMapCard,
+.collectPanel,
+.accordionDay,
+.inlineAssistant{
+  border:1px solid rgba(45,83,111,.1)!important;
+  border-radius:24px!important;
+  background:rgba(255,255,255,.84)!important;
+  box-shadow:0 18px 44px rgba(45,83,111,.06)!important;
+  backdrop-filter:blur(12px)!important;
+}
+
+.activityBlock{
+  padding:16px!important;
+  border:1px solid rgba(45,83,111,.1)!important;
+  border-radius:18px!important;
+  background:rgba(255,255,255,.9)!important;
+  box-shadow:0 14px 32px rgba(45,83,111,.05)!important;
+}
+
+.updateRow{
+  padding:20px 22px!important;
+}
+
+@media(max-width:760px){
+  .workspaceContent{
+    padding-top:26px!important;
+  }
+
+  .tripPill{
+    border-radius:18px!important;
+  }
+
+  .pageHeading{
+    flex-direction:column;
+    align-items:flex-start!important;
+  }
+}
