@@ -1,183 +1,218 @@
-# TripSync 后端
+# TripSync Backend
 
-Python + FastAPI + PostgreSQL。三条路径的判定与执行、行程数据、决策流水账。
+Python + FastAPI + PostgreSQL. This backend owns the decision paths, itinerary data,
+and decision ledger for the Trip workspace.
 
-产品逻辑以 [`../README.md`](../README.md) 和 [`../trip/BACKEND.md`](../trip/BACKEND.md) 为准。
-本地后端、PostgreSQL、`.env` 和启动步骤见 [`LOCAL_DEV.md`](LOCAL_DEV.md)。
-今天做了什么、接下来怎么接着做,见 [`../trip/交接.md`](../trip/交接.md)。
+Product behavior is defined by:
+
+- [`../README.md`](../README.md)
+- [`../trip/BACKEND.md`](../trip/BACKEND.md)
+
+Local environment and PostgreSQL setup are documented in:
+
+- [`LOCAL_DEV.md`](LOCAL_DEV.md)
+
+Recent backend handoff notes live in:
+
+- [`../trip/交接.md`](../trip/%E4%BA%A4%E6%8E%A5.md)
 
 ---
 
-## 跑起来
+## Quick Start
 
-需要 PostgreSQL(本机已装 `postgresql@15`)和 Python 3.13。
+Requirements:
 
-```bash
+- Python 3.13
+- PostgreSQL
+
+Run everything from the `backend/` directory.
+
+```powershell
 cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp .env.example .env          # 填 DATABASE_URL 和 OPENAI_API_KEY
-createdb tripsync && createdb tripsync_test
-.venv/bin/python -m app.db.seed      # 建表 + 灌演示数据
-.venv/bin/uvicorn app.api.main:app --port 8000 --reload
+
+# If `python` is not available on your machine, replace it with your installed
+# interpreter path, for example:
+# D:\ANACONDA\python.exe -m venv .venv
+python -m venv .venv
+
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+createdb tripsync
+createdb tripsync_test
+.\.venv\Scripts\python.exe -m app.db.seed
+.\.venv\Scripts\python.exe -m uvicorn app.api.main:app --port 8000 --reload
 ```
 
-打开 http://localhost:8000/docs —— 所有接口都能直接点着试。
+Open:
 
-跑测试:
+- [http://localhost:8000/docs](http://localhost:8000/docs)
+- [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
-```bash
-DISABLE_SCHEDULER=1 .venv/bin/python -m pytest -q
+Run tests:
+
+```powershell
+cd backend
+$env:DISABLE_SCHEDULER='1'
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-`.venv/bin/python -m app.db.seed` 会**先删表再建表**,里面的数据全没。只在开发时用。
-
-## 环境变量
-
-写在 `.env`(已进 `.gitignore`,不会提交)。
-
-| 名字 | 干什么 | 默认 |
-|---|---|---|
-| `DATABASE_URL` | 数据库地址 | `postgresql+psycopg://localhost/tripsync` |
-| `TEST_DATABASE_URL` | 测试库,和上面必须是两个库 | `…/tripsync_test` |
-| `OPENAI_API_KEY` | AI 用 | 无 |
-| `OPENAI_BASE_URL` | 换 DeepSeek 等兼容 OpenAI 协议供应商时用 | 无 |
-| `OPENAI_MODEL` | AI 模型名 | `gpt-4o-mini` |
-| `MOCK_AI` | 设成 `1` 用本地 mock,演示不用真实 key | `1` |
-| `SETTLE_TICK_SECONDS` | 多久检查一次到期的投票 | `60` |
-| `DISABLE_SCHEDULER` | 设成 `1` 关掉定时任务(测试时用) | 无 |
-| `DEV_ALLOW_MEMBERSHIP_HEADER` | 本地保留 `X-Membership-Id` 调试入口 | `1` |
-| `FRONTEND_BASE_URL` | 邀请/登录跳转用的前端地址 | `http://localhost:5173` |
-| `CORS_ORIGINS` | 允许访问后端的前端地址 | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` |
-
-**任何真实的 key 都不能写进代码。** 代码里只出现变量名。
+`.\.venv\Scripts\python.exe -m app.db.seed` will reset and rebuild demo data, so only
+use it for local development or disposable demo databases.
 
 ---
 
-## 目录
+## Environment Variables
 
-```
+Put runtime variables in `backend/.env`. Do not commit real secrets.
+
+| Name | Purpose | Default |
+| --- | --- | --- |
+| `DATABASE_URL` | runtime database | `postgresql+psycopg://localhost/tripsync` |
+| `TEST_DATABASE_URL` | pytest database | `.../tripsync_test` |
+| `OPENAI_API_KEY` | model access | none |
+| `OPENAI_BASE_URL` | OpenAI-compatible provider base URL | none |
+| `OPENAI_MODEL` | model name | `gpt-4o-mini` |
+| `MOCK_AI` | use local mock AI when `1` | `1` |
+| `SETTLE_TICK_SECONDS` | settlement polling interval | `60` |
+| `DISABLE_SCHEDULER` | disable scheduler when `1` | none |
+| `DEV_ALLOW_MEMBERSHIP_HEADER` | keep `X-Membership-Id` local fallback | `1` |
+| `FRONTEND_BASE_URL` | frontend base URL for redirects | `http://localhost:5173` |
+| `CORS_ORIGINS` | allowed frontend origins | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` |
+
+Never hard-code real credentials into source files.
+
+---
+
+## Directory Layout
+
+```text
 app/
-├── domain/                  ← 业务规则全在这里，不依赖 FastAPI、不依赖数据库
-│   ├── constraints/
-│   │   ├── types.py         数据形状 + 隐私边界
-│   │   └── engine.py        classify()：判定一个改动走哪条路
-│   └── decisions/
-│       └── orchestrator.py  执行三条路径：写行程、开投票、建提案、结算
-├── db/
-│   ├── models.py            全部表 + 数据库层面的不变量
-│   ├── session.py           连接
-│   └── seed.py              演示数据（Mia's 30th in Chicago）
-├── api/main.py              HTTP 接口。薄层，不写业务判断
-└── jobs/scheduler.py        定时结算
-tests/                       230 条
+|-- domain/
+|   |-- constraints/
+|   |   |-- types.py
+|   |   `-- engine.py
+|   `-- decisions/
+|       `-- orchestrator.py
+|-- db/
+|   |-- models.py
+|   |-- session.py
+|   `-- seed.py
+|-- api/
+|   `-- main.py
+`-- jobs/
+    `-- scheduler.py
+tests/
 ```
 
-**依赖方向是单向的**:`api` → `domain` → `db`。`domain/constraints` 谁也不依赖。
-反过来 import 会把规则漏进接口层,以后就拆不开了。
+Dependency direction is intentionally one-way:
+
+`api -> domain -> db`
+
+Do not pull API concerns back into `domain`.
 
 ---
 
-## 三个模块
+## Core Architecture
 
-### 判定引擎 `domain/constraints`
+### Constraint Engine
 
-一个纯函数:
+`domain/constraints/engine.py` exposes a deterministic classifier:
 
 ```python
-classify(change, constraints) -> Classification   # notice | round | reopen_round | confirm
+classify(change, constraints) -> Classification
 ```
 
-不碰数据库、不发网络请求、**不调 AI**。同样的输入永远同样的输出。
+It does not call AI, touch the database, or make network requests.
 
-判定顺序(命中即停):
+### Decision Orchestrator
 
-| 问 | 是 → |
-|---|---|
-| 已订 / 违反谁的 required / 超预算上限 / 超日期 | `confirm` |
-| 这个时段已经"定过"了 | `reopen_round` |
-| 这个时段被人碰过 | `round` |
-| 都不是 | `notice` |
+`domain/decisions/orchestrator.py` executes the decision path after classification:
 
-**为什么不用 AI 判定**:大模型同一个问题两次可能给不同答案。一个以"公平"为卖点的产品,规则本身不能是飘的。AI 只在用户**写下**约束的那一刻出场(把人话翻译成六种类型之一),翻译结果存下来,以后判定只看存下来的规则。
+- apply directly
+- open a round
+- reopen a round
+- create a confirmation proposal
 
-### 执行者 `domain/decisions`
+### API Layer
 
-判定完了真的去做:改行程、开投票、建提案、到点结算。守着几条不变量:
+`api/main.py` should stay thin:
 
-- 没投票的人记成"没表态",**永远不记成同意**
-- 提案要所有受影响的人都点头才写进行程
-- 重开轮里没表态的人算"维持原样"
-- 三条路径最后都往流水账追加一行,没有例外
+- parse request
+- call domain
+- return JSON
 
-### 接口层 `api`
-
-只做三件事:收参数、调 domain、转 JSON。**一条业务判断都不写。**
-
-身份现在优先走登录 session bearer token。为了本地开发和老接口兼容,仍保留
-`X-Membership-Id` 作为 dev fallback。`DEV_ALLOW_MEMBERSHIP_HEADER=1` 时这个调试入口可用。
+Business rules belong in domain code, not in route handlers.
 
 ---
 
-## 隐私是怎么保证的
+## Privacy Model
 
-不是"记得过滤",是三层结构上就漏不出去:
+Privacy is enforced structurally, not by hoping a filter catches everything:
 
-1. **数据库**:用户写的原话在 `member_constraint_private`,和判定用的 `member_constraint` 是两张表。判定引擎不查前者。
-2. **类型**:判定结果里只有 `AnonymizedFinding`,这个类型**没有** `membership_id` 字段、**没有**原文字段。想漏也没地方装。
-3. **通知表**:`update_notice` 故意没有"是谁干的"这一栏。存了早晚会被某个接口带出去。
+1. Private raw user wording is stored separately from decision-safe constraint data.
+2. Decision outputs do not carry identity fields or original wording.
+3. Notice tables do not store actor identity in a way that leaks through normal reads.
 
-`tests/test_engine.py::test_findings_never_carry_identity_or_wording` 守着这条。
-
----
-
-## 数据库自己守的规矩
-
-这些不是靠代码记得检查,是数据库直接拦:
-
-| 规矩 | 怎么实现 |
-|---|---|
-| 一个条目同时只能有一轮开着的投票 | 部分唯一索引 `one_open_round_per_item` |
-| 一个条目同时只能有一个待确认提案 | 部分唯一索引 `one_pending_proposal_per_item` |
-| 一人一轮一票 | `UNIQUE(round_id, trip_membership_id)` |
-| 一人一提案一次表态 | `UNIQUE(proposal_id, trip_membership_id)` |
-
-应用层在 `_guard_not_pending()` 里提前拦一道,给用户一句人话(409)而不是 500。
-**两道都要**:应用层管体验,数据库管正确。
-
-## 流水账
-
-`plan_change` 只追加,不修改,不删除。一个条目"现在长什么样"= 原始状态叠加所有改动。
-
-`origin` 记着每次改动怎么来的(`notice` / `round` / `reopen_round` / `confirm` / `ai_generate` / `rule_generate`)。
-`GET /api/plans/{id}/changes` 把它摊开——**这是答辩时最有说服力的一屏**。
+The privacy regression tests protect this behavior.
 
 ---
 
-## 测试
+## Database Guardrails
 
-230 条,`pytest -q` 很快跑完。主要分这些组:
+The database enforces key invariants directly:
 
-测试数据库现在还有两条额外安全约束:
+- only one open round per item
+- only one pending proposal per item
+- one vote per member per round
+- one confirmation response per member per proposal
 
-- `TEST_DATABASE_URL` 必须明显指向 test-only 数据库,例如 `tripsync_test`、`test_*`、`*_test`
-- pytest 会把 PostgreSQL 测试库重建成 UTF-8 disposable database,避免 Windows / psycopg 非 ASCII fixture 编码问题
+Application code should still pre-check where possible so the user receives a clean
+409 response instead of a raw 500.
 
-| 文件 | 守什么 |
-|---|---|
-| `test_engine.py` | 判定规则 + 隐私红线 + 确定性 |
-| `test_schema.py` | 数据库自己守的那几条 |
-| `test_paths.py` | 三条路径从提出到落地的真实流程 |
-| `test_jobs.py` | 定时结算 + 地图坐标 |
-| `test_auth.py` | 登录、登出、session 和 bearer token |
-| `test_agent*.py` | Chat Agent 的规则命中、追问、委托选择和可执行变更 |
-| `test_plan_generation.py` | planner stub、AI 失败降级、生成计划写入流水账 |
-| `test_comments.py` / `test_booking.py` | 评论、预订状态和组织者动作 |
+---
 
-有几条测试守的是**产品承诺**,不是代码细节——改它们之前先确认产品真的改了主意:
+## Change Ledger
 
-- `test_findings_never_carry_identity_or_wording` —— 判定结果不带姓名和原文
-- `test_silence_is_never_counted_as_agreement` —— 沉默不算同意
-- `test_one_missing_confirmation_blocks_the_change` —— 少一个人点头就不落地
-- `test_a_minority_cannot_overturn_a_settled_decision` —— 少数推翻不了已定的事
-- `test_same_input_always_gives_same_answer` —— 判定不会今天说行明天说不行
+`plan_change` is append-only. Current plan state is derived from the original plan plus
+the accumulated ledger.
+
+Each entry records its origin, for example:
+
+- `notice`
+- `round`
+- `reopen_round`
+- `confirm`
+- `ai_generate`
+- `rule_generate`
+
+This is the main audit trail for explaining how the itinerary changed.
+
+---
+
+## Tests
+
+Run:
+
+```powershell
+cd backend
+$env:DISABLE_SCHEDULER='1'
+$env:MOCK_AI='1'
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Important safety rules:
+
+- `TEST_DATABASE_URL` must point to a clearly test-only database
+- it must not match `DATABASE_URL`
+- pytest may recreate the test database as a clean UTF-8 database
+
+Representative test areas:
+
+- `test_engine.py`: decision rules, privacy, determinism
+- `test_schema.py`: database invariants
+- `test_paths.py`: end-to-end decision flows
+- `test_jobs.py`: scheduler behavior
+- `test_auth.py`: login, logout, bearer session
+- `test_agent*.py`: chat and agent behavior
+- `test_plan_generation.py`: planner fallback behavior
+- `test_comments.py` / `test_booking.py`: comments, booking, organizer actions
