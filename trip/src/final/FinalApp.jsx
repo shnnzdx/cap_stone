@@ -197,15 +197,15 @@ function ProfileMenu() {
 
 const cardPhotos = ['photoLake', 'photoMountain', 'photoNight', 'photoChicago']
 
-function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to }) {
+function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to, variant = 'compact', action = 'Open trip' }) {
   const app = useTripApp()
   const currentTrip = app.trip || trip
-  return <Link className="dashboardTripCard" to={to || tripHref(currentTrip.id, 'plan')}>
+  return <Link className={`dashboardTripCard dashboardTripCard--${variant}`} to={to || tripHref(currentTrip.id, 'plan')}>
     <div className={`tripPhoto ${imageClass}`}><Badge tone={tone}>{status}</Badge></div>
     <div className="dashboardTripBody">
       <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
       <p>{location} · {dates}</p>
-      <div className="cardFooter"><span>{detail || 'Open current plan'}</span><strong>Open →</strong></div>
+      <div className="cardFooter"><span>{detail || 'No action needed'}</span><strong>{action} →</strong></div>
     </div>
   </Link>
 }
@@ -293,15 +293,26 @@ function Home() {
     <header className="editorialNav"><Logo/><nav><Link className="active" to={workspaceHomeHref()}>MY TRIPS</Link><Link to={workspaceCreateHref()}>NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
     <section className="homeContent">
       <div className="dashboardMasthead">
-        <div><span className="eyebrow">My trips</span><h1>Upcoming trips</h1><p>Pick up where the group left off.</p></div>
+        <div><span className="eyebrow">My trips</span><h1>Your shared plans</h1><p>Continue the trip that needs you, or revisit another plan.</p></div>
+        <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>New trip <span>＋</span></Link>
       </div>
-      <Link className="createTripStrip featureCreateTrip" to={workspaceCreateHref()}><div><span className="roleChip">Create new trip</span><h2>Start a group trip frame</h2><p>Choose destination, dates, budget, and invite people when the frame is ready.</p></div><strong>New trip →</strong></Link>
-      {roundOpen && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>◇</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option — it closes on its own.</p></div><b>Choose →</b></Link>}
-      {proposalPending && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>!</span><div><strong>A proposal is waiting for confirmation</strong><p>The current plan stays active until the affected members accept.</p></div><b>Review →</b></Link>}
-      <section className="dashboardGrid">
-        {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Ready to plan" to={tripHref(created.id, 'plan')}/>)}
-        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Aug 14–17'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Awaiting confirmation' : 'Current plan'} to={tripHref(currentTrip.id, 'plan')} />
-        {otherTrips.map(other => <DashboardCard key={other.id} title={other.name} location={other.destination} dates={other.dates} status={other.status} tone={other.tone} imageClass={other.photo} detail={other.detail}/>)}
+      <section className="dashboardSection dashboardContinue">
+        <div className="dashboardSectionHead"><span>Continue planning</span><small>Current workspace</small></div>
+        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Aug 14–17'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
+      </section>
+      {(roundOpen || proposalPending) && <section className="dashboardSection dashboardAttention">
+        <div className="dashboardSectionHead"><span>Needs your attention</span><small>Open decisions</small></div>
+        <div className="dashboardAttentionList">
+          {roundOpen && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>01</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option before the round closes.</p></div><b>Choose →</b></Link>}
+          {proposalPending && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>02</span><div><strong>Your confirmation is needed</strong><p>The Current Plan stays active until affected members respond.</p></div><b>Review →</b></Link>}
+        </div>
+      </section>}
+      <section className="dashboardSection dashboardOthers">
+        <div className="dashboardSectionHead"><span>Other trips</span><small>{app.trips.length + otherTrips.length} workspaces</small></div>
+        <div className="dashboardGrid">
+          {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Build the first plan" action="Continue setup" to={tripHref(created.id, 'plan')}/>)}
+          {otherTrips.map(other => <DashboardCard key={other.id} title={other.name} location={other.destination} dates={other.dates} status={other.status} tone={other.tone} imageClass={other.photo} detail={other.detail} action="View trip"/>)}
+        </div>
       </section>
     </section>
   </main>

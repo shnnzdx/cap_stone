@@ -72,29 +72,12 @@ function BubbleIcon({ index }: { index: number }) {
 }
 
 export default function PeopleProblem() {
-  const audienceRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [audienceVisible, setAudienceVisible] = useState(false);
   const [sharedProgress, setSharedProgress] = useState(0);
 
   useEffect(() => {
-    const audience = audienceRef.current;
     const scroll = scrollRef.current;
-    if (!audience || !scroll) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setAudienceVisible(true);
-            observer.unobserve(entry.target);
-          }
-        }
-      },
-      { threshold: 0.18 },
-    );
-
-    observer.observe(audience);
+    if (!scroll) return;
 
     let frame = 0;
     let resizeTimer = 0;
@@ -117,7 +100,6 @@ export default function PeopleProblem() {
     window.addEventListener("resize", onResize);
 
     return () => {
-      observer.disconnect();
       window.removeEventListener("scroll", updateShared);
       window.removeEventListener("resize", onResize);
       window.clearTimeout(resizeTimer);
@@ -132,7 +114,7 @@ export default function PeopleProblem() {
           <p className="eyebrow people-v2__eyebrow">02 · SHARED NEEDS</p>
           <h2 className="people-v2__title">Every voice counts.</h2>
 
-          <div className={`people-v2__audiences ${audienceVisible ? "is-visible" : ""}`} ref={audienceRef}>
+          <div className="people-v2__audiences">
             <svg className="people-v2__network" viewBox="0 0 1080 190" preserveAspectRatio="none" aria-hidden="true">
               <path d="M176 72 C202 72 218 78 238 90 M540 72 C540 84 540 94 540 104 M904 72 C878 72 862 78 842 90 M520 138 C528 142 534 145 540 146 C546 145 552 142 560 138" />
               <circle cx="176" cy="72" r="5" />
@@ -154,7 +136,6 @@ export default function PeopleProblem() {
                 <span className="people-v2__audience-rule" aria-hidden="true" />
               </article>
             ))}
-            <div className="people-v2__shared-plan" aria-hidden="true"><span>Shared Plan</span><i /></div>
           </div>
 
           <div className={`people-v2__lower ${sharedProgress > 0.01 ? "is-visible" : ""}`}>
@@ -209,19 +190,25 @@ export default function PeopleProblem() {
       <style>{`
         .product-page .people-problem.people-v2 {
           position: relative;
-          width: min(1200px, calc(100% - 64px));
-          max-width: 1200px;
+          width: 100%;
+          max-width: none;
           min-height: 100svh;
           padding: clamp(64px, 7.5vh, 84px) 0 clamp(54px, 6.5vh, 78px);
           overflow: visible;
           background:
             radial-gradient(circle at 16% 8%, rgba(242, 239, 232, 0.58), rgba(242, 239, 232, 0) 34%),
-            var(--surface-people);
-          border-image: conic-gradient(var(--surface-people) 0 0) fill 0 / 0 / 0 100vw;
+            var(--people-section-surface, var(--surface-people));
+          transform-origin: center top;
+          z-index: 5;
+          margin-top: -18svh;
+          padding-top: calc(clamp(64px, 7.5vh, 84px) + 18svh);
+          will-change: transform, opacity;
         }
 
         .product-page .people-v2__scroll {
           position: relative;
+          width: min(1200px, calc(100% - 64px));
+          margin-inline: auto;
           height: 185svh;
         }
 
@@ -293,30 +280,6 @@ export default function PeopleProblem() {
           vector-effect: non-scaling-stroke;
         }
 
-        .product-page .people-v2__shared-plan {
-          position: absolute;
-          z-index: 2;
-          left: 50%;
-          bottom: 11px;
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          transform: translateX(-50%);
-          color: #60758b;
-          font-family: var(--font-label);
-          font-size: 9px;
-          letter-spacing: 0.11em;
-          text-transform: uppercase;
-        }
-
-        .product-page .people-v2__shared-plan i {
-          width: 7px;
-          height: 7px;
-          border: 1px solid var(--product-route-strong);
-          border-radius: 50%;
-          background: var(--surface-people);
-        }
-
         .product-page .people-v2__audience {
           --ticket-bg: #f2f7fb;
           --ticket-accent: #4f88c7;
@@ -374,22 +337,6 @@ export default function PeopleProblem() {
         .product-page .people-v2__audience:nth-child(3)::before {
           background: rgba(243, 248, 241, 0.64);
           transform: rotate(0.4deg);
-        }
-
-        .product-page .people-v2__audiences.is-visible .people-v2__audience {
-          opacity: 1;
-        }
-
-        .product-page .people-v2__audiences.is-visible .people-v2__audience:nth-child(1) {
-          transform: translateY(0) rotate(-1.25deg) scale(1);
-        }
-
-        .product-page .people-v2__audiences.is-visible .people-v2__audience:nth-child(2) {
-          transform: translateY(5px) rotate(0.72deg) scale(1);
-        }
-
-        .product-page .people-v2__audiences.is-visible .people-v2__audience:nth-child(3) {
-          transform: translateY(-2px) rotate(-1deg) scale(1);
         }
 
         .product-page .people-v2__audience--sand {
@@ -737,7 +684,8 @@ export default function PeopleProblem() {
 
         @media (max-width: 1100px), (max-height: 760px) {
           .product-page .people-problem.people-v2 {
-            padding-top: 44px;
+            margin-top: -10svh;
+            padding-top: calc(44px + 10svh);
           }
 
           .product-page .people-v2__scroll {
@@ -810,6 +758,10 @@ export default function PeopleProblem() {
 
         @media (max-width: 820px) {
           .product-page .people-problem.people-v2 {
+            width: 100%;
+          }
+
+          .product-page .people-v2__scroll {
             width: min(100% - 40px, 720px);
           }
 
@@ -819,8 +771,7 @@ export default function PeopleProblem() {
             padding: 16px 16px 22px;
           }
 
-          .product-page .people-v2__network,
-          .product-page .people-v2__shared-plan {
+          .product-page .people-v2__network {
             display: none;
           }
 
@@ -848,8 +799,13 @@ export default function PeopleProblem() {
 
         @media (max-width: 620px) {
           .product-page .people-problem.people-v2 {
+            width: 100%;
+            margin-top: -7svh;
+            padding-top: calc(34px + 7svh);
+          }
+
+          .product-page .people-v2__scroll {
             width: min(100% - 24px, 560px);
-            padding-top: 34px;
           }
 
           .product-page .people-v2__title {
@@ -919,6 +875,12 @@ export default function PeopleProblem() {
         }
 
         @media (prefers-reduced-motion: reduce) {
+          .product-page .people-problem.people-v2 {
+            transform: none !important;
+            clip-path: inset(0 round var(--radius-section) var(--radius-section) 0 0) !important;
+            box-shadow: none !important;
+          }
+
           .product-page .people-v2__audience,
           .product-page .people-v2__problem-card,
           .product-page .people-v2__bubble {

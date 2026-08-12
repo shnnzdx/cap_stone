@@ -56,11 +56,27 @@ const formatStraightLineDistance = (from, to) => {
   return `${miles.toFixed(miles < 10 ? 1 : 0)} mi straight line`
 }
 
-const pathLabels = {
-  notice: 'Applies now',
-  round: 'Group round',
-  reopen_round: 'Reopening a settled block',
-  confirm: 'Needs confirmation',
+const decisionPresentation = {
+  notice: {
+    summary: 'No conflicts found. This change can apply now.',
+    status: 'NOTICE · No approval needed',
+    action: 'Apply change',
+  },
+  round: {
+    summary: 'There is another preference affecting this change. A group decision is needed.',
+    status: 'GROUP DECISION · Group input needed',
+    action: 'Start group decision',
+  },
+  reopen_round: {
+    summary: 'This settled choice needs group input before it can change.',
+    status: 'GROUP DECISION · Group input needed',
+    action: 'Start group decision',
+  },
+  confirm: {
+    summary: 'This change affects a confirmed booking or required constraint. Approval is needed before the plan changes.',
+    status: 'CONFIRMATION NEEDED · Affected member approval required',
+    action: 'Request approval',
+  },
 }
 
 function Badge({ children, tone = 'neutral' }) {
@@ -260,7 +276,6 @@ function PlanChatBubble({ from, children }) {
 }
 
 function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss }) {
-  const [whyOpen, setWhyOpen] = useState(false)
   const verdict = proposedChange.verdict
   const patch = proposedChange.patch || {}
   const before = {
@@ -275,36 +290,33 @@ function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognize
     time: patch.start_hour !== undefined ? formatPlanHour(patch.start_hour) : before.time,
     day: formatChangeDay(patch.day_date || currentItem?.dayDate),
   }
-  const canExplain = verdict?.path === 'confirm'
+  const presentation = decisionPresentation[verdict.path] || decisionPresentation.notice
+  const changedField = patch.start_hour !== undefined
+    ? { label: 'Time', before: before.time, after: after.time }
+    : patch.day_date
+      ? { label: 'Day', before: before.day || 'Current day', after: after.day || 'Proposed day' }
+      : patch.title
+        ? { label: 'Activity', before: before.title, after: after.title }
+        : patch.place
+          ? { label: 'Place', before: before.place || before.title, after: after.place || after.title }
+          : { label: 'Change', before: before.time, after: after.time }
+
   return <div className={cx('changeConfirmCard', message.applied && 'done')}>
     {showRecognizedItem && <div className="recognizedItem"><span>Cadensy matched this to</span><strong>{proposedChange.item_title}</strong></div>}
     <div className="changeConfirmHead">
-      <div><span>{pathLabels[verdict.path]}</span><h3>{proposedChange.item_title}</h3></div>
+      <div><span>{changedField.label} change</span><h3>{proposedChange.item_title}</h3>{before.place && <p>{before.place}</p>}</div>
       {message.applied && <Badge tone="green">Done</Badge>}
     </div>
     <div className="changeCompare assistantChangeCompare">
-      <div><small>Current{before.day ? ` · ${before.day}` : ''}</small><strong>{before.time} · {before.title}</strong><span>{before.place || 'Current place'}</span></div>
+      <div><small>Current</small><strong>{changedField.before}</strong></div>
       <b>→</b>
-      <div className="new"><small>Proposed{after.day ? ` · ${after.day}` : ''}</small><strong>{after.time} · {after.title}</strong><span>{after.place || before.place || 'Current place'}</span></div>
+      <div className="new"><small>Proposed</small><strong>{changedField.after}</strong></div>
     </div>
-    <p>{verdict.headline}</p>
-    {canExplain && <button type="button" className="whyToggle" onClick={() => setWhyOpen(current => !current)}>{whyOpen ? 'Hide details' : 'Why?'}</button>}
-    {canExplain && whyOpen && <ul className="verdictChecks">
-      {verdict.checks?.map(check => <li key={check.id} className={cx(check.hit && 'hit')}>
-        <span>{check.hit ? '✕' : '✓'}</span>
-        <div><strong>{check.label}</strong>{check.hit && check.privateNote && <small>{check.privateNote}</small>}</div>
-        <em>{check.hit ? 'hit' : 'clear'}</em>
-      </li>)}
-    </ul>}
-    <div className="pathLadder">
-      {[['notice', 'Notice'], ['round', 'Round'], ['confirm', 'Confirm']].map(([id, label]) => (
-        <i key={id} className={cx((verdict.path === id || (id === 'round' && verdict.path === 'reopen_round')) && 'on')}>{label}</i>
-      ))}
-    </div>
+    <div className={cx('decisionStatus', `decisionStatus--${verdict.path}`)}>{presentation.status}</div>
     {message.applyError && <p className="assistantError">{message.applyError}</p>}
-    <div className="miniAlternatives">
-      <button onClick={onApply} disabled={message.applied || message.applying}>{message.applied ? 'Applied' : message.applying ? 'Applying...' : 'Apply'}</button>
-      {!message.applied && <button onClick={onDismiss}>Not quite</button>}
+    <div className="changeDecisionActions">
+      <button className="changePrimaryAction" onClick={onApply} disabled={message.applied || message.applying}>{message.applied ? 'Applied' : message.applying ? 'Applying...' : presentation.action}</button>
+      {!message.applied && <button className="changeCancelAction" onClick={onDismiss}>Cancel</button>}
     </div>
   </div>
 }
@@ -335,7 +347,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
         <div className="assistantBubbleRail"><i/><i/><i/></div>
         <PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble>
         {view.messages.map(message => <div key={message.id}>
-          <PlanChatBubble from={message.from}>{message.text}</PlanChatBubble>
+          <PlanChatBubble from={message.from}>{message.proposedChange ? (decisionPresentation[message.proposedChange.verdict?.path] || decisionPresentation.notice).summary : message.text}</PlanChatBubble>
           {message.proposedChange && <ChangeConfirmCard
             message={message}
             proposedChange={message.proposedChange}

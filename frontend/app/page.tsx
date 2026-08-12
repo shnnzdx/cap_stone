@@ -5,6 +5,7 @@ import FeatureStory from "./FeatureStory";
 import HomeIntroSequence from "./HomeIntroSequence";
 import PeopleProblem from "./PeopleProblem";
 import ProductScrollFlow from "./ProductScrollFlow";
+import ProductSectionTransitions from "./ProductSectionTransitions";
 import SiteHeader from "./SiteHeader";
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
     <main className="product-page">
       <Header />
       <ProductScrollFlow />
+      <ProductSectionTransitions />
       <HomeIntroSequence />
 
       <PeopleProblem />

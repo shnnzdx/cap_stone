@@ -114,15 +114,15 @@ const vertexShader = `
     float depthScale = clamp(2.32 / -mvPosition.z, 0.42, 2.05);
     vec2 particleNdc = gl_Position.xy / gl_Position.w;
     float focusDistance = distance(particleNdc, uPrincipleFocus);
-    float focusMask = (1.0 - smoothstep(0.11, 0.32, focusDistance)) * uPrincipleFocusStrength * mapEaseGlobal;
+    float focusMask = (1.0 - smoothstep(0.1, 0.34, focusDistance)) * uPrincipleFocusStrength * mapEaseGlobal;
     float mapPresenceSize = mix(1.0, mix(0.9, 1.0, uMapPresence), mapEaseGlobal);
-    gl_PointSize = aSize * uPixelRatio * depthScale * mix(1.0, 1.05, uAbsorption) * mix(1.0, 0.88, releaseEase) * mix(1.0, 1.02, mapEaseGlobal) * mapPresenceSize * mix(1.0, 1.045, focusMask);
+    gl_PointSize = aSize * uPixelRatio * depthScale * mix(1.0, 1.05, uAbsorption) * mix(1.0, 0.88, releaseEase) * mix(1.0, 1.02, mapEaseGlobal) * mapPresenceSize * mix(1.0, 0.82, focusMask);
 
     float mapPresenceAlpha = mix(1.0, uMapPresence, mapEaseGlobal);
     float mapPresenceBrightness = mix(1.0, mix(0.72, 1.0, uMapPresence), mapEaseGlobal);
     vColor = color;
-    vAlpha = aAlpha * mix(1.0, 1.14, uAbsorption) * mix(1.0, 0.92, releaseEase) * mix(1.0, 1.08, mapEaseGlobal) * mapPresenceAlpha * mix(1.0, 1.16, focusMask);
-    vBrightness = aBrightness * clamp(depthScale, 0.82, 1.24) * mix(1.0, 1.07, uAbsorption) * mix(1.0, 0.96, releaseEase) * mix(1.0, 1.04, mapEaseGlobal) * mapPresenceBrightness * mix(1.0, 1.1, focusMask);
+    vAlpha = aAlpha * mix(1.0, 1.14, uAbsorption) * mix(1.0, 0.92, releaseEase) * mix(1.0, 1.08, mapEaseGlobal) * mapPresenceAlpha * mix(1.0, 0.46, focusMask);
+    vBrightness = aBrightness * clamp(depthScale, 0.82, 1.24) * mix(1.0, 1.07, uAbsorption) * mix(1.0, 0.96, releaseEase) * mix(1.0, 1.04, mapEaseGlobal) * mapPresenceBrightness * mix(1.0, 0.88, focusMask);
   }
 `;
 

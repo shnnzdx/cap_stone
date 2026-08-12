@@ -124,7 +124,7 @@ export default function ProductPrinciples({ storyMotionRef }: ProductPrinciplesP
       defaults: { ease: "none" },
       scrollTrigger: {
         trigger: root,
-        start: "top 78%",
+        start: "top 82%",
         end: "bottom 18%",
         scrub: 0.72,
         invalidateOnRefresh: true,
@@ -138,9 +138,9 @@ export default function ProductPrinciples({ storyMotionRef }: ProductPrinciplesP
     });
 
     timeline
-      .to({}, { duration: 0.04 }, 0)
-      .to(headingKicker, { autoAlpha: 1, y: 0, duration: 0.12 }, 0.04)
-      .to(heading, { autoAlpha: 1, y: 0, scale: 1, duration: 0.14 }, 0.08);
+      .to({}, { duration: 0.025 }, 0)
+      .to(headingKicker, { autoAlpha: 1, y: 0, duration: 0.12 }, 0.025)
+      .to(heading, { autoAlpha: 1, y: 0, scale: 1, duration: 0.14 }, 0.06);
 
     const activatePrinciple = (index: number, start: number, peakStrength: number) => {
       const principle = principles[index];
@@ -180,10 +180,10 @@ export default function ProductPrinciples({ storyMotionRef }: ProductPrinciplesP
         .to(motion, { principleFocusStrength: () => 0.22 * focusStrengthScale(), duration: 0.11 }, start + 0.135);
     };
 
-    activatePrinciple(0, 0.18, 0.78);
-    activatePrinciple(1, 0.34, 0.82);
-    activatePrinciple(2, 0.5, 0.76);
-    activatePrinciple(3, 0.66, 0.82);
+    activatePrinciple(0, 0.15, 0.78);
+    activatePrinciple(1, 0.31, 0.82);
+    activatePrinciple(2, 0.47, 0.76);
+    activatePrinciple(3, 0.63, 0.82);
 
     timeline
       .to(lines, { autoAlpha: 0.94, scale: 1, duration: 0.1, stagger: 0.01 }, 0.86)
