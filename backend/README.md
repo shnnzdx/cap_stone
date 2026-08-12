@@ -70,7 +70,7 @@ app/
 │   └── seed.py              演示数据（Mia's 30th in Chicago）
 ├── api/main.py              HTTP 接口。薄层，不写业务判断
 └── jobs/scheduler.py        定时结算
-tests/                       153 条
+tests/                       230 条
 ```
 
 **依赖方向是单向的**:`api` → `domain` → `db`。`domain/constraints` 谁也不依赖。
@@ -156,7 +156,12 @@ classify(change, constraints) -> Classification   # notice | round | reopen_roun
 
 ## 测试
 
-153 条,`pytest -q` 很快跑完。主要分这些组:
+230 条,`pytest -q` 很快跑完。主要分这些组:
+
+测试数据库现在还有两条额外安全约束:
+
+- `TEST_DATABASE_URL` 必须明显指向 test-only 数据库,例如 `tripsync_test`、`test_*`、`*_test`
+- pytest 会把 PostgreSQL 测试库重建成 UTF-8 disposable database,避免 Windows / psycopg 非 ASCII fixture 编码问题
 
 | 文件 | 守什么 |
 |---|---|

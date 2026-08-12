@@ -794,29 +794,6 @@ export function TripAppProvider({ children }) {
     }
   }, [activeTripId, refreshActions, refreshPlan, refreshTrip, refreshUpdates, requestJson, trip.id])
 
-  const generateDraftPlan = useCallback(async () => {
-    const tripId = activeTripId || trip.id
-    setLoading(current => ({ ...current, action: true }))
-    setError('')
-    try {
-      const raw = await requestJson(`/api/trips/${tripId}/plans/generate-draft`, {
-        method: 'POST',
-      })
-      setPlanId(raw.plan_id)
-      setDays(normalizePlan(raw))
-      await Promise.all([refreshTrip(), refreshUpdates(), refreshActions()])
-      notify(raw.used_ai ? 'AI draft itinerary generated' : 'Draft itinerary generated from the demo catalog')
-      return raw
-    } catch (err) {
-      const message = friendlyError(err)
-      if (err.status === 409 || err.status === 422) notify(message)
-      else setError(message)
-      throw err
-    } finally {
-      setLoading(current => ({ ...current, action: false }))
-    }
-  }, [activeTripId, notify, refreshActions, refreshTrip, refreshUpdates, requestJson, trip.id])
-
   const remindMember = useCallback(async targetMembershipId => {
     const tripId = activeTripId || trip.id
     return requestJson(`/api/trips/${tripId}/members/${targetMembershipId}/remind`, { method: 'POST' })
@@ -1037,7 +1014,6 @@ export function TripAppProvider({ children }) {
     castVote,
     resolveProposal,
     generatePlan,
-    generateDraftPlan,
     remindMember,
     extendRound,
     escalateProposal,
@@ -1077,7 +1053,7 @@ export function TripAppProvider({ children }) {
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, generateDraftPlan, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')

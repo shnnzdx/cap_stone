@@ -36,6 +36,7 @@ SLOTS = (10.0, 14.0, 19.0)
 BLOCKED_REASON = (
     "At least one member's budget ceiling cannot be met with the places available."
 )
+RULES_DAY_NOTE = "Deterministic rules fallback generated this day."
 
 
 class TripNotFound(Exception):
@@ -86,8 +87,19 @@ class DraftItem:
 
 @dataclass(frozen=True)
 class DayDraft:
+    day_index: int
     items: tuple[DraftItem, ...]
     generated_by: str
+    used_ai: bool = False
+    planner_note: str | None = None
+
+
+@dataclass(frozen=True)
+class DayPlannerNote:
+    day_index: int
+    source: str
+    note: str
+    used_ai: bool
 
 
 @dataclass(frozen=True)
@@ -97,6 +109,8 @@ class GenerationResult:
     days: list[dict]
     blocked_reason: str | None
     generated_by: str
+    used_ai: bool = False
+    planner_note: tuple[DayPlannerNote, ...] | None = None
     items: tuple[PlanItem, ...] = ()
 
 
@@ -126,7 +140,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
 
     draft: list[DraftItem] = []
     used: set[str] = set()
-    generated_by = "planner"
+    accepted_days: list[DayDraft] = []
 
     for day_index, day_date in enumerate(dates, start=1):
         # 整趟旅行还剩几个时段 —— 规则兜底要靠它给后面的日子留预算，
@@ -153,11 +167,12 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
                 days=_days_out(dates, ()),
                 blocked_reason=BLOCKED_REASON,
                 generated_by="rules",
+                used_ai=False,
+                planner_note=None,
             )
         draft.extend(day.items)
+        accepted_days.append(day)
         used.update(item.poi.title for item in day.items)
-        if day.generated_by == "rules":
-            generated_by = "rules"
 
     if not _is_complete(dates, tuple(draft)):
         plan.status = "blocked"
@@ -170,6 +185,8 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             days=_days_out(dates, ()),
             blocked_reason=BLOCKED_REASON,
             generated_by="rules",
+            used_ai=False,
+            planner_note=None,
         )
 
     items = _write_items(db, plan, tuple(draft))
@@ -182,7 +199,9 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
         status="active",
         days=_days_out(dates, items),
         blocked_reason=None,
-        generated_by=generated_by,
+        generated_by=_aggregate_generated_by(tuple(accepted_days)),
+        used_ai=any(day.used_ai for day in accepted_days),
+        planner_note=_aggregate_planner_note(tuple(accepted_days)),
         items=items,
     )
 
@@ -392,15 +411,15 @@ def _planner_day(
     )
 
     try:
-        raw_picks = planner.plan_day(payload)
-    except (base.AgentUnavailable, Exception):
+        day_result = planner.plan_day(payload)
+    except (base.AgentUnavailable, planner.PlannerDayUnusable):
         return None
 
     items: list[DraftItem] = []
     day_used: set[str] = set()
     current_total = _draft_total(already_selected)
     day_walk = 0.0
-    for pick in raw_picks:
+    for pick in day_result.picks:
         poi = candidate_by_name.get(pick.poi_name)
         if poi is None or poi.title in day_used:
             continue
@@ -428,7 +447,13 @@ def _planner_day(
 
     if not items:
         return None
-    return DayDraft(items=tuple(items), generated_by="planner")
+    return DayDraft(
+        day_index=day_index,
+        items=tuple(items),
+        generated_by="planner",
+        used_ai=day_result.used_ai,
+        planner_note=day_result.planner_note,
+    )
 
 
 def _rules_day(
@@ -477,7 +502,13 @@ def _rules_day(
         current_total += poi.price
         day_walk += _walk_km(poi)
 
-    return DayDraft(items=tuple(items), generated_by="rules")
+    return DayDraft(
+        day_index=day_index,
+        items=tuple(items),
+        generated_by="rules",
+        used_ai=False,
+        planner_note=RULES_DAY_NOTE,
+    )
 
 
 def _budget_headroom(
@@ -725,6 +756,31 @@ def _budget_left(constraints: tuple[Constraint, ...], current_total: float) -> f
     if not numeric:
         return math.inf
     return max(0.0, min(numeric) - current_total)
+
+
+def _aggregate_generated_by(days: tuple[DayDraft, ...]) -> str:
+    sources = {day.generated_by for day in days}
+    if sources == {"planner"}:
+        return "planner"
+    if sources == {"rules"}:
+        return "rules"
+    return "mixed"
+
+
+def _aggregate_planner_note(
+    days: tuple[DayDraft, ...]
+) -> tuple[DayPlannerNote, ...] | None:
+    if not any(day.generated_by == "planner" for day in days):
+        return None
+    return tuple(
+        DayPlannerNote(
+            day_index=day.day_index,
+            source=day.generated_by,
+            note=day.planner_note or RULES_DAY_NOTE,
+            used_ai=day.used_ai,
+        )
+        for day in days
+    )
 
 
 def _write_items(

@@ -35,6 +35,8 @@ PHOTOS = [U.format("1494522358652-f30e61a60313"), U.format("1500530855697-b586d8
           U.format("1486911278844-a81c5267e227"), U.format("1514893011-72dfa15c5ab3")]
 
 LOCAL_DATABASE_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+DEMO_START = date(2026, 8, 14)
+DEMO_END = date(2026, 8, 17)
 
 MEMBERS = [
     ("Mia Chen", "organizer@cadensy.local", "organizer"),
@@ -109,8 +111,8 @@ def seed() -> dict:
         trip = Trip(
             name="Mia's 30th in Chicago",
             destination="Chicago",
-            preferred_start_date=date(2026, 8, 14),
-            preferred_end_date=date(2026, 8, 17),
+            preferred_start_date=DEMO_START,
+            preferred_end_date=DEMO_END,
             expected_group_size=6,
             status="traveling",
             created_by_user_id=users[0].id,
@@ -165,8 +167,8 @@ def seed() -> dict:
         db.add_all(
             Preference(
                 trip_membership_id=m.id,
-                preferred_start_date=date(2026, 8, 14),
-                preferred_end_date=date(2026, 8, 17),
+                preferred_start_date=DEMO_START,
+                preferred_end_date=DEMO_END,
                 available_start_date=date(2026, 8, 13),
                 available_end_date=date(2026, 8, 18),
                 ideal_budget=500.0,

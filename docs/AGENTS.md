@@ -239,7 +239,7 @@ OpenAI 报错时，classify / changes / votes 三个接口行为不变
 cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
 ```
 
-现在是 143 passed。**加 agent 之后只能变多,不能变少。**
+现在是 230 passed。**加 agent 之后只能变多,不能变少。**
 
 ---
 

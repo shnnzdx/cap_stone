@@ -1,6 +1,6 @@
 # Next Handoff Prompt: Backend And Repo Refactor
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 Use the following prompt when handing this repository to the next engineer or AI agent for backend cleanup, codebase consolidation, or further architecture work.
 
@@ -58,6 +58,12 @@ Use the following prompt when handing this repository to the next engineer or AI
   - `usePlanInteractionRuntime` 拥有 Plan 交互态与效果
   - `useAssistantChangeRequestFlow` 拥有 drawer-local assistant / change-request orchestration
   - `FinalApp` 只保留 route mount、workspace composition、PlanFeature inputs、command execution
+- Candidate 4：initial plan generation ownership
+  - `POST /plans/generate` 是唯一 canonical 初始行程生成入口
+  - `backend/app/domain/plans/generator.py` 是 sole generation workflow owner
+- Candidate 5：trip-scoped access boundary
+  - trip-owned HTTP 访问边界已经集中到 `TripScope`
+  - generic trip/resource scoping 不要再散回 route handler
 
 除非代码证据显示这些边界已经被重新破坏，否则：
 
@@ -65,13 +71,15 @@ Use the following prompt when handing this repository to the next engineer or AI
 - 不要重新设计 Candidate 2
 - 不要把 Candidate 3 再拆成很多浅 wrapper
 - 不要把已经沉到深模块里的责任重新搬回 `FinalApp`
+- 不要重开 Candidate 4
+- 不要重开 Candidate 5
 
 三、当前更适合继续推进的方向
 
 现在更值得做的事情是：
 
-1. 后端代码整理
-2. 后端内部 ownership/模块边界梳理
+1. 测试基线与构建稳定性维护
+2. 后端代码整理
 3. API 层、domain 层、agent 层、db 层的职责清理
 4. 剩余仓库级整理
 5. 删除浅层重复 helper、减轻 blast radius、提高测试定位性
@@ -211,13 +219,20 @@ Use the following prompt when handing this repository to the next engineer or AI
 
 如果没有新的用户指令，默认下一步建议是：
 
-先做“backend architecture assessment only”，不要实现。
+先确认当前任务是不是确实需要新的 backend architecture candidate。没有明确代码证据时，不要再主动打开 Candidate 6。
 
-目标是先找出：
+截至 2026-08-12，当前已确认事实是：
 
-- 后端当前最值得整理的单一 strongest candidate
-- 它是否真的是 deep seam
-- 是否值得作为 Candidate 4 来推进
+- Candidate 4 已完成
+- Candidate 5 已完成
+- 没有额外高价值 backend architecture refactor 目前值得立刻推进
+- `api/main.py` 的 presentation / transaction concentration 仍然是已知 maintainability debt，但还不值得在没有新证据时重构
 
-先分析，再 grill，再 freeze interface，再做 migration plan，再 implementation。
+如果用户没有给出新的产品或架构目标，默认更稳的是先做：
+
+- test baseline stabilization audit / implementation
+- build stability cleanup
+- 小范围的 stale docs / stale glue code 清理
+
+只有在出现新的重复 contract drift、第二套 API surface、或明确 DTO/controller initiative 时，才重开新的 backend architecture assessment。
 ```

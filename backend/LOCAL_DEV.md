@@ -45,6 +45,12 @@ D:\PostgreSQL\18\bin\createdb.exe -h localhost -p 5432 -U postgres tripsync_test
 
 If `tripsync_test` already exists, keep it.
 
+Important:
+
+- `TEST_DATABASE_URL` must point at an explicitly test-only database name such as `tripsync_test`, `test_*`, or `*_test`.
+- Pytest may drop and recreate that database as a clean UTF-8 disposable database before running schema setup.
+- Never point `TEST_DATABASE_URL` at `tripsync`, `postgres`, or any shared/non-test database.
+
 Create a local `tripsync` database too only if you want to switch `DATABASE_URL` back to local development for seeding or offline backend work:
 
 ```powershell
@@ -78,6 +84,7 @@ Notes:
 - `DATABASE_URL` may point at cloud RDS, but the backend can only start if that database is reachable from this machine.
 - `TEST_DATABASE_URL` should stay local and disposable because tests rebuild schema.
 - Keep `DATABASE_URL` and `TEST_DATABASE_URL` on different databases.
+- On Windows, pytest now forces the PostgreSQL test database and client connection to UTF-8 so non-ASCII fixtures stay valid.
 
 `DEV_ALLOW_MEMBERSHIP_HEADER=1` keeps the local `X-Membership-Id` demo flow available while login is still evolving.
 
@@ -173,7 +180,8 @@ Test safety rules:
 
 - `TEST_DATABASE_URL` must exist and be password-bearing if local PostgreSQL requires auth.
 - `TEST_DATABASE_URL` must not point at the same database as `DATABASE_URL`.
-- Tests drop and recreate schema in the test database.
+- `TEST_DATABASE_URL` must be clearly test-only by name, or pytest will fail loudly before any destructive setup.
+- Pytest may recreate the PostgreSQL test database itself to guarantee a clean UTF-8 test environment.
 
 ## 10. Common Problems
 

@@ -1,85 +1,94 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
-
 import pytest
 
-from app.agents import planner
+from app.agents import base, planner
 
 
-@pytest.mark.parametrize("day_count", [2, 3, 5, 6])
-def test_fallback_covers_the_inclusive_trip_dates(monkeypatch, day_count: int):
-    monkeypatch.setenv("MOCK_AI", "1")
-    start = date(2026, 8, 19)
-    trip_dates = tuple(start + timedelta(days=offset) for offset in range(day_count))
-
-    draft = planner.draft_itinerary(
-        planner.PlannerInput(destination="Chicago", trip_dates=trip_dates)
+def _day_payload() -> planner.PlanDayInput:
+    return planner.PlanDayInput(
+        day_index=1,
+        candidates=(
+            planner.PoiOption(
+                name="Millennium Park & Cloud Gate",
+                place="Loop",
+                price=0.0,
+                duration_min=90,
+                opens=9.0,
+                closes=20.0,
+                tags=("culture",),
+            ),
+            planner.PoiOption(
+                name="Chicago Cultural Center",
+                place="Loop",
+                price=0.0,
+                duration_min=90,
+                opens=10.0,
+                closes=18.0,
+                tags=("culture",),
+            ),
+            planner.PoiOption(
+                name="Girl & the Goat",
+                place="West Loop",
+                price=45.0,
+                duration_min=120,
+                opens=16.0,
+                closes=22.0,
+                tags=("food",),
+            ),
+        ),
+        already_used=("Art Institute of Chicago",),
+        budget_left=120.0,
+        interests=("culture", "food"),
     )
 
-    assert draft.used_ai is False
-    assert tuple(day.day_date for day in draft.days) == trip_dates
-    assert tuple(day.day_index for day in draft.days) == tuple(range(1, day_count + 1))
-    titles = [stop.title for day in draft.days for stop in day.stops]
-    assert len(titles) == len(set(titles))
-    assert all(1 <= len(day.stops) <= 4 for day in draft.days)
 
-
-def test_six_day_fallback_does_not_force_two_activities_per_day(monkeypatch):
-    monkeypatch.setenv("MOCK_AI", "1")
-    start = date(2026, 8, 19)
-    trip_dates = tuple(start + timedelta(days=offset) for offset in range(6))
-
-    draft = planner.draft_itinerary(
-        planner.PlannerInput(destination="Chicago", trip_dates=trip_dates)
-    )
-
-    assert [len(day.stops) for day in draft.days] == [2, 3, 2, 3, 2, 1]
-
-
-def test_real_planner_repairs_a_uniform_activity_count_once(monkeypatch):
+def test_plan_day_accepts_valid_ai_output_and_preserves_day_metadata(monkeypatch):
     monkeypatch.setenv("MOCK_AI", "0")
-    start = date(2026, 8, 19)
-    trip_dates = tuple(start + timedelta(days=offset) for offset in range(4))
+
+    def fake_call_model(**kwargs):
+        return {
+            "note": "Balanced art-first day with dinner in the evening.",
+            "picks": [
+                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
+                {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
+                {"poi_name": "Girl & the Goat", "start_hour": 19.0},
+            ],
+        }
+
+    monkeypatch.setattr(planner.base, "call_model", fake_call_model)
+
+    result = planner.plan_day(_day_payload())
+
+    assert result.used_ai is True
+    assert result.planner_note == "Balanced art-first day with dinner in the evening."
+    assert result.picks == (
+        planner.Pick(poi_name="Millennium Park & Cloud Gate", start_hour=10.0),
+        planner.Pick(poi_name="Chicago Cultural Center", start_hour=14.0),
+        planner.Pick(poi_name="Girl & the Goat", start_hour=19.0),
+    )
+
+
+def test_plan_day_retries_once_after_invalid_ai_output_and_accepts_repaired_result(
+    monkeypatch,
+):
+    monkeypatch.setenv("MOCK_AI", "0")
     responses = iter(
         [
             {
-                "note": "uniform",
-                "days": [
-                    {
-                        "day_index": index,
-                        "date": day.isoformat(),
-                        "stops": [{"title": planner.POI_TITLES[index - 1]}],
-                    }
-                    for index, day in enumerate(trip_dates, start=1)
+                "note": "bad first pass",
+                "picks": [
+                    {"poi_name": "Imaginary Rooftop", "start_hour": 10.0},
+                    {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
+                    {"poi_name": "Girl & the Goat", "start_hour": 19.0},
                 ],
             },
             {
-                "note": "repaired",
-                "days": [
-                    {
-                        "day_index": 1,
-                        "date": trip_dates[0].isoformat(),
-                        "stops": [{"title": "Millennium Park & Cloud Gate"}],
-                    },
-                    {
-                        "day_index": 2,
-                        "date": trip_dates[1].isoformat(),
-                        "stops": [
-                            {"title": "Chicago Cultural Center"},
-                            {"title": "Chicago Riverwalk"},
-                        ],
-                    },
-                    {
-                        "day_index": 3,
-                        "date": trip_dates[2].isoformat(),
-                        "stops": [{"title": "Lincoln Park Zoo"}],
-                    },
-                    {
-                        "day_index": 4,
-                        "date": trip_dates[3].isoformat(),
-                        "stops": [{"title": "Girl & the Goat"}],
-                    },
+                "note": "Repaired to use only provided candidates.",
+                "picks": [
+                    {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
+                    {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
+                    {"poi_name": "Girl & the Goat", "start_hour": 19.0},
                 ],
             },
         ]
@@ -92,10 +101,75 @@ def test_real_planner_repairs_a_uniform_activity_count_once(monkeypatch):
 
     monkeypatch.setattr(planner.base, "call_model", fake_call_model)
 
-    draft = planner.draft_itinerary(
-        planner.PlannerInput(destination="Chicago", trip_dates=trip_dates)
+    result = planner.plan_day(_day_payload())
+
+    assert result.used_ai is True
+    assert result.planner_note == "Repaired to use only provided candidates."
+    assert len(calls) == 2
+    assert "The previous day plan failed deterministic validation" in calls[1]["user"]
+    assert {
+        pick.poi_name for pick in result.picks
+    } <= {candidate.name for candidate in _day_payload().candidates}
+
+
+def test_plan_day_raises_unusable_after_second_invalid_ai_output(monkeypatch):
+    monkeypatch.setenv("MOCK_AI", "0")
+    responses = iter(
+        [
+            {
+                "note": "bad first pass",
+                "picks": [{"poi_name": "Imaginary Rooftop", "start_hour": 10.0}],
+            },
+            {
+                "note": "still bad",
+                "picks": [{"poi_name": "Still Imaginary", "start_hour": 14.0}],
+            },
+        ]
+    )
+    calls = []
+
+    def fake_call_model(**kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(planner.base, "call_model", fake_call_model)
+
+    with pytest.raises(planner.PlannerDayUnusable):
+        planner.plan_day(_day_payload())
+
+    assert len(calls) == 2
+
+
+def test_mocked_plan_day_accepted_output_never_sets_used_ai(monkeypatch):
+    monkeypatch.setenv("MOCK_AI", "1")
+    monkeypatch.setattr(
+        planner,
+        "MOCK",
+        {
+            "note": "Mock planner day.",
+            "picks": [
+                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
+            ],
+        },
     )
 
-    assert draft.used_ai is True
-    assert len(calls) == 2
-    assert [len(day.stops) for day in draft.days] == [1, 2, 1, 1]
+    result = planner.plan_day(_day_payload())
+
+    assert result.used_ai is False
+    assert result.planner_note == "Mock planner day."
+
+
+def test_plan_day_propagates_model_unavailable_without_retry(monkeypatch):
+    monkeypatch.setenv("MOCK_AI", "0")
+    calls = []
+
+    def fake_call_model(**kwargs):
+        calls.append(kwargs)
+        raise base.AgentUnavailable("planner offline")
+
+    monkeypatch.setattr(planner.base, "call_model", fake_call_model)
+
+    with pytest.raises(base.AgentUnavailable):
+        planner.plan_day(_day_payload())
+
+    assert len(calls) == 1

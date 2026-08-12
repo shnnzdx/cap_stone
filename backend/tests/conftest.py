@@ -8,8 +8,10 @@ from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session, sessionmaker
+from tests._db_test_harness import quote_ident, require_safe_test_database_name
 
 from app.db.models import (
     Base,
@@ -37,10 +39,76 @@ os.environ["DISABLE_SCHEDULER"] = "1"
 os.environ.setdefault("MOCK_AI", "1")
 
 
+def _postgres_connect_args() -> dict:
+    # Force a UTF-8 client so non-ASCII fixtures survive Windows locale defaults.
+    return {"client_encoding": "utf8"}
+
+
+def _admin_database_url(url: URL) -> URL:
+    return url if url.database == "postgres" else url.set(database="postgres")
+
+
+def _ensure_postgres_test_database_utf8(database_url: str) -> None:
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        return
+    if not url.database:
+        raise RuntimeError("TEST_DATABASE_URL must include an explicit PostgreSQL database name.")
+    require_safe_test_database_name(url.database)
+    if url.database == "postgres":
+        raise RuntimeError("TEST_DATABASE_URL must point at a disposable test database, not postgres.")
+
+    admin_engine = create_engine(
+        _admin_database_url(url),
+        future=True,
+        isolation_level="AUTOCOMMIT",
+        connect_args=_postgres_connect_args(),
+    )
+    quoted_database = quote_ident(url.database)
+    try:
+        with admin_engine.connect() as conn:
+            current_database = conn.execute(
+                text(
+                    """
+                    select pg_encoding_to_char(encoding)
+                    from pg_database
+                    where datname = :database
+                    """
+                ),
+                {"database": url.database},
+            ).scalar_one_or_none()
+
+            if current_database is not None:
+                conn.execute(
+                    text(
+                        """
+                        select pg_terminate_backend(pid)
+                        from pg_stat_activity
+                        where datname = :database
+                          and pid <> pg_backend_pid()
+                        """
+                    ),
+                    {"database": url.database},
+                )
+                conn.execute(text(f"drop database if exists {quoted_database}"))
+            conn.execute(
+                text(f"create database {quoted_database} template template0 encoding 'UTF8'")
+            )
+    finally:
+        admin_engine.dispose()
+
+
 @pytest.fixture(scope="session")
 def test_engine():
-    engine = create_engine(TEST_DATABASE_URL, future=True)
-    Base.metadata.drop_all(engine)
+    url = make_url(TEST_DATABASE_URL)
+    if url.database:
+        require_safe_test_database_name(url.database)
+    _ensure_postgres_test_database_utf8(TEST_DATABASE_URL)
+    engine = create_engine(
+        TEST_DATABASE_URL,
+        future=True,
+        connect_args=_postgres_connect_args(),
+    )
     Base.metadata.create_all(engine)
     yield engine
     engine.dispose()

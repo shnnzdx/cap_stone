@@ -1,6 +1,6 @@
 # Cadensy / TripSync Handoff Prompt
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 Use the following prompt when handing this repository to another engineer or AI agent.
 
@@ -245,6 +245,11 @@ Use the following prompt when handing this repository to another engineer or AI 
 - `MOCK_AI=1`
 - `DISABLE_SCHEDULER=0`
 
+`TEST_DATABASE_URL` 现在还有两条额外约束：
+
+- 必须明显指向 test-only 数据库,例如 `tripsync_test`、`test_*`、`*_test`
+- pytest 在 PostgreSQL 下会把测试库重建成干净的 UTF-8 disposable database,不要把它指到任何共享库或运行时库
+
 4. 当前 AI 配置方式
 
 AI 统一走：
@@ -291,6 +296,8 @@ AI 统一走：
 - pytest 用 `TEST_DATABASE_URL`
 
 测试数据库必须和运行数据库分离。
+
+截至 2026-08-12,后端 `pytest -q` 当前基线是 `230 passed, 1 warning`。
 
 本地后端是否连本地库还是云端 RDS，取决于你本机 `backend/.env`。
 

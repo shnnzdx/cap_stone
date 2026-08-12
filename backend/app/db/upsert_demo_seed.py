@@ -79,7 +79,6 @@ def _ensure_trip(db, organizer: User) -> tuple[Trip, bool]:
             currency="USD",
             preferences_deadline=datetime.now(timezone.utc),
             status="traveling",
-            archived_at=None,
             created_by_user_id=organizer.id,
         )
         db.add(trip)
@@ -91,7 +90,6 @@ def _ensure_trip(db, organizer: User) -> tuple[Trip, bool]:
         trip.expected_group_size = len(MEMBERS)
         trip.currency = "USD"
         trip.status = "traveling"
-        trip.archived_at = None
         trip.created_by_user_id = organizer.id
     return trip, created
 

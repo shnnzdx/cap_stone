@@ -33,7 +33,6 @@ def ensure_cloud_schema() -> None:
         connection.execute(
             text("ALTER TABLE user_account ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)")
         )
-        connection.execute(text("ALTER TABLE trip ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ"))
         connection.execute(
             text(
                 "ALTER TABLE change_proposal "
@@ -86,7 +85,6 @@ def upsert_demo_login() -> dict:
                 currency="USD",
                 preferences_deadline=datetime.now(timezone.utc) + timedelta(days=7),
                 status="planning",
-                archived_at=None,
                 created_by_user_id=user.id,
             )
             db.add(trip)

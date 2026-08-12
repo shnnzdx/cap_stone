@@ -23,6 +23,7 @@ from ..agents import chat as chat_agent
 from ..db.models import (
     ChangeProposal,
     DecisionRound,
+    InviteLink,
     Plan,
     PlanChange,
     PlanItem,
@@ -34,12 +35,12 @@ from ..db.models import (
     Vote,
 )
 from ..db.session import get_session
+from ..domain.access import ForeignTripAccess, ScopedResourceNotFound, for_membership
 from ..domain import auth as auth_service
 from ..domain.chat import service as chat_service
 from ..domain.decisions import orchestrator as orch
 from ..domain.decisions import organizer as org_actions
 from ..domain.plans import generator as plan_generator
-from ..domain.planning import service as plan_service
 from ..domain.preferences import service as pref_service
 from ..domain.trips import service as trip_service
 
@@ -79,14 +80,15 @@ app.add_middleware(
 )
 
 
-def _same_trip(membership: TripMembership, trip_id: str) -> None:
-    """路径里的旅行必须就是你身份所属的那一趟。
-
-    不查的话，拿 A 旅行的身份去问 B 旅行，接口会**默默返回 A 的数据** ——
-    用户以为看的是 B，看到的却是别人那趟的人数和进度。
-    """
-    if membership.trip_id != trip_id:
-        raise HTTPException(403, "This identity belongs to a different trip")
+def _require_scoped_trip(
+    db: Session, membership: TripMembership, trip_id: str
+) -> Trip:
+    try:
+        return for_membership(db, membership).require_trip(trip_id)
+    except ForeignTripAccess as exc:
+        raise HTTPException(403, "This identity belongs to a different trip") from exc
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Trip not found") from exc
 
 
 def current_membership(
@@ -246,6 +248,15 @@ def _item_out(item: PlanItem) -> dict:
         "coords": [item.lat, item.lng] if item.lat is not None else None,
         # 没有配图时给 null，前端有占位框兜着，不要在这里编一张
         "photoUrl": item.photo_url,
+    }
+
+
+def _planner_note_out(note: plan_generator.DayPlannerNote) -> dict:
+    return {
+        "day_index": note.day_index,
+        "source": note.source,
+        "note": note.note,
+        "used_ai": note.used_ai,
     }
 
 
@@ -463,10 +474,12 @@ def list_trips(
 
 
 @app.get("/api/trips/{trip_id}")
-def get_trip(trip_id: str, db: Session = Depends(get_session)) -> dict:
-    trip = db.get(Trip, trip_id)
-    if trip is None:
-        raise HTTPException(404, "Trip not found")
+def get_trip(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    trip = _require_scoped_trip(db, me, trip_id)
     return {
         "id": trip.id,
         "name": trip.name,
@@ -479,7 +492,12 @@ def get_trip(trip_id: str, db: Session = Depends(get_session)) -> dict:
 
 
 @app.get("/api/trips/{trip_id}/plans/current")
-def get_current_plan(trip_id: str, db: Session = Depends(get_session)) -> dict:
+def get_current_plan(
+    trip_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    _require_scoped_trip(db, me, trip_id)
     return _plan_out(db, trip_id)
 
 
@@ -490,7 +508,7 @@ def get_trip_comments(
     me: TripMembership = Depends(current_membership),
 ) -> list[dict]:
     """Public group notes for itinerary items in this trip."""
-    _same_trip(me, trip_id)
+    _require_scoped_trip(db, me, trip_id)
     comments = db.scalars(
         select(PlanItemComment)
         .join(PlanItem, PlanItemComment.plan_item_id == PlanItem.id)
@@ -512,6 +530,7 @@ def get_updates(
     A notice with a recipient is private to that member -- reminders are a
     nudge, not a public callout. Everything else is group-wide and anonymous.
     """
+    _require_scoped_trip(db, me, trip_id)
     notices = db.scalars(
         select(UpdateNotice)
         .where(
@@ -547,9 +566,7 @@ def get_trip_actions(
     Polling uses this instead of scraping notices: notices are activity history,
     while rounds/proposals are current actions that may need buttons.
     """
-    if me.trip_id != trip_id:
-        raise HTTPException(403, "Membership does not belong to this trip")
-
+    _require_scoped_trip(db, me, trip_id)
     rounds = db.scalars(
         select(DecisionRound)
         .join(PlanItem, DecisionRound.plan_item_id == PlanItem.id)
@@ -594,6 +611,7 @@ def chat_with_trip(
     classify(), and the response tells the frontend what it could submit later.
     This endpoint never calls propose_change().
     """
+    _require_scoped_trip(db, me, trip_id)
     try:
         result = chat_service.respond_to_trip_chat(
             db,
@@ -622,29 +640,91 @@ def chat_with_trip(
     return {"reply": result.reply, "proposed_change": proposed}
 
 
-def _round_payload(db: Session, round_id: str, membership_id: str | None) -> dict:
-    """路由内部要复用这段就调它,别直接调路由函数 ——
-    路由的默认值是 Header(...) 这类依赖对象,直接调会把它当成真实参数传下去。
-    """
-    round_ = db.get(DecisionRound, round_id)
-    if round_ is None:
-        raise HTTPException(404, "Round not found")
-    me = db.get(TripMembership, membership_id) if membership_id else None
-    return _round_out(db, round_, me)
+def _require_scoped_plan(
+    db: Session, membership: TripMembership, plan_id: str
+) -> Plan:
+    try:
+        return for_membership(db, membership).require_plan(plan_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Plan not found") from exc
+
+
+def _require_scoped_round(
+    db: Session, membership: TripMembership, round_id: str
+) -> DecisionRound:
+    try:
+        return for_membership(db, membership).require_round(round_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Round not found") from exc
+
+
+def _require_scoped_proposal(
+    db: Session, membership: TripMembership, proposal_id: str
+) -> ChangeProposal:
+    try:
+        return for_membership(db, membership).require_proposal(proposal_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Proposal not found") from exc
+
+
+def _require_scoped_plan_item(
+    db: Session, membership: TripMembership, item_id: str
+) -> PlanItem:
+    try:
+        return for_membership(db, membership).require_plan_item(item_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Item not found") from exc
+
+
+def _require_scoped_notice(
+    db: Session, membership: TripMembership, notice_id: str
+) -> UpdateNotice:
+    try:
+        return for_membership(db, membership).require_notice(notice_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Nothing to object to") from exc
+
+
+def _require_scoped_invite(
+    db: Session, membership: TripMembership, invite_id: str
+) -> InviteLink:
+    try:
+        return for_membership(db, membership).require_invite(invite_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Invite not found") from exc
+
+
+def _require_scoped_membership_in_trip(
+    db: Session, membership: TripMembership, membership_id: str, trip_id: str
+) -> TripMembership:
+    try:
+        return for_membership(db, membership).require_membership_in_trip(
+            membership_id, trip_id
+        )
+    except ForeignTripAccess as exc:
+        raise HTTPException(403, "This identity belongs to a different trip") from exc
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Member not found") from exc
 
 
 @app.get("/api/rounds/{round_id}")
 def get_round(
     round_id: str,
     db: Session = Depends(get_session),
-    x_membership_id: str | None = Header(default=None),
+    me: TripMembership = Depends(current_membership),
 ) -> dict:
-    return _round_payload(db, round_id, x_membership_id)
+    round_ = _require_scoped_round(db, me, round_id)
+    return _round_out(db, round_, me)
 
 
 @app.get("/api/plans/{plan_id}/changes")
-def get_change_log(plan_id: str, db: Session = Depends(get_session)) -> list[dict]:
+def get_change_log(
+    plan_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> list[dict]:
     """流水账。这趟旅行的每个决定是怎么来的。"""
+    _require_scoped_plan(db, me, plan_id)
     changes = db.scalars(
         select(PlanChange)
         .where(PlanChange.plan_id == plan_id)
@@ -699,6 +779,7 @@ def create_invite(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
+    _require_scoped_trip(db, me, trip_id)
     try:
         created = trip_service.create_invite(db, trip_id, me)
     except trip_service.OrganizerRequired as exc:
@@ -746,6 +827,7 @@ def revoke_invite(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
+    _require_scoped_invite(db, me, invite_id)
     try:
         trip_service.revoke_invite(db, invite_id, me)
     except trip_service.OrganizerRequired as exc:
@@ -762,6 +844,7 @@ def generate_trip_plan(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
+    _require_scoped_trip(db, me, trip_id)
     try:
         result = plan_generator.generate_plan(db, trip_id, me)
     except plan_generator.OrganizerRequired as exc:
@@ -779,34 +862,13 @@ def generate_trip_plan(
         "days": result.days,
         "blocked_reason": result.blocked_reason,
         "generated_by": result.generated_by,
+        "used_ai": result.used_ai,
+        "planner_note": (
+            [_planner_note_out(note) for note in result.planner_note]
+            if result.planner_note is not None
+            else None
+        ),
     }
-
-
-@app.post("/api/trips/{trip_id}/plans/generate-draft")
-def generate_draft_plan(
-    trip_id: str,
-    db: Session = Depends(get_session),
-    me: TripMembership = Depends(current_membership),
-) -> dict:
-    """Generate the first itinerary draft through Jiayi's planner pipeline."""
-    try:
-        result = plan_service.generate_draft_plan(db, trip_id=trip_id, membership=me)
-    except plan_service.PlannerAccessDenied as exc:
-        raise HTTPException(403, str(exc)) from exc
-    except plan_service.PlannerTripNotFound as exc:
-        raise HTTPException(404, str(exc)) from exc
-    except plan_service.PlannerAlreadyHasItems as exc:
-        raise HTTPException(409, str(exc)) from exc
-    except (
-        plan_service.PlannerTripDatesInvalid,
-        plan_service.PlannerDraftRejected,
-    ) as exc:
-        raise HTTPException(422, str(exc)) from exc
-    db.commit()
-    payload = _plan_out(db, trip_id)
-    payload["planner_note"] = result.note
-    payload["used_ai"] = result.used_ai
-    return payload
 
 
 @app.post("/api/plans/items/{item_id}/classify")
@@ -820,9 +882,7 @@ def classify_only(
 
     不花钱、不慢,因为判定不靠 AI。
     """
-    item = db.get(PlanItem, item_id)
-    if item is None:
-        raise HTTPException(404, "Item not found")
+    item = _require_scoped_plan_item(db, me, item_id)
     savepoint = db.begin_nested()
     try:
         outcome = orch.propose_change(
@@ -843,9 +903,7 @@ def submit_change(
     me: TripMembership = Depends(current_membership),
 ) -> dict:
     """真的提交一个改动。判定 + 执行一步到位。"""
-    item = db.get(PlanItem, item_id)
-    if item is None:
-        raise HTTPException(404, "Item not found")
+    item = _require_scoped_plan_item(db, me, item_id)
     try:
         outcome = orch.propose_change(
             db, item, body.patch(), me.id, request=body.request, reason=body.reason
@@ -865,10 +923,7 @@ def add_item_comment(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    item = db.get(PlanItem, item_id)
-    if item is None:
-        raise HTTPException(404, "Item not found")
-    _same_trip(me, item.plan.trip_id)
+    item = _require_scoped_plan_item(db, me, item_id)
     text = body.text.strip()
     if not text:
         raise HTTPException(422, "Comment cannot be empty")
@@ -890,9 +945,7 @@ def set_item_booking(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    item = db.get(PlanItem, item_id)
-    if item is None:
-        raise HTTPException(404, "Item not found")
+    item = _require_scoped_plan_item(db, me, item_id)
     try:
         updated = orch.set_booking_status(db, item, me, body.booked)
     except orch.WrongTrip as exc:
@@ -909,8 +962,8 @@ def object_to_notice(
     me: TripMembership = Depends(current_membership),
 ) -> dict:
     """在通知上说「我有别的想法」→ 升级成投票。"""
-    notice = db.get(UpdateNotice, notice_id)
-    if notice is None or not notice.can_object:
+    notice = _require_scoped_notice(db, me, notice_id)
+    if not notice.can_object:
         raise HTTPException(404, "Nothing to object to")
     try:
         outcome = orch.object_to_notice(db, notice)
@@ -927,23 +980,25 @@ def vote(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    round_ = db.get(DecisionRound, round_id)
-    if round_ is None or round_.status != "open":
+    round_ = _require_scoped_round(db, me, round_id)
+    if round_.status != "open":
         raise HTTPException(404, "Round is not open")
     orch.cast_vote(db, round_, me.id, body.option_id)
     db.commit()
-    return _round_payload(db, round_id, me.id)
+    return _round_out(db, round_, me)
 
 
 @app.post("/api/rounds/{round_id}/settle")
-def settle(round_id: str, db: Session = Depends(get_session)) -> dict:
+def settle(
+    round_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
     """手动结算。真实场景由定时任务调 settle_due_rounds,这个接口给演示用。"""
-    round_ = db.get(DecisionRound, round_id)
-    if round_ is None:
-        raise HTTPException(404, "Round not found")
+    round_ = _require_scoped_round(db, me, round_id)
     orch.settle_round(db, round_)
     db.commit()
-    return _round_payload(db, round_id, None)
+    return _round_out(db, round_, me)
 
 
 @app.post("/api/proposals/{proposal_id}/decisions")
@@ -953,20 +1008,20 @@ def decide(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    proposal = db.get(ChangeProposal, proposal_id)
-    if proposal is None:
-        raise HTTPException(404, "Proposal not found")
+    proposal = _require_scoped_proposal(db, me, proposal_id)
     applied = orch.decide_proposal(db, proposal, me.id, body.status)
     db.commit()
     return {"proposal_status": proposal.status, "applied": applied}
 
 
 @app.get("/api/proposals/{proposal_id}")
-def get_proposal(proposal_id: str, db: Session = Depends(get_session)) -> dict:
+def get_proposal(
+    proposal_id: str,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
     """提案详情。**其他成员一律匿名** —— 当前用户是 You,其余是 Member A/B/C。"""
-    proposal = db.get(ChangeProposal, proposal_id)
-    if proposal is None:
-        raise HTTPException(404, "Proposal not found")
+    proposal = _require_scoped_proposal(db, me, proposal_id)
     return _proposal_out(db, proposal)
 
 
@@ -982,6 +1037,7 @@ def get_my_preferences(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _require_scoped_trip(db, me, trip_id)
     return pref_service.read_mine(db, me)
 
 
@@ -992,6 +1048,7 @@ def save_my_preferences(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _require_scoped_trip(db, me, trip_id)
     result = pref_service.save_mine(
         db, me, pref_service.PreferenceData(**body.model_dump())
     )
@@ -1006,6 +1063,7 @@ def add_my_constraint(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _require_scoped_trip(db, me, trip_id)
     try:
         row, conflicts = pref_service.add_constraint(db, me, **body.model_dump())
     except pref_service.UnknownConstraintKind as exc:
@@ -1052,7 +1110,7 @@ def list_members(
     db: Session = Depends(get_session),
 ) -> dict:
     """谁在这趟旅行里，交没交偏好。**只说交没交，不说交了什么。**"""
-    _same_trip(me, trip_id)
+    _require_scoped_trip(db, me, trip_id)
     return pref_service.list_members(db, me)
 
 
@@ -1083,6 +1141,7 @@ def remind_member(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _require_scoped_membership_in_trip(db, me, membership_id, trip_id)
     try:
         notice = org_actions.remind(db, me, membership_id)
     except Exception as exc:
@@ -1097,6 +1156,7 @@ def extend_round(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _require_scoped_round(db, me, round_id)
     try:
         round_ = org_actions.extend_round(db, me, round_id)
     except Exception as exc:
@@ -1112,6 +1172,7 @@ def escalate_proposal(
     db: Session = Depends(get_session),
 ) -> dict:
     """Any affected member can escalate, not just the proposer."""
+    _require_scoped_proposal(db, me, proposal_id)
     try:
         proposal = org_actions.escalate(db, me, proposal_id)
     except Exception as exc:
@@ -1127,6 +1188,7 @@ def resolve_deadlock(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
+    _require_scoped_proposal(db, me, proposal_id)
     try:
         item = org_actions.resolve_deadlock(db, me, proposal_id, body.action)
     except Exception as exc:

@@ -179,6 +179,49 @@ def _generated_items(db: Session, plan_id: str) -> list[PlanItem]:
     ).all()
 
 
+def _candidate_triplet(
+    payload: planner.PlanDayInput,
+) -> tuple[planner.PoiOption, planner.PoiOption, planner.PoiOption]:
+    morning = next(
+        option for option in payload.candidates if option.opens <= 10.0 <= option.closes
+    )
+    afternoon = next(
+        option
+        for option in payload.candidates
+        if option.name != morning.name and option.opens <= 14.0 <= option.closes
+    )
+    evening = next(
+        option
+        for option in payload.candidates
+        if option.name not in {morning.name, afternoon.name}
+        and option.opens <= 19.0 <= option.closes
+        and ("food" in option.tags or "nightlife" in option.tags)
+    )
+    return morning, afternoon, evening
+
+
+def _planner_result(
+    payload: planner.PlanDayInput,
+    *,
+    used_ai: bool,
+    note: str,
+    leading_invalid_name: str | None = None,
+) -> planner.PlanDayResult:
+    morning, afternoon, evening = _candidate_triplet(payload)
+    picks = [
+        planner.Pick(poi_name=morning.name, start_hour=10.0),
+        planner.Pick(poi_name=afternoon.name, start_hour=14.0),
+        planner.Pick(poi_name=evening.name, start_hour=19.0),
+    ]
+    if leading_invalid_name is not None:
+        picks.insert(0, planner.Pick(poi_name=leading_invalid_name, start_hour=10.0))
+    return planner.PlanDayResult(
+        picks=tuple(picks),
+        used_ai=used_ai,
+        planner_note=note,
+    )
+
+
 def test_organizer_must_submit_preferences_before_generation(
     client: TestClient, api_session: Session
 ):
@@ -298,35 +341,130 @@ def test_planner_exception_falls_back_to_rules(
     body = response.json()
     assert body["status"] == "active"
     assert body["generated_by"] == "rules"
+    assert body["used_ai"] is False
+    assert body["planner_note"] is None
     assert api_session.query(PlanItem).count() == 6
     origins = set(api_session.scalars(select(PlanChange.origin)).all())
     assert origins == {"rule_generate"}
 
 
-def test_planner_names_outside_candidates_are_dropped(db: Session, monkeypatch):
+def test_mocked_planner_path_still_uses_rules_generation_by_default(
+    client: TestClient, api_session: Session
+):
+    setup = _make_trip(api_session)
+
+    response = client.post(
+        f"/api/trips/{setup['trip'].id}/plans/generate",
+        headers={"X-Membership-Id": setup["organizer"].id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active"
+    assert body["generated_by"] == "rules"
+    assert body["used_ai"] is False
+    assert body["planner_note"] is None
+    assert body["blocked_reason"] is None
+    assert api_session.query(PlanItem).count() == 6
+    origins = set(api_session.scalars(select(PlanChange.origin)).all())
+    assert origins == {"rule_generate"}
+
+
+def test_invalid_second_ai_day_output_hands_control_back_to_rules_fallback(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=1)
+    monkeypatch.setenv("MOCK_AI", "0")
+    responses = iter(
+        [
+            {
+                "note": "bad first pass",
+                "picks": [{"poi_name": "Imaginary Rooftop", "start_hour": 10.0}],
+            },
+            {
+                "note": "still bad",
+                "picks": [{"poi_name": "Still Imaginary", "start_hour": 14.0}],
+            },
+        ]
+    )
+
+    def fake_call_model(**kwargs):
+        return next(responses)
+
+    monkeypatch.setattr(planner.base, "call_model", fake_call_model)
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert result.generated_by == "rules"
+    assert result.used_ai is False
+    assert result.planner_note is None
+    assert len(result.items) == 3
+    origins = set(db.scalars(select(PlanChange.origin)).all())
+    assert origins == {"rule_generate"}
+
+
+def test_canonical_generation_retries_one_invalid_ai_day_and_persists_repaired_planner_output(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=1)
+    monkeypatch.setenv("MOCK_AI", "0")
+    responses = iter(
+        [
+            {
+                "note": "bad first pass",
+                "picks": [{"poi_name": "Imaginary Rooftop", "start_hour": 10.0}],
+            },
+            {
+                "note": "Repaired canonical planner day.",
+                "picks": [
+                    {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
+                    {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
+                    {"poi_name": "Girl & the Goat", "start_hour": 19.0},
+                ],
+            },
+        ]
+    )
+    calls = []
+
+    def fake_call_model(**kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(planner.base, "call_model", fake_call_model)
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert result.generated_by == "planner"
+    assert result.used_ai is True
+    assert result.planner_note == (
+        generator.DayPlannerNote(
+            day_index=1,
+            source="planner",
+            note="Repaired canonical planner day.",
+            used_ai=True,
+        ),
+    )
+    assert len(calls) == 2
+    assert "The previous day plan failed deterministic validation" in calls[1]["user"]
+    assert [item.title for item in result.items] == [
+        "Millennium Park & Cloud Gate",
+        "Chicago Cultural Center",
+        "Girl & the Goat",
+    ]
+    origins = set(db.scalars(select(PlanChange.origin)).all())
+    assert origins == {"ai_generate"}
+
+
+def test_valid_ai_day_output_is_accepted_and_persisted(db: Session, monkeypatch):
     setup = _make_trip(db, days=1)
 
     def fake_planner(payload: planner.PlanDayInput):
-        morning = next(
-            option for option in payload.candidates if option.opens <= 10.0 <= option.closes
-        )
-        afternoon = next(
-            option
-            for option in payload.candidates
-            if option.name != morning.name and option.opens <= 14.0 <= option.closes
-        )
-        evening = next(
-            option
-            for option in payload.candidates
-            if option.name not in {morning.name, afternoon.name}
-            and option.opens <= 19.0 <= option.closes
-            and ("food" in option.tags or "nightlife" in option.tags)
-        )
-        return (
-            planner.Pick(poi_name="Imaginary Rooftop", start_hour=10.0),
-            planner.Pick(poi_name=morning.name, start_hour=10.0),
-            planner.Pick(poi_name=afternoon.name, start_hour=14.0),
-            planner.Pick(poi_name=evening.name, start_hour=19.0),
+        return _planner_result(
+            payload,
+            used_ai=True,
+            note="Focused cultural day with dinner.",
         )
 
     monkeypatch.setattr(planner, "plan_day", fake_planner)
@@ -335,11 +473,168 @@ def test_planner_names_outside_candidates_are_dropped(db: Session, monkeypatch):
 
     assert result.status == "active"
     assert result.generated_by == "planner"
+    assert result.used_ai is True
+    assert result.planner_note == (
+        generator.DayPlannerNote(
+            day_index=1,
+            source="planner",
+            note="Focused cultural day with dinner.",
+            used_ai=True,
+        ),
+    )
+    titles = [item.title for item in result.items]
+    assert len(titles) == 3
+    origins = set(db.scalars(select(PlanChange.origin)).all())
+    assert origins == {"ai_generate"}
+
+
+def test_generator_defensively_rejects_picks_outside_candidates(db: Session, monkeypatch):
+    setup = _make_trip(db, days=1)
+
+    def fake_planner(payload: planner.PlanDayInput):
+        return _planner_result(
+            payload,
+            used_ai=True,
+            note="Includes an invalid pick to prove generator filtering.",
+            leading_invalid_name="Imaginary Rooftop",
+        )
+
+    monkeypatch.setattr(planner, "plan_day", fake_planner)
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert result.generated_by == "planner"
+    assert result.used_ai is True
     titles = [item.title for item in result.items]
     assert "Imaginary Rooftop" not in titles
     assert len(titles) == 3
     origins = set(db.scalars(select(PlanChange.origin)).all())
     assert origins == {"ai_generate"}
+
+
+def test_all_planner_api_response_reports_structured_notes_even_when_used_ai_is_false(
+    client: TestClient, api_session: Session, monkeypatch
+):
+    setup = _make_trip(api_session, days=2)
+
+    def fake_planner(payload: planner.PlanDayInput):
+        return _planner_result(
+            payload,
+            used_ai=False,
+            note=f"Planner accepted day {payload.day_index} without real AI.",
+        )
+
+    monkeypatch.setattr(planner, "plan_day", fake_planner)
+
+    response = client.post(
+        f"/api/trips/{setup['trip'].id}/plans/generate",
+        headers={"X-Membership-Id": setup["organizer"].id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active"
+    assert body["generated_by"] == "planner"
+    assert body["used_ai"] is False
+    assert body["planner_note"] == [
+        {
+            "day_index": 1,
+            "source": "planner",
+            "note": "Planner accepted day 1 without real AI.",
+            "used_ai": False,
+        },
+        {
+            "day_index": 2,
+            "source": "planner",
+            "note": "Planner accepted day 2 without real AI.",
+            "used_ai": False,
+        },
+    ]
+
+
+def test_mixed_generation_response_reports_structured_notes_and_used_ai_false(
+    client: TestClient, api_session: Session, monkeypatch
+):
+    setup = _make_trip(api_session, days=2)
+
+    def fake_planner(payload: planner.PlanDayInput):
+        if payload.day_index == 1:
+            return _planner_result(
+                payload,
+                used_ai=False,
+                note="Planner accepted day 1 from a mocked response.",
+            )
+        raise base.AgentUnavailable("planner offline on day 2")
+
+    monkeypatch.setattr(planner, "plan_day", fake_planner)
+
+    response = client.post(
+        f"/api/trips/{setup['trip'].id}/plans/generate",
+        headers={"X-Membership-Id": setup["organizer"].id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active"
+    assert body["generated_by"] == "mixed"
+    assert body["used_ai"] is False
+    assert body["planner_note"] == [
+        {
+            "day_index": 1,
+            "source": "planner",
+            "note": "Planner accepted day 1 from a mocked response.",
+            "used_ai": False,
+        },
+        {
+            "day_index": 2,
+            "source": "rules",
+            "note": generator.RULES_DAY_NOTE,
+            "used_ai": False,
+        },
+    ]
+
+
+def test_mixed_generation_response_reports_used_ai_when_real_ai_day_persists(
+    client: TestClient, api_session: Session, monkeypatch
+):
+    setup = _make_trip(api_session, days=2)
+
+    def fake_planner(payload: planner.PlanDayInput):
+        if payload.day_index == 1:
+            return _planner_result(
+                payload,
+                used_ai=True,
+                note="Planner accepted day 1 from real AI.",
+            )
+        raise base.AgentUnavailable("planner offline on day 2")
+
+    monkeypatch.setattr(planner, "plan_day", fake_planner)
+
+    response = client.post(
+        f"/api/trips/{setup['trip'].id}/plans/generate",
+        headers={"X-Membership-Id": setup["organizer"].id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active"
+    assert body["generated_by"] == "mixed"
+    assert body["used_ai"] is True
+    assert body["planner_note"] == [
+        {
+            "day_index": 1,
+            "source": "planner",
+            "note": "Planner accepted day 1 from real AI.",
+            "used_ai": True,
+        },
+        {
+            "day_index": 2,
+            "source": "rules",
+            "note": generator.RULES_DAY_NOTE,
+            "used_ai": False,
+        },
+    ]
 
 
 def test_unsolvable_budget_blocks_without_writing_items(db: Session):
@@ -348,8 +643,37 @@ def test_unsolvable_budget_blocks_without_writing_items(db: Session):
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 
     assert result.status == "blocked"
+    assert result.generated_by == "rules"
+    assert result.used_ai is False
+    assert result.planner_note is None
     assert result.blocked_reason
     assert db.query(PlanItem).count() == 0
+
+
+def test_blocked_api_response_currently_reports_rules_and_writes_no_items(
+    client: TestClient, api_session: Session
+):
+    setup = _make_trip(api_session, days=4, budget_ceiling=1.0)
+
+    response = client.post(
+        f"/api/trips/{setup['trip'].id}/plans/generate",
+        headers={"X-Membership-Id": setup["organizer"].id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "blocked"
+    assert body["generated_by"] == "rules"
+    assert body["used_ai"] is False
+    assert body["planner_note"] is None
+    assert body["blocked_reason"]
+    assert body["days"] == [
+        {"day_index": 1, "day_date": setup["trip"].preferred_start_date.isoformat(), "items": []},
+        {"day_index": 2, "day_date": (setup["trip"].preferred_start_date + timedelta(days=1)).isoformat(), "items": []},
+        {"day_index": 3, "day_date": (setup["trip"].preferred_start_date + timedelta(days=2)).isoformat(), "items": []},
+        {"day_index": 4, "day_date": (setup["trip"].preferred_start_date + timedelta(days=3)).isoformat(), "items": []},
+    ]
+    assert api_session.query(PlanItem).count() == 0
 
 
 def test_blocked_reason_does_not_leak_identity(db: Session):

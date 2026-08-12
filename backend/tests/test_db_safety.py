@@ -1,6 +1,7 @@
 import pytest
 
 from app.db import seed
+from tests import _db_test_harness as test_harness
 
 
 def test_destructive_seed_refuses_non_local_database_without_override(monkeypatch):
@@ -32,3 +33,22 @@ def test_destructive_seed_can_be_explicitly_overridden(monkeypatch):
     monkeypatch.setenv("ALLOW_DESTRUCTIVE_SEED", "1")
 
     seed.require_destructive_seed_allowed()
+
+
+@pytest.mark.parametrize(
+    ("database_name", "allowed"),
+    [
+        ("tripsync_test", True),
+        ("test_tripsync", True),
+        ("tripsync_pytest", True),
+        ("tripsync", False),
+        ("cadensy_prod", False),
+    ],
+)
+def test_pytest_database_name_must_be_explicitly_test_only(database_name, allowed):
+    assert test_harness.is_explicit_test_database_name(database_name) is allowed
+
+
+def test_pytest_database_guard_rejects_non_test_database_name():
+    with pytest.raises(RuntimeError, match="explicitly test-only database"):
+        test_harness.require_safe_test_database_name("tripsync")

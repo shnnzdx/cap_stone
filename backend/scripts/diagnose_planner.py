@@ -1,10 +1,9 @@
-"""Call the Planner Agent directly against the configured Ollama endpoint."""
+"""Call the canonical day planner directly against the configured model endpoint."""
 
 from __future__ import annotations
 
 import os
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,18 +24,47 @@ def main() -> None:
     print(f"  OPENAI_API_KEY set={bool(os.getenv('OPENAI_API_KEY'))}")
     print()
 
-    request = planner.PlannerInput(
-        destination="Chicago, Illinois",
-        trip_dates=tuple(date(2026, 8, 19) + timedelta(days=offset) for offset in range(6)),
+    payload = planner.PlanDayInput(
+        day_index=1,
+        candidates=(
+            planner.PoiOption(
+                name="Millennium Park & Cloud Gate",
+                place="Loop",
+                price=0.0,
+                duration_min=90,
+                opens=9.0,
+                closes=20.0,
+                tags=("culture",),
+            ),
+            planner.PoiOption(
+                name="Chicago Cultural Center",
+                place="Loop",
+                price=0.0,
+                duration_min=90,
+                opens=10.0,
+                closes=18.0,
+                tags=("culture",),
+            ),
+            planner.PoiOption(
+                name="Girl & the Goat",
+                place="West Loop",
+                price=45.0,
+                duration_min=120,
+                opens=16.0,
+                closes=22.0,
+                tags=("food",),
+            ),
+        ),
+        already_used=("Art Institute of Chicago",),
+        budget_left=120.0,
         interests=("museums", "food"),
-        public_constraints=("Keep the pace relaxed",),
     )
-    draft = planner.draft_itinerary(request)
+    result = planner.plan_day(payload)
     print()
-    print(f"used_ai={draft.used_ai}")
-    print(f"note={draft.note}")
-    for day in draft.days:
-        print(f"day {day.day_index}: {[stop.title for stop in day.stops]}")
+    print(f"used_ai={result.used_ai}")
+    print(f"note={result.planner_note}")
+    for pick in result.picks:
+        print(f"pick: {pick.poi_name} at {pick.start_hour}")
 
 
 if __name__ == "__main__":
