@@ -133,6 +133,13 @@ export default function PeopleProblem() {
           <h2 className="people-v2__title">Every voice counts.</h2>
 
           <div className={`people-v2__audiences ${audienceVisible ? "is-visible" : ""}`} ref={audienceRef}>
+            <svg className="people-v2__network" viewBox="0 0 1080 190" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M176 72 C202 72 218 78 238 90 M540 72 C540 84 540 94 540 104 M904 72 C878 72 862 78 842 90 M520 138 C528 142 534 145 540 146 C546 145 552 142 560 138" />
+              <circle cx="176" cy="72" r="5" />
+              <circle cx="540" cy="72" r="5" />
+              <circle cx="904" cy="72" r="5" />
+              <circle cx="540" cy="146" r="8" />
+            </svg>
             {audiences.map((audience, index) => (
               <article
                 key={audience.title}
@@ -147,6 +154,7 @@ export default function PeopleProblem() {
                 <span className="people-v2__audience-rule" aria-hidden="true" />
               </article>
             ))}
+            <div className="people-v2__shared-plan" aria-hidden="true"><span>Shared Plan</span><i /></div>
           </div>
 
           <div className={`people-v2__lower ${sharedProgress > 0.01 ? "is-visible" : ""}`}>
@@ -206,7 +214,10 @@ export default function PeopleProblem() {
           min-height: 100svh;
           padding: clamp(64px, 7.5vh, 84px) 0 clamp(54px, 6.5vh, 78px);
           overflow: visible;
-          background: transparent;
+          background:
+            radial-gradient(circle at 16% 8%, rgba(242, 239, 232, 0.58), rgba(242, 239, 232, 0) 34%),
+            var(--surface-people);
+          border-image: conic-gradient(var(--surface-people) 0 0) fill 0 / 0 / 0 100vw;
         }
 
         .product-page .people-v2__scroll {
@@ -240,11 +251,70 @@ export default function PeopleProblem() {
         }
 
         .product-page .people-v2__audiences {
+          position: relative;
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
           gap: clamp(20px, 2.4vw, 30px);
           margin-top: 4px;
+          padding: 20px 20px 54px;
+          border: 1px solid var(--product-border-subtle);
+          border-radius: var(--radius-panel);
+          background:
+            linear-gradient(rgba(83, 112, 136, 0.035) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(83, 112, 136, 0.035) 1px, transparent 1px),
+            rgba(244, 243, 238, 0.58);
+          background-size: 52px 52px, 52px 52px, auto;
+          box-shadow: 0 12px 38px rgba(36, 58, 78, 0.045);
           perspective: 1200px;
+        }
+
+        .product-page .people-v2__network {
+          position: absolute;
+          z-index: 0;
+          inset: 24px 3% 4px;
+          width: 94%;
+          height: calc(100% - 28px);
+          overflow: visible;
+          pointer-events: none;
+        }
+
+        .product-page .people-v2__network path {
+          fill: none;
+          stroke: var(--product-route);
+          stroke-width: 1;
+          stroke-dasharray: 3 9;
+          vector-effect: non-scaling-stroke;
+        }
+
+        .product-page .people-v2__network circle {
+          fill: var(--surface-people);
+          stroke: var(--product-route-strong);
+          stroke-width: 1;
+          vector-effect: non-scaling-stroke;
+        }
+
+        .product-page .people-v2__shared-plan {
+          position: absolute;
+          z-index: 2;
+          left: 50%;
+          bottom: 11px;
+          display: flex;
+          align-items: center;
+          gap: 9px;
+          transform: translateX(-50%);
+          color: #60758b;
+          font-family: var(--font-label);
+          font-size: 9px;
+          letter-spacing: 0.11em;
+          text-transform: uppercase;
+        }
+
+        .product-page .people-v2__shared-plan i {
+          width: 7px;
+          height: 7px;
+          border: 1px solid var(--product-route-strong);
+          border-radius: 50%;
+          background: var(--surface-people);
         }
 
         .product-page .people-v2__audience {
@@ -253,24 +323,16 @@ export default function PeopleProblem() {
           position: relative;
           min-height: 140px;
           display: grid;
-          grid-template-columns: 56px minmax(0, 1fr);
+          grid-template-columns: 44px minmax(0, 1fr);
           align-items: center;
-          gap: 18px;
-          padding: 20px 44px 20px 22px;
+          gap: 15px;
+          padding: 18px 38px 18px 18px;
           overflow: visible;
           color: #17314d;
-          border: 1px solid rgba(92, 118, 143, 0.18);
-          border-radius: 17px 12px 18px 13px;
-          background: var(--ticket-bg);
-          box-shadow:
-            0 13px 28px rgba(44, 77, 107, 0.105),
-            0 3px 7px rgba(44, 77, 107, 0.055),
-            inset 0 1px 0 rgba(255, 255, 255, 0.82);
-          clip-path: polygon(
-            0 0, 100% 0, 100% 33%, 97.7% 38%, 97.7% 45%, 100% 50%,
-            100% 100%, 0 100%, 0 68%, 2.3% 63%, 2.3% 56%, 0 51%
-          );
-          filter: drop-shadow(0 2px 1px rgba(255, 255, 255, 0.38));
+          border: 1px solid rgba(92, 118, 143, 0.1);
+          border-radius: var(--radius-card);
+          background: color-mix(in srgb, var(--ticket-bg) 58%, transparent);
+          box-shadow: 0 5px 16px rgba(44, 77, 107, 0.035);
           opacity: 0;
           transition: opacity 0.64s ease var(--delay), transform 0.78s cubic-bezier(.22, 1, .36, 1) var(--delay);
         }
@@ -279,10 +341,10 @@ export default function PeopleProblem() {
           content: "";
           position: absolute;
           z-index: 0;
-          inset: 5px 6px 6px 6px;
-          border-radius: 14px 10px 15px 11px;
+          inset: 4px;
+          border-radius: calc(var(--radius-card) - 3px);
           background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-          border: 1px solid rgba(104, 131, 158, 0.045);
+          border: 1px solid rgba(104, 131, 158, 0.025);
           transform: rotate(0.18deg);
           pointer-events: none;
         }
@@ -346,22 +408,22 @@ export default function PeopleProblem() {
         }
 
         .product-page .people-v2__audience-icon {
-          width: 52px;
-          height: 52px;
+          width: 42px;
+          height: 42px;
           display: grid;
           place-items: center;
-          border-radius: 14px;
+          border-radius: var(--radius-control);
           color: var(--ticket-accent);
           background: color-mix(in srgb, var(--ticket-accent) 10%, white 90%);
           box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ticket-accent) 10%, transparent);
         }
 
         .product-page .people-v2__audience-icon svg {
-          width: 29px;
-          height: 29px;
+          width: 24px;
+          height: 24px;
           fill: none;
           stroke: currentColor;
-          stroke-width: 1.65;
+          stroke-width: 1.5;
           stroke-linecap: round;
           stroke-linejoin: round;
         }
@@ -417,10 +479,9 @@ export default function PeopleProblem() {
           padding: 30px 32px 38px;
           overflow: hidden;
           border: 1px solid rgba(105, 125, 142, 0.085);
-          border-radius: 38px 22px 48px 26px / 26px 40px 30px 46px;
+          border-radius: var(--radius-panel);
           background: linear-gradient(145deg, rgba(250, 252, 252, 0.86), rgba(247, 248, 246, 0.8));
-          clip-path: polygon(1% 3%, 94% 0, 99% 4%, 100% 86%, 96% 97%, 78% 99%, 56% 98%, 34% 100%, 5% 98%, 0 92%, 1% 53%, 0 12%);
-          box-shadow: 0 14px 32px rgba(40, 67, 90, 0.065);
+          box-shadow: var(--product-shadow-panel);
           transform: rotate(-1.05deg);
           transform-origin: center;
           opacity: 0.35;
@@ -530,8 +591,9 @@ export default function PeopleProblem() {
           gap: 12px;
           padding: 11px 14px 10px;
           border: 1px solid rgba(82, 111, 137, 0.11);
-          background: rgba(252, 253, 252, 0.94);
-          box-shadow: 0 8px 20px rgba(45, 70, 92, 0.085);
+          border-radius: var(--radius-card);
+          background: rgba(246, 246, 242, 0.82);
+          box-shadow: 0 6px 18px rgba(45, 70, 92, 0.045);
           backdrop-filter: blur(7px);
           opacity: var(--bubble-opacity);
           transition: box-shadow 0.22s ease, border-color 0.22s ease, opacity 0.18s ease;
@@ -540,7 +602,7 @@ export default function PeopleProblem() {
 
         .product-page .people-v2__bubble:hover {
           border-color: rgba(73, 126, 182, 0.28);
-          box-shadow: 0 12px 26px rgba(45, 70, 92, 0.105);
+          box-shadow: 0 8px 22px rgba(45, 70, 92, 0.065);
         }
 
         .product-page .people-v2__bubble--1 {
@@ -549,7 +611,6 @@ export default function PeopleProblem() {
           top: 2%;
           width: 48%;
           transform: translate(-10px, calc(-4px + var(--bubble-rise))) rotate(-1.15deg) scale(var(--bubble-scale));
-          border-radius: 24px 24px 9px 24px;
         }
 
         .product-page .people-v2__bubble--2 {
@@ -558,7 +619,6 @@ export default function PeopleProblem() {
           top: 23%;
           width: 49%;
           transform: translate(10px, calc(0px + var(--bubble-rise))) rotate(1.05deg) scale(var(--bubble-scale));
-          border-radius: 24px 24px 24px 9px;
         }
 
         .product-page .people-v2__bubble--3 {
@@ -567,7 +627,6 @@ export default function PeopleProblem() {
           top: 52%;
           width: 47%;
           transform: translate(-14px, calc(0px + var(--bubble-rise))) rotate(-1deg) scale(var(--bubble-scale));
-          border-radius: 24px 9px 24px 24px;
         }
 
         .product-page .people-v2__bubble--4 {
@@ -576,7 +635,6 @@ export default function PeopleProblem() {
           top: 72%;
           width: 48%;
           transform: translate(12px, calc(2px + var(--bubble-rise))) rotate(1.15deg) scale(var(--bubble-scale));
-          border-radius: 9px 24px 24px 24px;
         }
 
         .product-page .people-v2__bubble-icon {
@@ -758,6 +816,12 @@ export default function PeopleProblem() {
           .product-page .people-v2__audiences {
             grid-template-columns: 1fr;
             gap: 14px;
+            padding: 16px 16px 22px;
+          }
+
+          .product-page .people-v2__network,
+          .product-page .people-v2__shared-plan {
+            display: none;
           }
 
           .product-page .people-v2__audience,
@@ -793,16 +857,13 @@ export default function PeopleProblem() {
           }
 
           .product-page .people-v2__audience {
-            grid-template-columns: 48px 1fr;
+            grid-template-columns: 42px 1fr;
             min-height: 136px;
             padding: 20px 36px 20px 20px;
             gap: 14px;
           }
 
-          .product-page .people-v2__audience-icon {
-            width: 46px;
-            height: 46px;
-          }
+          .product-page .people-v2__audience-icon {width: 40px;height: 40px}
 
           .product-page .people-v2__audience-copy h3 {
             font-size: 23px;
@@ -876,4 +937,3 @@ export default function PeopleProblem() {
     </section>
   );
 }
-

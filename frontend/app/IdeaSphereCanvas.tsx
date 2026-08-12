@@ -388,11 +388,10 @@ export default function IdeaSphereCanvas({ storyMotionRef, visibilityRootRef }: 
     const shatterDirection = new THREE.Vector3();
     let disposed = false;
 
-    const rear = new THREE.Color("#b5c7df");
-    const soft = new THREE.Color("#d0e2fb");
-    const mid = new THREE.Color("#afcdf7");
-    const active = new THREE.Color("#82b5f5");
-    const highlight = new THREE.Color("#5f9ef1");
+    const routeBlue = new THREE.Color("#718fa9");
+    const grayViolet = new THREE.Color("#8b899f");
+    const routeSand = new THREE.Color("#a58f79");
+    const highlight = new THREE.Color("#587fa5");
 
     for (let i = 0; i < counts.visual; i += 1) {
       const direction = sphericalPoint(rand);
@@ -414,7 +413,8 @@ export default function IdeaSphereCanvas({ storyMotionRef, visibilityRootRef }: 
 
       const depth = THREE.MathUtils.clamp((base.z + 1.1) / 2.2, 0, 1);
       const radial = THREE.MathUtils.clamp(base.length() / 1.12, 0, 1);
-      const color = depth > 0.76 ? highlight : depth > 0.56 ? active : depth > 0.33 ? mid : rand() > 0.36 ? soft : rear;
+      const paletteRoll = rand();
+      const color = paletteRoll < 0.55 ? routeBlue : paletteRoll < 0.83 ? grayViolet : routeSand;
       colors[i * 3] = color.r;
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
@@ -425,7 +425,7 @@ export default function IdeaSphereCanvas({ storyMotionRef, visibilityRootRef }: 
       const depthSize = depth < 0.28 ? 1.65 + rand() * 1.05 : depth < 0.62 ? 2.45 + rand() * 1.65 : 3.55 + rand() * 2.35;
       const shellBoost = 0.74 + radial * 0.48;
       sizes[i] = depthSize * shellBoost;
-      alphas[i] = (0.13 + depth * 0.48 + rand() * 0.18) * (0.52 + radial * 0.56);
+      alphas[i] = (0.2 + depth * 0.42 + rand() * 0.14) * (0.72 + radial * 0.34);
       baseSizes[i] = sizes[i];
       baseAlphas[i] = alphas[i];
       phases[i] = rand() * Math.PI * 2;
@@ -484,7 +484,7 @@ export default function IdeaSphereCanvas({ storyMotionRef, visibilityRootRef }: 
       const i = idea.index;
       const anchorBoost = idea.anchor ? 1.42 : 1.18;
       sizes[i] = baseSizes[i] * anchorBoost;
-      alphas[i] = Math.min(0.92, baseAlphas[i] * (idea.anchor ? 1.34 : 1.12));
+      alphas[i] = Math.min(0.86, baseAlphas[i] * (idea.anchor ? 1.28 : 1.1));
       colors[i * 3] = THREE.MathUtils.lerp(baseColors[i * 3], highlight.r, idea.anchor ? 0.42 : 0.18);
       colors[i * 3 + 1] = THREE.MathUtils.lerp(baseColors[i * 3 + 1], highlight.g, idea.anchor ? 0.42 : 0.18);
       colors[i * 3 + 2] = THREE.MathUtils.lerp(baseColors[i * 3 + 2], highlight.b, idea.anchor ? 0.42 : 0.18);
