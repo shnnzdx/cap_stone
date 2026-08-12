@@ -25,7 +25,7 @@ export default function Home() {
         <DemoPanel />
       </section>
 
-      <section className="final-cta">
+      <section className="final-cta" data-header-theme="dark">
         <div className="shell">
           <p className="eyebrow">READY TO PLAN TOGETHER</p>
           <h2>Different needs.<br />One shared plan.</h2>
