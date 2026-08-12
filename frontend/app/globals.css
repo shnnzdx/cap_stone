@@ -805,17 +805,21 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 @media(prefers-reduced-motion:reduce){.idea-orb,.idea-orb:before,.idea-orb:after,.idea-orb i,.idea-tag,.pipeline-route i,.pipeline-processor:before,.plan-zone li{animation:none}.plan-zone li{opacity:1;transform:none}}
 
 /* Homepage v4: one continuous canvas and a clear top-to-bottom hero reading order. */
-.product-page{background:radial-gradient(circle at 12% 18%,rgba(180,214,244,.3),transparent 32%),radial-gradient(circle at 86% 42%,rgba(189,193,225,.24),transparent 34%),radial-gradient(circle at 24% 76%,rgba(181,215,207,.18),transparent 31%),linear-gradient(180deg,#eaf3fb 0%,#e6eef8 48%,#edf4f8 100%)}
+.product-page{--surface-intro:#e5eef5;--surface-product-core:#f2efe8;--surface-people:#e7ece8;--radius-control:8px;--radius-card:14px;--radius-panel:22px;--radius-section:28px;--radius-pill:999px;--product-border-subtle:rgba(74,101,126,.13);--product-route:rgba(89,119,143,.18);--product-route-strong:rgba(76,108,134,.32);--product-shadow-card:0 8px 22px rgba(36,58,78,.045);--product-shadow-panel:0 18px 48px rgba(36,58,78,.07);position:relative;background:var(--surface-intro)}
 .product-page .site-header{background:rgba(234,243,251,.82)}
 .product-page .hero .lede{max-width:760px}
-.product-page .product-overview{margin:0;padding-inline:0;border-radius:0;background:transparent;box-shadow:none}
+.product-page .intro-story{position:relative;isolation:isolate;background:var(--surface-intro)}
 .product-page .product-overview:after{opacity:.35}
-.product-page .people-problem,.product-page .feature-story,.product-page .demo-section{background:transparent}
+.product-page .feature-story,.product-page .demo-section{background:transparent}
 .product-page .story-frame{background:rgba(239,246,252,.74);box-shadow:0 22px 64px rgba(52,82,114,.08)}
 .product-page .final-cta{background:#173754}
 .product-page .demo-section{isolation:isolate;padding-bottom:clamp(180px,14vw,220px)}
 .product-page .demo-section::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);background:linear-gradient(to bottom,transparent 68%,rgba(226,237,246,.3) 80%,rgba(226,237,246,.86) 94%,#e2edf5 100%),url("/images/demo-travel-background.png") center/cover no-repeat}
-.product-page .demo-section + .final-cta{position:relative;z-index:2;margin-top:-64px;border-radius:46px 46px 40px 40px}
+.product-page .demo-section + .final-cta{position:relative;z-index:2;margin-top:-64px;border-radius:var(--radius-section) var(--radius-section) var(--radius-panel) var(--radius-panel)}
+.product-page .button,.product-page .idea-tag{border-radius:var(--radius-pill)}
+.product-page .plan-zone,.product-page .story-window,.product-page .demo-panel{border-radius:var(--radius-panel)}
+.product-page .stacked-signal,.product-page .stacked-signal>div,.product-page .plan-row,.product-page .demo-placeholder{border-radius:var(--radius-card)}
+.product-page .stacked-icon,.product-page .story-mini-brand i,.product-page .preview-action{border-radius:var(--radius-control)}
 .site-header .brand{min-height:34px;line-height:0}
 .brand-logo{display:inline-flex;align-items:center;gap:9px;flex:none;line-height:0}
 .brand-logo img{display:block;max-width:none}
@@ -826,7 +830,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .brand-story{opacity:.68;letter-spacing:.16em}
 .login-heading h2{font-size:clamp(2.2rem,3vw,3.25rem);white-space:nowrap}
 @media(max-width:760px){.login-heading h2{white-space:normal}}
-@media(max-width:620px){.brand-logo-wordmark{width:98px}.copyright{align-items:flex-start;flex-direction:column;gap:8px}.brand-story{font-size:11px}.product-page .demo-section{padding-bottom:164px}.product-page .demo-section + .final-cta{margin-top:-54px;border-radius:38px 38px 28px 28px}}
+@media(max-width:620px){.brand-logo-wordmark{width:98px}.copyright{align-items:flex-start;flex-direction:column;gap:8px}.brand-story{font-size:11px}.product-page .demo-section{padding-bottom:164px}.product-page .demo-section + .final-cta{margin-top:-54px;border-radius:var(--radius-section) var(--radius-section) var(--radius-panel) var(--radius-panel)}}
 
 /* Homepage v5: cumulative core reveal and a compact, continuous People chapter. */
 .product-page .principle-mask{overflow:hidden}
@@ -953,11 +957,11 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   --intro-ease:0;
   --stage-topbar-shift:54px;
   --stage-frame-shift:92px;
-  --navy-clip-top:108px;
-  --navy-clip-right:184px;
-  --navy-clip-bottom:108px;
-  --navy-clip-left:184px;
-  --navy-clip-round:32px;
+  --navy-clip-top:72px;
+  --navy-clip-right:112px;
+  --navy-clip-bottom:72px;
+  --navy-clip-left:112px;
+  --navy-clip-round:var(--radius-section);
   background:transparent;
   padding:0 !important;
   padding-inline:0 !important;
@@ -987,11 +991,11 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   position:absolute;
   top:96px;
   left:50%;
-  width:min(1160px,calc(100vw - 76px));
+  width:min(1240px,calc(100vw - 52px));
   z-index:3;
   background:transparent;
   color:#17314d;
-  box-shadow:0 22px 64px rgba(52,82,114,.1);
+  box-shadow:var(--product-shadow-panel);
   transform:translate3d(-50%,var(--stage-frame-shift),0);
   will-change:transform;
 }
@@ -999,7 +1003,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   position:absolute;
   top:36px;
   left:50%;
-  width:min(1160px,calc(100vw - 76px));
+  width:min(1240px,calc(100vw - 52px));
   z-index:2;
   background:transparent;
   color:#bfd1e2;
@@ -1117,7 +1121,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   min-height:68px;
   padding:10px 12px;
   border:1px solid rgba(86,119,153,.18);
-  border-radius:13px;
+  border-radius:var(--radius-card);
   background:rgba(255,255,255,.55)
 }
 .stacked-signal>div:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;z-index:2;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#edf4fa;color:#5f91c7;font-size:10px;transform:translateY(-50%)}
@@ -1134,7 +1138,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 @media(max-width:760px){
   .product-page .feature-story{height:auto;padding:18px 10px}
   .product-page .story-stage{position:relative;top:auto;left:auto;width:auto;height:auto;min-height:0;margin-left:0}
-  .product-page .process-navy-backdrop{clip-path:none;border-radius:26px}
+  .product-page .process-navy-backdrop{clip-path:none;border-radius:var(--radius-section)}
   .product-page .story-topbar,
   .product-page .story-frame{position:relative;top:auto;left:auto;width:auto;transform:none}
   .product-page .story-frame{margin-top:12px}
@@ -1345,14 +1349,14 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 .product-page .principle-word .principle-symbol{
   display:grid;
   place-items:center;
-  width:clamp(44px,3.4vw,52px);
+  width:clamp(40px,3vw,46px);
   aspect-ratio:1;
   border:1px solid color-mix(in srgb,var(--principle-accent) 36%,transparent);
-  border-radius:14px;
+  border-radius:var(--radius-control);
   background:var(--principle-chip);
   color:var(--principle-accent);
   font-family:var(--font-label);
-  font-size:clamp(15px,1.4vw,19px);
+  font-size:clamp(13px,1.2vw,17px);
   line-height:1;
   box-shadow:none;
 }
@@ -1361,7 +1365,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   margin:0;
   color:#17314d;
   font-family:var(--font-primary);
-  font-size:clamp(48px,4vw,64px);
+  font-size:clamp(42px,3.55vw,56px);
   font-weight:400;
   line-height:.9;
   letter-spacing:-.06em;
@@ -1371,8 +1375,8 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   grid-column:2;
   max-width:260px;
   margin:0;
-  color:#60758b;
-  font-size:clamp(14px,1.05vw,16px);
+  color:rgba(76,101,125,.72);
+  font-size:clamp(12px,.92vw,14px);
   line-height:1.52;
 }
 
@@ -1421,7 +1425,7 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   }
 
   .product-page .principle-word h3{
-    font-size:clamp(42px,6.2vw,56px);
+    font-size:clamp(38px,5.5vw,50px);
   }
 
   .product-page .principle-word p{
@@ -1475,16 +1479,16 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 
   .product-page .principle-symbol{
     width:42px;
-    border-radius:12px;
+    border-radius:var(--radius-control);
   }
 
   .product-page .principle-word h3{
-    font-size:clamp(38px,11vw,50px);
+    font-size:clamp(35px,10vw,46px);
   }
 
   .product-page .principle-word p{
     max-width:280px;
-    font-size:14px;
+    font-size:13px;
   }
 }
 
@@ -2406,4 +2410,25 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
   .idea-sphere-label{
     transition:none;
   }
+}
+
+/* Cadensy section surfaces: soft tonal handoffs without changing chapter geometry. */
+.product-page .product-overview{
+  background:
+    linear-gradient(rgba(80,108,132,.022) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(80,108,132,.022) 1px,transparent 1px),
+    radial-gradient(ellipse at 18% 18%,rgba(214,231,246,.28),rgba(214,231,246,0) 42%),
+    radial-gradient(ellipse at 82% 72%,rgba(204,196,211,.18),rgba(204,196,211,0) 44%),
+    var(--surface-product-core);
+  background-size:72px 72px,72px 72px,auto,auto,auto;
+  box-shadow:0 -70px 110px 36px rgba(242,239,232,.72);
+}
+
+.product-page .people-problem{
+  position:relative;
+  z-index:2;
+  background:
+    radial-gradient(circle at 16% 8%,rgba(242,239,232,.58),rgba(242,239,232,0) 34%),
+    var(--surface-people);
+  box-shadow:0 -64px 100px 30px rgba(231,236,232,.72);
 }

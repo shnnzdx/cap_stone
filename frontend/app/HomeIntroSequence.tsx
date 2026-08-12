@@ -144,7 +144,7 @@ export default function HomeIntroSequence() {
         return;
       }
 
-      const exitProgress = gsap.utils.clamp(0, 1, (progress - 0.78) / 0.22);
+      const exitProgress = gsap.utils.clamp(0, 1, (progress - 0.82) / 0.18);
       gsap.set(visualLayer, { autoAlpha: 1 - exitProgress });
       intro.classList.toggle("is-product-core-active", progress > 0.02 && progress < 0.98);
     };
@@ -188,9 +188,8 @@ export default function HomeIntroSequence() {
 
       productLifecycle
         .set(visualLayer, { autoAlpha: 1 }, 0)
-        .to(visualMotionRef.current, { mapPresence: 0.52, duration: 0.18 }, 0)
-        .to(visualMotionRef.current, { mapPresence: 0.52, duration: 0.6 }, 0.18)
-        .to(visualMotionRef.current, { mapPresence: 0, duration: 0.22 }, 0.78);
+        .to(visualMotionRef.current, { mapPresence: 0.68, duration: 0.18 }, 0)
+        .to(visualMotionRef.current, { mapPresence: 0.68, duration: 0.82 }, 0.18);
     }
 
     return () => {

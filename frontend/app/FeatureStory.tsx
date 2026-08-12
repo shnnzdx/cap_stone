@@ -44,14 +44,14 @@ export default function FeatureStory() {
     const applyBackdropMetrics = () => {
       const stageBounds = stage.getBoundingClientRect();
       const windowBounds = windowNode.getBoundingClientRect();
-      const surround = Math.max(Math.min(window.innerWidth * 0.024, 28), 18);
-      const topSurround = Math.max(Math.min(window.innerHeight * 0.028, 32), 22);
+      const surround = Math.max(Math.min(window.innerWidth * 0.016, 18), 12);
+      const topSurround = Math.max(Math.min(window.innerHeight * 0.019, 22), 14);
 
       backdropMetrics.top = Math.max(windowBounds.top - stageBounds.top - topSurround, 0);
       backdropMetrics.right = Math.max(stageBounds.right - windowBounds.right - surround, 0);
       backdropMetrics.bottom = Math.max(stageBounds.bottom - windowBounds.bottom - surround, 0);
       backdropMetrics.left = Math.max(windowBounds.left - stageBounds.left - surround, 0);
-      backdropMetrics.round = Math.max(windowBounds.height * 0.075, 24);
+      backdropMetrics.round = Math.min(Math.max(windowBounds.height * 0.045, 22), 28);
       applyProgressStyles(lastProgress);
     };
 
