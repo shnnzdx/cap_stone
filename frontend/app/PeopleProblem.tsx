@@ -296,8 +296,10 @@ export default function PeopleProblem() {
           border-radius: var(--radius-card);
           background: color-mix(in srgb, var(--ticket-bg) 58%, transparent);
           box-shadow: 0 5px 16px rgba(44, 77, 107, 0.035);
-          opacity: 0;
-          transition: opacity 0.64s ease var(--delay), transform 0.78s cubic-bezier(.22, 1, .36, 1) var(--delay);
+          opacity: 1;
+          transform: none;
+          transition: none;
+          will-change: transform, opacity;
         }
 
         .product-page .people-v2__audience::before {
@@ -312,26 +314,14 @@ export default function PeopleProblem() {
           pointer-events: none;
         }
 
-        .product-page .people-v2__audience:nth-child(1) {
-          transform: translateY(36px) rotate(-1.25deg) scale(0.985);
-        }
-
         .product-page .people-v2__audience:nth-child(1)::before {
           background: rgba(240, 247, 252, 0.62);
           transform: rotate(0.45deg);
         }
 
-        .product-page .people-v2__audience:nth-child(2) {
-          transform: translateY(43px) rotate(0.72deg) scale(0.985);
-        }
-
         .product-page .people-v2__audience:nth-child(2)::before {
           background: rgba(250, 246, 240, 0.66);
           transform: rotate(-0.35deg);
-        }
-
-        .product-page .people-v2__audience:nth-child(3) {
-          transform: translateY(34px) rotate(-1deg) scale(0.985);
         }
 
         .product-page .people-v2__audience:nth-child(3)::before {
@@ -352,6 +342,17 @@ export default function PeopleProblem() {
         .product-page .people-v2__audience > * {
           position: relative;
           z-index: 1;
+        }
+
+        .product-page .people-v2__audience::after {
+          content: "";
+          position: absolute;
+          z-index: 2;
+          inset: 0;
+          border-radius: inherit;
+          background: var(--surface-people);
+          opacity: var(--gather-wash, 0);
+          pointer-events: none;
         }
 
         .product-page .people-v2__audience-icon {
