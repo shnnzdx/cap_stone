@@ -1,6 +1,6 @@
 # TripSync AWS URL Index
 
-Date: 2026-08-10
+Date: 2026-08-13
 
 Region: us-east-1
 
@@ -40,20 +40,53 @@ https://github.com/shnnzdx/cap_stone/actions/runs/31355307955
 Phase 9 screenshot artifact:
 https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/9050425261
 
-Cloud Demo Login Upsert workflow:
-https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-login-upsert.yml
+Cloud Fixed Accounts Upsert workflow:
+https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-fixed-accounts-upsert.yml
 
-Cloud Demo Login Upsert successful run:
-https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
-
-Cloud Demo Seed Upsert workflow:
-https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-seed-upsert.yml
+Cloud Demo Purge workflow:
+https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-purge.yml
 
 Backend AI Runtime Config workflow:
 https://github.com/shnnzdx/cap_stone/actions/workflows/backend-ai-runtime-config.yml
 
 Backend AI Runtime Config successful run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31406205586
+```
+
+## Local AWS Operator Credential Source
+
+On this machine, the local AWS CLI credential copy is stored in:
+
+```text
+backend/.env
+```
+
+Present key names verified on Thursday, August 13, 2026:
+
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_REGION
+```
+
+Important:
+
+- the repo root `.env` is currently absent
+- AWS CLI does not auto-read `backend/.env`
+- a raw `aws sts get-caller-identity` can therefore return `NoCredentials`
+  until the shell process imports those variables
+- do not print or commit the credential values
+
+PowerShell loader for the current shell only:
+
+```powershell
+Get-Content backend/.env | ForEach-Object {
+  if ($_ -match '^\s*#' -or $_ -notmatch '=') { return }
+  $name, $value = $_ -split '=', 2
+  if ($name -in 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_REGION', 'AWS_DEFAULT_REGION') {
+    [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+  }
+}
 ```
 
 ## Current AWS Console Links
@@ -136,8 +169,8 @@ AWS/README.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
-AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
-AWS/CLOUD_DEMO_SEED_RUNBOOK.md
+AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
+AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
@@ -161,15 +194,18 @@ hosted_zone_id=<existing Route 53 public hosted zone ID>
 
 No HTTPS/custom domain resources have been created yet.
 
-Cloud RDS remains private. Use `AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md` and the manual `Cloud Demo Login Upsert` workflow if the cloud database needs the demo organizer login:
+Cloud RDS remains private. Use `AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md` and the
+manual `Cloud Fixed Accounts Upsert` workflow if the real database should
+contain the fixed backend accounts:
 
 ```text
 organizer@cadensy.local
+participant@cadensy.local
 ```
 
-Use `AWS/CLOUD_DEMO_SEED_RUNBOOK.md` and the manual `Cloud Demo Seed Upsert`
-workflow if the cloud database needs the full demo trip dataset without
-destructive reseeding.
+Use `AWS/CLOUD_DEMO_PURGE_RUNBOOK.md` and the manual `Cloud Demo Purge`
+workflow if the old demo trip and itinerary should be removed while preserving
+those fixed accounts.
 
 Use `AWS/BACKEND_AI_RUNTIME_RUNBOOK.md` and the manual `Backend AI Runtime
 Config` workflow if the deployed backend should stop using `MOCK_AI=1` and start

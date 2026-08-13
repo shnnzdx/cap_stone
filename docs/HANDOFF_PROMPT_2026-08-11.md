@@ -363,10 +363,10 @@ AI 统一走：
 - 从本机直连 cloud RDS
 - 为了图省事把 RDS 开到公网
 
-如果云端需要补 demo login 或 demo seed，走 GitHub Actions：
+如果云端需要补固定后台账号或清理旧 demo trip / itinerary，走 GitHub Actions：
 
-- `cloud-demo-login-upsert.yml`
-- `cloud-demo-seed-upsert.yml`
+- `cloud-fixed-accounts-upsert.yml`
+- `cloud-demo-purge.yml`
 
 六、GitHub Actions 当前重点工作流
 
@@ -375,8 +375,8 @@ AI 统一走：
 - `main.yml`：AWS 身份检查
 - `backend-ai-secret-provision.yml`
 - `backend-ai-runtime-config.yml`
-- `cloud-demo-login-upsert.yml`
-- `cloud-demo-seed-upsert.yml`
+- `cloud-fixed-accounts-upsert.yml`
+- `cloud-demo-purge.yml`
 - `phase5-backend-provision.yml`
 - `phase8-frontend-provision.yml`
 - `phase9-public-e2e.yml`
@@ -387,8 +387,8 @@ AI 统一走：
 - `AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md`
 - `AWS/TRIPSYNC_AWS_URLS.md`
 - `AWS/BACKEND_AI_RUNTIME_RUNBOOK.md`
-- `AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md`
-- `AWS/CLOUD_DEMO_SEED_RUNBOOK.md`
+- `AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md`
+- `AWS/CLOUD_DEMO_PURGE_RUNBOOK.md`
 
 七、当前最容易混淆的点
 
@@ -497,4 +497,37 @@ AWS 改 runtime 也不会自动同步你本地 `.env`。
 - `backend/README.md`
 - `AWS/TRIPSYNC_AWS_URLS.md`
 - 这份 handoff prompt
+```
+
+## AWS local credential note
+
+As of Thursday, August 13, 2026, this machine's local AWS CLI credential copy
+is stored in:
+
+- `backend/.env`
+
+Verified key names present locally:
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+
+Important:
+
+- the repo root `.env` is currently absent
+- AWS CLI does not automatically read `backend/.env`
+- `aws sts get-caller-identity` can therefore return `NoCredentials` until the
+  current shell imports those variables
+- do not print, commit, or paste the secret values into docs, chat, or logs
+
+PowerShell current-process loader:
+
+```powershell
+Get-Content backend/.env | ForEach-Object {
+  if ($_ -match '^\s*#' -or $_ -notmatch '=') { return }
+  $name, $value = $_ -split '=', 2
+  if ($name -in 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_REGION', 'AWS_DEFAULT_REGION') {
+    [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+  }
+}
 ```

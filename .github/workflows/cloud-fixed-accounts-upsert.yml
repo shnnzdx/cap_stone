@@ -1,12 +1,7 @@
-name: Cloud Demo Seed Upsert
+name: Cloud Fixed Accounts Upsert
 
 on:
   workflow_dispatch:
-    inputs:
-      organizer_email:
-        description: Demo organizer email used for login verification
-        required: true
-        default: organizer@cadensy.local
 
 permissions:
   contents: read
@@ -20,10 +15,12 @@ env:
   ECR_REPOSITORY: tripsync-backend
   LOG_GROUP_NAME: /ecs/tripsync-backend
   ALB_NAME: tripsync-backend-alb
+  FIXED_ORGANIZER_EMAIL: organizer@cadensy.local
+  FIXED_PARTICIPANT_EMAIL: participant@cadensy.local
 
 jobs:
-  upsert-demo-seed:
-    name: Upsert Demo Seed Through ECS
+  upsert-fixed-accounts:
+    name: Upsert Fixed Accounts Through ECS
     runs-on: ubuntu-latest
     environment: Main
 
@@ -86,7 +83,7 @@ jobs:
             echo "assign_public_ip=${ASSIGN_PUBLIC_IP}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Build and push backend image with cloud seed helper
+      - name: Build and push backend image with fixed-account helper
         id: image
         shell: bash
         run: |
@@ -94,7 +91,7 @@ jobs:
 
           ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
           ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}"
-          IMAGE_TAG="cloud-demo-seed-${GITHUB_SHA}"
+          IMAGE_TAG="cloud-fixed-accounts-${GITHUB_SHA}"
 
           aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_URI%/*}"
           docker build -t "${ECR_URI}:${IMAGE_TAG}" backend
@@ -105,12 +102,10 @@ jobs:
       - name: Register one-off DB admin task definition
         id: taskdef
         shell: bash
-        env:
-          ORGANIZER_EMAIL: ${{ inputs.organizer_email }}
         run: |
           set -euo pipefail
 
-          cat > /tmp/task-definition-cloud-demo-seed.json <<JSON
+          cat > /tmp/task-definition-cloud-fixed-accounts.json <<JSON
           {
             "family": "${TASK_FAMILY}",
             "networkMode": "awsvpc",
@@ -124,12 +119,13 @@ jobs:
                 "name": "${CONTAINER_NAME}",
                 "image": "${{ steps.image.outputs.image_uri }}",
                 "essential": true,
-                "command": ["python", "-m", "app.db.upsert_demo_seed"],
+                "command": ["python", "-m", "app.db.upsert_fixed_accounts"],
                 "environment": [
                   { "name": "APP_ENV", "value": "production" },
                   { "name": "DISABLE_SCHEDULER", "value": "1" },
                   { "name": "MOCK_AI", "value": "1" },
-                  { "name": "SEED_ORGANIZER_EMAIL", "value": "${ORGANIZER_EMAIL}" }
+                  { "name": "FIXED_ORGANIZER_EMAIL", "value": "${FIXED_ORGANIZER_EMAIL}" },
+                  { "name": "FIXED_PARTICIPANT_EMAIL", "value": "${FIXED_PARTICIPANT_EMAIL}" }
                 ],
                 "secrets": [
                   {
@@ -152,7 +148,7 @@ jobs:
           JSON
 
           TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
-            --cli-input-json file:///tmp/task-definition-cloud-demo-seed.json \
+            --cli-input-json file:///tmp/task-definition-cloud-fixed-accounts.json \
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)"
 
@@ -173,7 +169,7 @@ jobs:
             --output text)"
 
           if [ "${TASK_ARN}" = "None" ] || [ -z "${TASK_ARN}" ]; then
-            echo "::error::Cloud demo seed ECS task failed to start."
+            echo "::error::Cloud fixed account ECS task failed to start."
             exit 1
           fi
 
@@ -192,16 +188,14 @@ jobs:
             --output text)"
 
           if [ "${EXIT_CODE}" != "0" ]; then
-            echo "::error::Cloud demo seed task failed. Stopped reason: ${STOPPED_REASON}"
+            echo "::error::Cloud fixed account task failed. Stopped reason: ${STOPPED_REASON}"
             exit 1
           fi
 
-          echo "Cloud demo seed upsert task completed successfully."
+          echo "Cloud fixed account task completed successfully."
 
-      - name: Verify demo plan through public API
+      - name: Verify both fixed accounts through public API
         shell: bash
-        env:
-          ORGANIZER_EMAIL: ${{ inputs.organizer_email }}
         run: |
           set -euo pipefail
 
@@ -210,21 +204,18 @@ jobs:
             --query 'LoadBalancers[0].DNSName' \
             --output text)"
 
-          jq -n \
-            --arg email "${ORGANIZER_EMAIL}" \
-            --arg password "12345678" \
-            '{email: $email, password: $password}' > /tmp/login-payload.json
+          for EMAIL in "${FIXED_ORGANIZER_EMAIL}" "${FIXED_PARTICIPANT_EMAIL}"; do
+            jq -n \
+              --arg email "${EMAIL}" \
+              --arg password "12345678" \
+              '{email: $email, password: $password}' > /tmp/login-payload.json
 
-          curl --fail --silent --show-error \
-            -H "Content-Type: application/json" \
-            -d @/tmp/login-payload.json \
-            "http://${ALB_DNS}/api/auth/login" > /tmp/login-response.json
+            curl --fail --silent --show-error \
+              -H "Content-Type: application/json" \
+              -d @/tmp/login-payload.json \
+              "http://${ALB_DNS}/api/auth/login" > /tmp/login-response.json
 
-          jq -e '.token and (.default_membership.trip_id)' /tmp/login-response.json >/dev/null
-          TRIP_ID="$(jq -r '.default_membership.trip_id' /tmp/login-response.json)"
+            jq -e '.token' /tmp/login-response.json >/dev/null
+          done
 
-          curl --fail --silent --show-error \
-            "http://${ALB_DNS}/api/trips/${TRIP_ID}/plans/current" > /tmp/plan-response.json
-
-          jq -e '[(.days[]?.items[]?)] | length >= 9' /tmp/plan-response.json >/dev/null
-          echo "Demo seed verified through the public backend API."
+          echo "Both fixed accounts authenticate through the public backend API."

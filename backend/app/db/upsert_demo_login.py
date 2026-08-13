@@ -1,20 +1,18 @@
-"""Upsert the shared demo organizer login without destructive seeding.
+"""Upsert the legacy organizer login without recreating demo trip data.
 
-This is intended for cloud databases where RDS is private and only reachable
-from ECS tasks. It creates missing schema objects, creates or updates the demo
-organizer account, and ensures the account has at least one organizer
-membership. It never drops tables or deletes data.
+This helper is kept for compatibility with older local/admin workflows. It
+creates missing schema objects and creates or updates the organizer account,
+but it no longer recreates demo trips or memberships by default.
 """
 
 from __future__ import annotations
 
 import os
-from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select, text
 
 from ..domain.auth import hash_password, normalize_email
-from .models import AuthSession, Base, Plan, Trip, TripMembership, User
+from .models import AuthSession, Base, TripMembership, User
 from .session import SessionLocal, engine
 
 ORGANIZER_EMAIL = normalize_email(
@@ -72,64 +70,23 @@ def upsert_demo_login() -> dict:
             .order_by(TripMembership.created_at)
         )
 
-        created_trip = False
-        created_membership = False
-        if membership is None:
-            today = date.today()
-            trip = Trip(
-                name=DEMO_TRIP_NAME,
-                destination=DEMO_DESTINATION,
-                preferred_start_date=today,
-                preferred_end_date=today + timedelta(days=3),
-                expected_group_size=4,
-                currency="USD",
-                preferences_deadline=datetime.now(timezone.utc) + timedelta(days=7),
-                status="planning",
-                created_by_user_id=user.id,
-            )
-            db.add(trip)
-            db.flush()
-
-            membership = TripMembership(
-                trip_id=trip.id,
-                user_id=user.id,
-                guest_display_name=None,
-                role="organizer",
-                join_method="creator",
-                status="invited",
-            )
-            db.add(membership)
-            db.flush()
-
-            db.add(
-                Plan(
-                    trip_id=trip.id,
-                    status="active",
-                    blocked_reason=None,
-                    estimated_total_per_person=0,
-                    currency="USD",
-                )
-            )
-            created_trip = True
-            created_membership = True
-
         db.commit()
 
         return {
             "updated": True,
             "email": ORGANIZER_EMAIL,
             "created_user": created_user,
-            "created_trip": created_trip,
-            "created_membership": created_membership,
-            "trip_id": membership.trip_id,
-            "membership_id": membership.id,
+            "created_trip": False,
+            "created_membership": False,
+            "trip_id": membership.trip_id if membership else None,
+            "membership_id": membership.id if membership else None,
         }
 
 
 if __name__ == "__main__":
     result = upsert_demo_login()
     print(
-        "demo login ready:",
+        "legacy organizer login ready:",
         {
             "updated": result["updated"],
             "email": result["email"],

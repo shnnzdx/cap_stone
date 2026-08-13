@@ -458,6 +458,30 @@ AWS generally recommends temporary credentials where possible, but this project 
 
 The AWS keys must exist only in protected secret storage.
 
+On this machine as of Thursday, August 13, 2026, there is also a local
+operator copy in:
+
+```text
+backend/.env
+```
+
+That local file currently contains these AWS key names:
+
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_REGION
+```
+
+This does not mean the AWS CLI auto-discovers them. Future operators and AI
+agents should assume:
+
+- the repo root `.env` may be absent
+- `aws` does not automatically read `backend/.env`
+- `NoCredentials` from `aws sts get-caller-identity` may simply mean the shell
+  process never imported the variables yet
+- the values must never be printed into logs, docs, chat, or commits
+
 Current GitHub configuration:
 
 ```text
@@ -1555,8 +1579,9 @@ verified response: {"ok":true}
 Reason for GitHub Actions provisioning:
 
 ```text
-local AWS CLI exists but no local AWS credentials are configured
+local AWS CLI exists
 local Docker CLI is not installed
+local AWS credentials may be present in backend/.env, but the shell must load them first
 GitHub Actions has AWS credentials through environment Main
 GitHub Actions ubuntu-latest runner has Docker
 ```
@@ -2310,8 +2335,8 @@ AWS/README.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
-AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
-AWS/CLOUD_DEMO_SEED_RUNBOOK.md
+AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
+AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
@@ -2324,7 +2349,20 @@ AWS/archive/completed-phases/
 
 `AWS/PHASE6_RUNTIME_SECRETS_PLAN.md` intentionally remains in the root because `.github/workflows/runtime-secrets-readiness.yml` validates that exact file path.
 
-For cloud demo login seeding, use:
+Historical note:
+
+As of Thursday, August 13, 2026, the cloud demo login and cloud demo seed paths
+described below were retired and replaced by:
+
+```text
+AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
+.github/workflows/cloud-fixed-accounts-upsert.yml
+
+AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
+.github/workflows/cloud-demo-purge.yml
+```
+
+Before that retirement, cloud demo login seeding used:
 
 ```text
 AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
@@ -2339,7 +2377,7 @@ Successful cloud demo login run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
 ```
 
-For cloud demo dataset upsert, use:
+Before that retirement, cloud demo dataset upsert used:
 
 ```text
 AWS/CLOUD_DEMO_SEED_RUNBOOK.md

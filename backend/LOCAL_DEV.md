@@ -103,6 +103,11 @@ Notes:
 - keep `DATABASE_URL` and `TEST_DATABASE_URL` on different databases
 - on Windows, pytest now forces the PostgreSQL test database and client connection to
   UTF-8 so non-ASCII fixtures stay valid
+- on this machine, the local AWS CLI credential copy also lives in `backend/.env`
+  under keys such as `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION`
+- AWS CLI does not automatically read `backend/.env`, so load those variables into
+  the current shell before treating `aws sts get-caller-identity` `NoCredentials`
+  as a real missing-credential problem
 
 `DEV_ALLOW_MEMBERSHIP_HEADER=1` keeps the local `X-Membership-Id` demo flow available
 while login is still evolving.

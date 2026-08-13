@@ -18,7 +18,7 @@ export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [accountCreated, setAccountCreated] = useState(false);
-  const [email, setEmail] = useState("organizer@cadensy.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -138,10 +138,10 @@ export default function LoginPage() {
             </div>
             <form className="login-form" onSubmit={submit}>
               <label htmlFor="email">Email address</label>
-              <input id="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
+              <input id="email" name="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="you@example.com" />
               <div className="password-row"><label htmlFor="password">Password</label><Link href="#">Forgot password?</Link></div>
               <div className="password-field">
-                <input id="password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} type={showPassword ? "text" : "password"} />
+                <input id="password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} type={showPassword ? "text" : "password"} placeholder="Enter your password" />
                 <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? "Hide" : "Show"}</button>
               </div>
               {error && <p className="login-error" role="alert">{error}</p>}
