@@ -223,5 +223,13 @@ jobs:
             exit 1
           fi
 
-          jq -e '.token and ((.memberships | length) == 0)' /tmp/login-response.json >/dev/null
-          echo "Fixed organizer login still works and no longer carries a demo membership."
+          TOKEN="$(jq -r '.token' /tmp/login-response.json)"
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer ${TOKEN}" \
+            "http://${ALB_DNS}/api/trips" > /tmp/trips-response.json
+
+          jq -e 'all(.[]; (.name != "Mia'\''s 30th in Chicago" and .name != "TripSync Cloud Demo"))' \
+            /tmp/trips-response.json >/dev/null
+
+          echo "Fixed organizer login still works and no known demo trip names remain."

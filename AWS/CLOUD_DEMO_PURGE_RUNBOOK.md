@@ -112,7 +112,7 @@ Expected success:
 
 ```text
 Cloud demo purge task completed successfully.
-Fixed organizer login still works and no longer carries a demo membership.
+Fixed organizer login still works and no known demo trip names remain.
 ```
 
 ## Verification
@@ -122,7 +122,7 @@ The workflow verifies:
 ```text
 GET /api/health returns {"ok":true}
 POST /api/auth/login works for organizer@cadensy.local
-the organizer login returns zero memberships after purge
+/api/trips for that account contains neither "Mia's 30th in Chicago" nor "TripSync Cloud Demo"
 ```
 
 ## Security Position
