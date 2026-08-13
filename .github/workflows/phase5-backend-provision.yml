@@ -339,52 +339,58 @@ jobs:
               --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
               --health-check-grace-period-seconds 60 >/dev/null
           else
-            cat > /tmp/task-definition.json <<JSON
-            {
-              "family": "${TASK_FAMILY}",
-              "networkMode": "awsvpc",
-              "requiresCompatibilities": ["FARGATE"],
-              "cpu": "256",
-              "memory": "512",
-              "executionRoleArn": "${{ steps.infra.outputs.execution_role_arn }}",
-              "taskRoleArn": "${{ steps.infra.outputs.task_role_arn }}",
-              "containerDefinitions": [
-                {
-                  "name": "tripsync-backend",
-                  "image": "${IMAGE_URI}",
-                  "essential": true,
-                  "portMappings": [
-                    {
-                      "containerPort": 8000,
-                      "hostPort": 8000,
-                      "protocol": "tcp"
+            jq -n \
+              --arg family "${TASK_FAMILY}" \
+              --arg network_mode "awsvpc" \
+              --arg execution_role_arn "${{ steps.infra.outputs.execution_role_arn }}" \
+              --arg task_role_arn "${{ steps.infra.outputs.task_role_arn }}" \
+              --arg image "${IMAGE_URI}" \
+              --arg log_group "${LOG_GROUP_NAME}" \
+              --arg region "${AWS_REGION}" \
+              '{
+                family: $family,
+                networkMode: $network_mode,
+                requiresCompatibilities: ["FARGATE"],
+                cpu: "256",
+                memory: "512",
+                executionRoleArn: $execution_role_arn,
+                taskRoleArn: $task_role_arn,
+                containerDefinitions: [
+                  {
+                    name: "tripsync-backend",
+                    image: $image,
+                    essential: true,
+                    portMappings: [
+                      {
+                        containerPort: 8000,
+                        hostPort: 8000,
+                        protocol: "tcp"
+                      }
+                    ],
+                    environment: [
+                      {name: "APP_ENV", value: "production"},
+                      {name: "DISABLE_SCHEDULER", value: "1"},
+                      {name: "MOCK_AI", value: "1"}
+                    ],
+                    logConfiguration: {
+                      logDriver: "awslogs",
+                      options: {
+                        "awslogs-group": $log_group,
+                        "awslogs-region": $region,
+                        "awslogs-stream-prefix": "ecs",
+                        mode: "blocking"
+                      }
+                    },
+                    healthCheck: {
+                      command: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('\''http://127.0.0.1:8000/api/health'\'', timeout=3).read()\""],
+                      interval: 30,
+                      timeout: 5,
+                      retries: 3,
+                      startPeriod: 20
                     }
-                  ],
-                  "environment": [
-                    { "name": "APP_ENV", "value": "production" },
-                    { "name": "DISABLE_SCHEDULER", "value": "1" },
-                    { "name": "MOCK_AI", "value": "1" }
-                  ],
-                  "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                      "awslogs-group": "${LOG_GROUP_NAME}",
-                      "awslogs-region": "${AWS_REGION}",
-                      "awslogs-stream-prefix": "ecs",
-                      "mode": "blocking"
-                    }
-                  },
-                  "healthCheck": {
-                    "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
-                    "interval": 30,
-                    "timeout": 5,
-                    "retries": 3,
-                    "startPeriod": 20
                   }
-                }
-              ]
-            }
-            JSON
+                ]
+              }' > /tmp/task-definition.json
 
             TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
 
