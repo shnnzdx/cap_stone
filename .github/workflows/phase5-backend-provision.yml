@@ -297,57 +297,40 @@ jobs:
 
           IMAGE_URI="${{ steps.infra.outputs.ecr_uri }}:${GITHUB_SHA}"
 
-          cat > /tmp/task-definition.json <<JSON
-          {
-            "family": "${TASK_FAMILY}",
-            "networkMode": "awsvpc",
-            "requiresCompatibilities": ["FARGATE"],
-            "cpu": "256",
-            "memory": "512",
-            "executionRoleArn": "${{ steps.infra.outputs.execution_role_arn }}",
-            "taskRoleArn": "${{ steps.infra.outputs.task_role_arn }}",
-            "containerDefinitions": [
-              {
-                "name": "tripsync-backend",
-                "image": "${IMAGE_URI}",
-                "essential": true,
-                "portMappings": [
-                  {
-                    "containerPort": 8000,
-                    "hostPort": 8000,
-                    "protocol": "tcp"
-                  }
-                ],
-                "environment": [
-                  { "name": "APP_ENV", "value": "production" },
-                  { "name": "DISABLE_SCHEDULER", "value": "1" },
-                  { "name": "MOCK_AI", "value": "1" }
-                ],
-                "logConfiguration": {
-                  "logDriver": "awslogs",
-                  "options": {
-                    "awslogs-group": "${LOG_GROUP_NAME}",
-                    "awslogs-region": "${AWS_REGION}",
-                    "awslogs-stream-prefix": "ecs",
-                    "mode": "blocking"
-                  }
-                },
-                "healthCheck": {
-                  "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
-                  "interval": 30,
-                  "timeout": 5,
-                  "retries": 3,
-                  "startPeriod": 20
-                }
-              }
-            ]
-          }
-          JSON
-
-          TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
-
           SERVICE_STATUS="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].status' --output text 2>/dev/null || true)"
           if [ "${SERVICE_STATUS}" = "ACTIVE" ]; then
+            CURRENT_TASK_DEF_ARN="$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "${ECS_SERVICE}" --query 'services[0].taskDefinition' --output text)"
+            CURRENT_TASK_DEF="$(aws ecs describe-task-definition --task-definition "${CURRENT_TASK_DEF_ARN}" --output json)"
+            CURRENT_CONTAINER="$(jq -c '.taskDefinition.containerDefinitions[] | select(.name == "tripsync-backend")' <<< "${CURRENT_TASK_DEF}")"
+
+            if [ -z "${CURRENT_CONTAINER}" ] || [ "${CURRENT_CONTAINER}" = "null" ]; then
+              echo "::error::Could not find tripsync-backend on the current live task definition."
+              exit 1
+            fi
+
+            UPDATED_CONTAINER="$(jq -c --arg image "${IMAGE_URI}" '.image = $image' <<< "${CURRENT_CONTAINER}")"
+
+            jq -n \
+              --arg family "${TASK_FAMILY}" \
+              --arg network_mode "awsvpc" \
+              --arg execution_role_arn "$(jq -r '.taskDefinition.executionRoleArn' <<< "${CURRENT_TASK_DEF}")" \
+              --arg task_role_arn "$(jq -r '.taskDefinition.taskRoleArn' <<< "${CURRENT_TASK_DEF}")" \
+              --arg cpu "$(jq -r '.taskDefinition.cpu' <<< "${CURRENT_TASK_DEF}")" \
+              --arg memory "$(jq -r '.taskDefinition.memory' <<< "${CURRENT_TASK_DEF}")" \
+              --argjson container "${UPDATED_CONTAINER}" \
+              '{
+                family: $family,
+                networkMode: $network_mode,
+                requiresCompatibilities: ["FARGATE"],
+                cpu: $cpu,
+                memory: $memory,
+                executionRoleArn: $execution_role_arn,
+                taskRoleArn: $task_role_arn,
+                containerDefinitions: [$container]
+              }' > /tmp/task-definition.json
+
+            TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+
             aws ecs update-service \
               --cluster "${ECS_CLUSTER}" \
               --service "${ECS_SERVICE}" \
@@ -356,6 +339,55 @@ jobs:
               --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
               --health-check-grace-period-seconds 60 >/dev/null
           else
+            cat > /tmp/task-definition.json <<JSON
+            {
+              "family": "${TASK_FAMILY}",
+              "networkMode": "awsvpc",
+              "requiresCompatibilities": ["FARGATE"],
+              "cpu": "256",
+              "memory": "512",
+              "executionRoleArn": "${{ steps.infra.outputs.execution_role_arn }}",
+              "taskRoleArn": "${{ steps.infra.outputs.task_role_arn }}",
+              "containerDefinitions": [
+                {
+                  "name": "tripsync-backend",
+                  "image": "${IMAGE_URI}",
+                  "essential": true,
+                  "portMappings": [
+                    {
+                      "containerPort": 8000,
+                      "hostPort": 8000,
+                      "protocol": "tcp"
+                    }
+                  ],
+                  "environment": [
+                    { "name": "APP_ENV", "value": "production" },
+                    { "name": "DISABLE_SCHEDULER", "value": "1" },
+                    { "name": "MOCK_AI", "value": "1" }
+                  ],
+                  "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {
+                      "awslogs-group": "${LOG_GROUP_NAME}",
+                      "awslogs-region": "${AWS_REGION}",
+                      "awslogs-stream-prefix": "ecs",
+                      "mode": "blocking"
+                    }
+                  },
+                  "healthCheck": {
+                    "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).read()\""],
+                    "interval": 30,
+                    "timeout": 5,
+                    "retries": 3,
+                    "startPeriod": 20
+                  }
+                }
+              ]
+            }
+            JSON
+
+            TASK_DEFINITION_ARN="$(aws ecs register-task-definition --cli-input-json file:///tmp/task-definition.json --query 'taskDefinition.taskDefinitionArn' --output text)"
+
             aws ecs create-service \
               --cluster "${ECS_CLUSTER}" \
               --service-name "${ECS_SERVICE}" \
