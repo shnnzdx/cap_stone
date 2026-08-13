@@ -12,15 +12,15 @@ on:
           - "false"
           - "true"
       openai_api_key_parameter:
-        description: "SSM parameter name that stores the AI provider API key"
+        description: "SSM parameter name that stores the OpenAI-compatible provider API key"
         required: true
         default: /tripsync/backend/prod/openai-api-key
       openai_base_url:
-        description: "Optional OpenAI-compatible base URL. Leave empty for OpenAI default."
+        description: "Optional OpenAI-compatible base URL. For example DeepSeek or Ollama Cloud."
         required: false
         default: ""
       openai_model:
-        description: "Model name used by backend agents"
+        description: "OpenAI-compatible model name used by backend agents"
         required: true
         default: gpt-4o-mini
 

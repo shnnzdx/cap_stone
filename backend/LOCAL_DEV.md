@@ -117,6 +117,12 @@ Notes:
   is reachable from this machine
 - `TEST_DATABASE_URL` should stay local and disposable because tests rebuild schema
 - keep `DATABASE_URL` and `TEST_DATABASE_URL` on different databases
+- the backend uses `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` for any
+  OpenAI-compatible provider, not only OpenAI itself
+- local Ollama commonly uses `OPENAI_API_KEY=ollama` together with
+  `OPENAI_BASE_URL=http://localhost:11434/v1/`
+- cloud Ollama must not use `http://localhost:11434/v1/`; it needs a real cloud key
+  and `OPENAI_BASE_URL=https://ollama.com/v1/`
 - on Windows, pytest now forces the PostgreSQL test database and client connection to
   UTF-8 so non-ASCII fixtures stay valid
 - on this machine, the local AWS CLI credential copy also lives in `backend/.env`
@@ -357,3 +363,5 @@ point `TEST_DATABASE_URL` at a new disposable test-only database name such as
 Use `MOCK_AI=1` for local development and demos that should not call a paid model API.
 For DeepSeek or another OpenAI-compatible provider, set `OPENAI_BASE_URL` and
 `OPENAI_MODEL` in `backend/.env`.
+For local Ollama, `OPENAI_API_KEY=ollama` is only a local placeholder.
+For Ollama Cloud, use a real provider key and `OPENAI_BASE_URL=https://ollama.com/v1/`.

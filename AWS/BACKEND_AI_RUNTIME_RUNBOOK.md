@@ -99,7 +99,20 @@ secret value.
 Expected GitHub `Main` environment secret used to provision that SSM parameter:
 
 ```text
+TRIPSYNC_AI_API_KEY
+```
+
+Legacy secret name still supported by the provisioning workflow:
+
+```text
 TRIPSYNC_OPENAI_API_KEY
+```
+
+Preferred setup:
+
+```text
+use TRIPSYNC_AI_API_KEY for any OpenAI-compatible provider
+keep TRIPSYNC_OPENAI_API_KEY only as a legacy fallback during migration
 ```
 
 The provisioning workflow writes the SSM SecureString and updates the ECS
@@ -155,6 +168,15 @@ openai_base_url=https://api.deepseek.com
 openai_model=deepseek-chat
 ```
 
+Typical Ollama Cloud run:
+
+```text
+mock_ai=false
+openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
+openai_base_url=https://ollama.com/v1/
+openai_model=qwen3.5:cloud
+```
+
 Rollback to mock mode:
 
 ```text
@@ -183,6 +205,23 @@ MOCK_AI=0
 OPENAI_BASE_URL=https://api.deepseek.com
 OPENAI_MODEL=deepseek-v4-flash
 OPENAI_API_KEY injected through SSM Parameter Store
+```
+
+Important on Thursday, August 13, 2026:
+
+```text
+normal frontend/backend product deploy workflows preserve the existing backend AI runtime
+they do not switch providers by themselves
+```
+
+That means:
+
+```text
+changing backend/.env locally does not update the AWS backend
+switching from DeepSeek to Ollama Cloud still requires:
+1. updating the GitHub Main environment secret
+2. running Backend AI Secret Provision
+3. running Backend AI Runtime Config
 ```
 
 ## Common Failures
