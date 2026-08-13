@@ -140,15 +140,33 @@ Put runtime variables in `backend/.env`. Do not commit real secrets.
 | --- | --- | --- |
 | `DATABASE_URL` | runtime database | `postgresql+psycopg://localhost/tripsync` |
 | `TEST_DATABASE_URL` | pytest database | `.../tripsync_test` |
-| `OPENAI_API_KEY` | model access | none |
-| `OPENAI_BASE_URL` | OpenAI-compatible provider base URL | none |
-| `OPENAI_MODEL` | model name | `gpt-4o-mini` |
+| `DEEPSEEK_API_KEY` | DeepSeek cloud API key | none |
+| `DEEPSEEK_BASE_URL` | DeepSeek base URL | `https://api.deepseek.com` |
+| `DEEPSEEK_MODEL` | DeepSeek model name | `deepseek-v4-flash` |
+| `OLLAMA_CLOUD_API_KEY` | Ollama Cloud API key | none |
+| `OLLAMA_CLOUD_BASE_URL` | Ollama Cloud base URL | `https://ollama.com/v1/` |
+| `OLLAMA_CLOUD_MODEL` | Ollama Cloud model name | `qwen3.5:cloud` |
+| `CHAT_AI_PROVIDER` | provider used by chat agent | `ollama_cloud` |
+| `PLANNER_AI_PROVIDER` | provider used by planner agent | `deepseek` |
+| `EXPLAINER_AI_PROVIDER` | provider used by explainer agent | `deepseek` |
+| `AI_FALLBACK_PROVIDER` | optional fallback if the routed provider fails | none |
+| `OPENAI_API_KEY` | legacy single-provider API key fallback | none |
+| `OPENAI_BASE_URL` | legacy single-provider base URL fallback | none |
+| `OPENAI_MODEL` | legacy single-provider model fallback | `gpt-4o-mini` |
 | `MOCK_AI` | use local mock AI when `1` | `1` |
 | `SETTLE_TICK_SECONDS` | settlement polling interval | `60` |
 | `DISABLE_SCHEDULER` | disable scheduler when `1` | none |
 | `DEV_ALLOW_MEMBERSHIP_HEADER` | keep `X-Membership-Id` local fallback | `1` |
 | `FRONTEND_BASE_URL` | frontend base URL for redirects | `http://localhost:5173` |
 | `CORS_ORIGINS` | allowed frontend origins | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` |
+
+Current recommended runtime split:
+
+```text
+chat      -> ollama_cloud
+planner   -> deepseek
+explainer -> deepseek
+```
 
 Never hard-code real credentials into source files.
 

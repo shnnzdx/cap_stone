@@ -101,6 +101,7 @@ def _call_day_model(
         schema=_day_schema(),
         schema_name="planner_day",
         mock=MOCK,
+        provider=base.PLANNER_ROUTE,
     )
 
 

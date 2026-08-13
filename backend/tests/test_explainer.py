@@ -65,7 +65,7 @@ def test_the_prompt_never_carries_a_name_or_anyone_s_wording(monkeypatch):
     """The one test that matters. A leaked prompt is a leaked promise."""
     seen = {}
 
-    def spy(*, system, user, schema, schema_name, mock):
+    def spy(*, system, user, schema, schema_name, mock, **kwargs):
         seen["blob"] = system + user
         return mock
 

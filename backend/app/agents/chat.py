@@ -140,6 +140,7 @@ def understand(request: UnderstandInput) -> Understanding:
         schema_name="chat_understanding",
         mock=_mock_understanding(request),
         max_tokens=220,
+        provider=base.CHAT_ROUTE,
     )
     result_patch = result.get("patch") or {}
 
@@ -176,6 +177,7 @@ def explain(request: ReplyInput) -> Reply:
         schema_name="chat_reply",
         mock={"reply": _mock_reply(request.verdict)},
         max_tokens=260,
+        provider=base.CHAT_ROUTE,
     )
     return Reply(text=result["reply"])
 
@@ -194,6 +196,7 @@ def answer_question(request: QuestionInput) -> Reply:
         schema_name="chat_question_reply",
         mock={"reply": _mock_question_reply(request)},
         max_tokens=220,
+        provider=base.CHAT_ROUTE,
     )
     return Reply(text=result["reply"])
 

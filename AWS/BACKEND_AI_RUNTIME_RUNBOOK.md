@@ -1,132 +1,119 @@
 # TripSync Backend AI Runtime Runbook
 
-Status: completed successfully.
-
-Successful run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31406205586
-```
+Status: current dual-provider workflow.
 
 Purpose:
 
 ```text
-Switch the deployed backend between MOCK_AI demo mode and a real
-OpenAI-compatible provider without changing the private RDS network model.
+Switch the deployed backend between MOCK_AI demo mode and the current
+dual-provider runtime without changing the private RDS network model.
 ```
 
-Workflow:
-
-```text
-.github/workflows/backend-ai-runtime-config.yml
-```
-
-Supporting secret/bootstrap workflow:
+Workflows:
 
 ```text
 .github/workflows/backend-ai-secret-provision.yml
+.github/workflows/backend-ai-runtime-config.yml
 ```
 
-## Why This Exists
+## Current Runtime Shape
 
-The current deployed backend still uses:
-
-```text
-MOCK_AI=1
-DISABLE_SCHEDULER=1
-desiredCount=1
-```
-
-That means login, database writes, trip data, comments, votes, and proposals can
-work, but model-backed planner/chat behavior is still running the local mock
-path.
-
-The backend code already supports real OpenAI-compatible runtime inputs:
+The backend now supports provider-specific runtime inputs:
 
 ```text
-OPENAI_API_KEY
-OPENAI_BASE_URL
-OPENAI_MODEL
+DEEPSEEK_API_KEY
+DEEPSEEK_BASE_URL
+DEEPSEEK_MODEL
+OLLAMA_CLOUD_API_KEY
+OLLAMA_CLOUD_BASE_URL
+OLLAMA_CLOUD_MODEL
+CHAT_AI_PROVIDER
+PLANNER_AI_PROVIDER
+EXPLAINER_AI_PROVIDER
+AI_FALLBACK_PROVIDER
 MOCK_AI
 ```
 
-The missing piece is a safe ECS runtime update path that:
+Current recommended route split:
 
 ```text
-preserves DATABASE_URL secret injection
-preserves current frontend/CORS runtime config
-adds or removes OPENAI_API_KEY secret injection
-switches MOCK_AI between 1 and 0
+chat      -> ollama_cloud
+planner   -> deepseek
+explainer -> deepseek
 ```
 
-## What The Workflow Does
+Legacy `OPENAI_*` variables still exist in backend code as a local compatibility
+path, but the AWS runtime should now use the provider-specific variables above.
+
+## Required GitHub Secrets
+
+Preferred `Main` environment secrets:
+
+```text
+TRIPSYNC_DEEPSEEK_API_KEY
+TRIPSYNC_OLLAMA_CLOUD_API_KEY
+```
+
+Temporary DeepSeek fallback names still supported by the provisioning workflow:
+
+```text
+TRIPSYNC_AI_API_KEY
+TRIPSYNC_OPENAI_API_KEY
+```
+
+Preferred secret migration outcome:
+
+```text
+use TRIPSYNC_DEEPSEEK_API_KEY for DeepSeek
+use TRIPSYNC_OLLAMA_CLOUD_API_KEY for Ollama Cloud
+retire TRIPSYNC_AI_API_KEY and TRIPSYNC_OPENAI_API_KEY after migration
+```
+
+## Required SSM Parameters
+
+Expected SecureString parameter names:
+
+```text
+/tripsync/backend/prod/deepseek-api-key
+/tripsync/backend/prod/ollama-cloud-api-key
+/tripsync/backend/prod/database-url
+```
+
+The provisioning workflow writes the provider keys into SSM and updates the ECS
+execution role inline policy so the backend task can read all required runtime
+parameters.
+
+## What The Runtime Workflow Does
 
 ```text
 GitHub Actions
 -> read the current backend ECS task definition
 -> keep current image, logs, DATABASE_URL secret, frontend URL, CORS, scheduler flag
--> remove the container-level healthCheck and rely on the ALB target-group /api/health check
--> optionally look up the SSM parameter metadata for the AI API key
 -> register a new backend task definition revision
+-> inject DEEPSEEK_API_KEY and OLLAMA_CLOUD_API_KEY from SSM
+-> set DEEPSEEK_* and OLLAMA_CLOUD_* runtime env vars
+-> set CHAT_AI_PROVIDER / PLANNER_AI_PROVIDER / EXPLAINER_AI_PROVIDER
+-> optionally set AI_FALLBACK_PROVIDER
+-> remove legacy OPENAI_* cloud injection from the task definition
 -> update the existing backend ECS service
 -> wait for ECS service stability
 -> verify /api/health through the public ALB
 ```
 
-The workflow does not:
+The workflows do not:
 
 ```text
-print OPENAI_API_KEY
+print provider API keys
 print DATABASE_URL
-read plaintext SSM SecureString values into logs
+read plaintext SecureString values into logs
 change RDS networking
 change the frontend ECS service
 change HTTPS/custom-domain resources
-change desiredCount beyond the current backend service shape
 ```
 
-## Required Runtime Secret
+## Provision Secrets First
 
-Expected sensitive SSM parameter name:
-
-```text
-/tripsync/backend/prod/openai-api-key
-```
-
-This workflow checks only the parameter metadata path. It does not print the
-secret value.
-
-Expected GitHub `Main` environment secret used to provision that SSM parameter:
-
-```text
-TRIPSYNC_AI_API_KEY
-```
-
-Legacy secret name still supported by the provisioning workflow:
-
-```text
-TRIPSYNC_OPENAI_API_KEY
-```
-
-Preferred setup:
-
-```text
-use TRIPSYNC_AI_API_KEY for any OpenAI-compatible provider
-keep TRIPSYNC_OPENAI_API_KEY only as a legacy fallback during migration
-```
-
-The provisioning workflow writes the SSM SecureString and updates the ECS
-execution role inline policy so the backend task can read both runtime
-parameters:
-
-```text
-/tripsync/backend/prod/database-url
-/tripsync/backend/prod/openai-api-key
-```
-
-## Provision Secret First
-
-In GitHub:
+Run:
 
 ```text
 Actions
@@ -134,15 +121,16 @@ Actions
 -> Run workflow
 ```
 
-Typical input:
+Typical inputs:
 
 ```text
-openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
+deepseek_api_key_parameter=/tripsync/backend/prod/deepseek-api-key
+ollama_cloud_api_key_parameter=/tripsync/backend/prod/ollama-cloud-api-key
 ```
 
-## Manual Run
+## Configure Runtime
 
-In GitHub:
+Run:
 
 ```text
 Actions
@@ -150,61 +138,43 @@ Actions
 -> Run workflow
 ```
 
-Typical real AI run:
+Typical current production inputs:
 
 ```text
 mock_ai=false
-openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
-openai_base_url=
-openai_model=gpt-4o-mini
-```
-
-Typical OpenAI-compatible provider run:
-
-```text
-mock_ai=false
-openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
-openai_base_url=https://api.deepseek.com
-openai_model=deepseek-chat
-```
-
-Typical Ollama Cloud run:
-
-```text
-mock_ai=false
-openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
-openai_base_url=https://ollama.com/v1/
-openai_model=qwen3.5:cloud
+deepseek_api_key_parameter=/tripsync/backend/prod/deepseek-api-key
+deepseek_base_url=https://api.deepseek.com
+deepseek_model=deepseek-v4-flash
+ollama_cloud_api_key_parameter=/tripsync/backend/prod/ollama-cloud-api-key
+ollama_cloud_base_url=https://ollama.com/v1/
+ollama_cloud_model=qwen3.5:cloud
+chat_ai_provider=ollama_cloud
+planner_ai_provider=deepseek
+explainer_ai_provider=deepseek
+ai_fallback_provider=
 ```
 
 Rollback to mock mode:
 
 ```text
 mock_ai=true
-openai_api_key_parameter=/tripsync/backend/prod/openai-api-key
-openai_base_url=
-openai_model=gpt-4o-mini
+deepseek_api_key_parameter=/tripsync/backend/prod/deepseek-api-key
+ollama_cloud_api_key_parameter=/tripsync/backend/prod/ollama-cloud-api-key
 ```
 
-## Verification
-
-The workflow verifies:
-
-```text
-ECS service reaches stable
-GET /api/health returns {"ok":true}
-```
-
-After a successful run, planner/chat requests should stop using mock responses
-when `mock_ai=false`.
-
-Current deployed AI runtime after the successful run:
+## Intended AWS Runtime After Success
 
 ```text
 MOCK_AI=0
-OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-v4-flash
-OPENAI_API_KEY injected through SSM Parameter Store
+DEEPSEEK_API_KEY injected through SSM Parameter Store
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+OLLAMA_CLOUD_API_KEY injected through SSM Parameter Store
+OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/
+OLLAMA_CLOUD_MODEL=qwen3.5:cloud
+CHAT_AI_PROVIDER=ollama_cloud
+PLANNER_AI_PROVIDER=deepseek
+EXPLAINER_AI_PROVIDER=deepseek
 ```
 
 Important on Thursday, August 13, 2026:
@@ -212,54 +182,59 @@ Important on Thursday, August 13, 2026:
 ```text
 normal frontend/backend product deploy workflows preserve the existing backend AI runtime
 they do not switch providers by themselves
-```
-
-That means:
-
-```text
 changing backend/.env locally does not update the AWS backend
-switching from DeepSeek to Ollama Cloud still requires:
-1. updating the GitHub Main environment secret
+changing either cloud key still requires:
+1. updating the GitHub Main environment secrets
 2. running Backend AI Secret Provision
 3. running Backend AI Runtime Config
 ```
 
-## Common Failures
+## Verification
 
-`SSM parameter /tripsync/backend/prod/openai-api-key was not found`
+The runtime workflow verifies:
 
 ```text
-The AI provider key parameter does not exist yet, or the workflow input name is
-wrong. Run Backend AI Secret Provision first, then re-run Backend AI Runtime
-Config.
+ECS service reaches stable
+GET /api/health returns {"ok":true}
+```
+
+After a successful real-AI run, planner and explainer should stop using mock
+responses through DeepSeek, and chat should stop using mock responses through
+Ollama Cloud.
+
+## Common Failures
+
+`SSM parameter /tripsync/backend/prod/deepseek-api-key was not found`
+
+```text
+The DeepSeek key parameter does not exist yet, or the workflow input name is
+wrong. Run Backend AI Secret Provision first, then re-run Backend AI Runtime Config.
+```
+
+`SSM parameter /tripsync/backend/prod/ollama-cloud-api-key was not found`
+
+```text
+The Ollama Cloud key parameter does not exist yet, or the workflow input name is
+wrong. Run Backend AI Secret Provision first, then re-run Backend AI Runtime Config.
 ```
 
 `DATABASE_URL secret is not present on the current backend task definition`
 
 ```text
-The current backend task definition drifted away from the Phase 6 runtime layout.
-Inspect Phase 6 Runtime Provision and the active ECS task definition.
+The current backend task definition drifted away from the runtime-secrets layout.
+Inspect the active ECS task definition and restore DATABASE_URL secret injection first.
 ```
 
 `Backend health check passed after AI runtime config update` is missing
 
 ```text
 The ECS deployment did not stabilize or the backend is unhealthy after startup.
-Check the ECS service events and /ecs/tripsync-backend CloudWatch Logs.
-```
-
-`Task failed container health checks`
-
-```text
-The backend process may still be serving /api/health through the ALB while the
-container-level ECS healthCheck fails internally. The AI runtime workflow
-intentionally removes the container-level healthCheck and relies on the ALB
-target-group health check for this service.
+Check ECS service events and the /ecs/tripsync-backend CloudWatch Logs group.
 ```
 
 ## Current Product Reality
 
-Real-time product behavior is currently:
+Real-time product behavior is still:
 
 ```text
 database writes happen immediately through API requests

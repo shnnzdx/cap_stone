@@ -4,25 +4,53 @@ on:
   workflow_dispatch:
     inputs:
       mock_ai:
-        description: "Keep MOCK_AI enabled. false switches the backend to the real AI provider."
+        description: "Keep MOCK_AI enabled. false switches the backend to the real dual-provider runtime."
         required: true
         default: "false"
         type: choice
         options:
           - "false"
           - "true"
-      openai_api_key_parameter:
-        description: "SSM parameter name that stores the OpenAI-compatible provider API key"
+      deepseek_api_key_parameter:
+        description: "SSM parameter name that stores the DeepSeek API key"
         required: true
-        default: /tripsync/backend/prod/openai-api-key
-      openai_base_url:
-        description: "Optional OpenAI-compatible base URL. For example DeepSeek or Ollama Cloud."
+        default: /tripsync/backend/prod/deepseek-api-key
+      deepseek_base_url:
+        description: "DeepSeek base URL used by backend agents"
+        required: true
+        default: https://api.deepseek.com
+      deepseek_model:
+        description: "DeepSeek model used by planner and explainer by default"
+        required: true
+        default: deepseek-v4-flash
+      ollama_cloud_api_key_parameter:
+        description: "SSM parameter name that stores the Ollama Cloud API key"
+        required: true
+        default: /tripsync/backend/prod/ollama-cloud-api-key
+      ollama_cloud_base_url:
+        description: "Ollama Cloud base URL used by backend agents"
+        required: true
+        default: https://ollama.com/v1/
+      ollama_cloud_model:
+        description: "Ollama Cloud model used by chat by default"
+        required: true
+        default: qwen3.5:cloud
+      chat_ai_provider:
+        description: "Provider routed to chat agent"
+        required: true
+        default: ollama_cloud
+      planner_ai_provider:
+        description: "Provider routed to planner agent"
+        required: true
+        default: deepseek
+      explainer_ai_provider:
+        description: "Provider routed to explainer agent"
+        required: true
+        default: deepseek
+      ai_fallback_provider:
+        description: "Optional fallback provider. Leave blank to disable fallback."
         required: false
         default: ""
-      openai_model:
-        description: "OpenAI-compatible model name used by backend agents"
-        required: true
-        default: gpt-4o-mini
 
 permissions:
   contents: read
@@ -63,9 +91,8 @@ jobs:
         shell: bash
         env:
           INPUT_MOCK_AI: ${{ inputs.mock_ai }}
-          INPUT_OPENAI_API_KEY_PARAMETER: ${{ inputs.openai_api_key_parameter }}
-          INPUT_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
-          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
+          INPUT_DEEPSEEK_API_KEY_PARAMETER: ${{ inputs.deepseek_api_key_parameter }}
+          INPUT_OLLAMA_CLOUD_API_KEY_PARAMETER: ${{ inputs.ollama_cloud_api_key_parameter }}
         run: |
           set -euo pipefail
 
@@ -96,15 +123,26 @@ jobs:
             exit 1
           fi
 
-          OPENAI_API_KEY_SECRET_ARN=""
+          DEEPSEEK_API_KEY_SECRET_ARN=""
+          OLLAMA_CLOUD_API_KEY_SECRET_ARN=""
           if [ "${INPUT_MOCK_AI}" = "false" ]; then
-            OPENAI_API_KEY_SECRET_ARN="$(aws ssm describe-parameters \
-              --parameter-filters "Key=Name,Option=Equals,Values=${INPUT_OPENAI_API_KEY_PARAMETER}" \
+            DEEPSEEK_API_KEY_SECRET_ARN="$(aws ssm describe-parameters \
+              --parameter-filters "Key=Name,Option=Equals,Values=${INPUT_DEEPSEEK_API_KEY_PARAMETER}" \
               --query 'Parameters[0].ARN' \
               --output text)"
 
-            if [ -z "${OPENAI_API_KEY_SECRET_ARN}" ] || [ "${OPENAI_API_KEY_SECRET_ARN}" = "None" ]; then
-              echo "::error::SSM parameter ${INPUT_OPENAI_API_KEY_PARAMETER} was not found."
+            if [ -z "${DEEPSEEK_API_KEY_SECRET_ARN}" ] || [ "${DEEPSEEK_API_KEY_SECRET_ARN}" = "None" ]; then
+              echo "::error::SSM parameter ${INPUT_DEEPSEEK_API_KEY_PARAMETER} was not found."
+              exit 1
+            fi
+
+            OLLAMA_CLOUD_API_KEY_SECRET_ARN="$(aws ssm describe-parameters \
+              --parameter-filters "Key=Name,Option=Equals,Values=${INPUT_OLLAMA_CLOUD_API_KEY_PARAMETER}" \
+              --query 'Parameters[0].ARN' \
+              --output text)"
+
+            if [ -z "${OLLAMA_CLOUD_API_KEY_SECRET_ARN}" ] || [ "${OLLAMA_CLOUD_API_KEY_SECRET_ARN}" = "None" ]; then
+              echo "::error::SSM parameter ${INPUT_OLLAMA_CLOUD_API_KEY_PARAMETER} was not found."
               exit 1
             fi
           fi
@@ -130,7 +168,8 @@ jobs:
             echo "cpu=${CPU}"
             echo "memory=${MEMORY}"
             echo "database_url_secret=${DATABASE_URL_SECRET}"
-            echo "openai_api_key_secret_arn=${OPENAI_API_KEY_SECRET_ARN}"
+            echo "deepseek_api_key_secret_arn=${DEEPSEEK_API_KEY_SECRET_ARN}"
+            echo "ollama_cloud_api_key_secret_arn=${OLLAMA_CLOUD_API_KEY_SECRET_ARN}"
             echo "app_env=${APP_ENV}"
             echo "disable_scheduler=${DISABLE_SCHEDULER}"
             echo "dev_allow_membership_header=${DEV_ALLOW_MEMBERSHIP_HEADER}"
@@ -144,8 +183,14 @@ jobs:
         shell: bash
         env:
           INPUT_MOCK_AI: ${{ inputs.mock_ai }}
-          INPUT_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
-          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
+          INPUT_DEEPSEEK_BASE_URL: ${{ inputs.deepseek_base_url }}
+          INPUT_DEEPSEEK_MODEL: ${{ inputs.deepseek_model }}
+          INPUT_OLLAMA_CLOUD_BASE_URL: ${{ inputs.ollama_cloud_base_url }}
+          INPUT_OLLAMA_CLOUD_MODEL: ${{ inputs.ollama_cloud_model }}
+          INPUT_CHAT_AI_PROVIDER: ${{ inputs.chat_ai_provider }}
+          INPUT_PLANNER_AI_PROVIDER: ${{ inputs.planner_ai_provider }}
+          INPUT_EXPLAINER_AI_PROVIDER: ${{ inputs.explainer_ai_provider }}
+          INPUT_AI_FALLBACK_PROVIDER: ${{ inputs.ai_fallback_provider }}
         run: |
           set -euo pipefail
 
@@ -174,13 +219,22 @@ jobs:
               --arg frontend_base_url "${{ steps.discover.outputs.frontend_base_url }}" \
               --arg cors_origins "${{ steps.discover.outputs.cors_origins }}" \
               --arg settle_tick_seconds "${{ steps.discover.outputs.settle_tick_seconds }}" \
-              --arg openai_base_url "${INPUT_OPENAI_BASE_URL}" \
-              --arg openai_model "${INPUT_OPENAI_MODEL}" \
+              --arg deepseek_base_url "${INPUT_DEEPSEEK_BASE_URL}" \
+              --arg deepseek_model "${INPUT_DEEPSEEK_MODEL}" \
+              --arg ollama_cloud_base_url "${INPUT_OLLAMA_CLOUD_BASE_URL}" \
+              --arg ollama_cloud_model "${INPUT_OLLAMA_CLOUD_MODEL}" \
+              --arg chat_ai_provider "${INPUT_CHAT_AI_PROVIDER}" \
+              --arg planner_ai_provider "${INPUT_PLANNER_AI_PROVIDER}" \
+              --arg explainer_ai_provider "${INPUT_EXPLAINER_AI_PROVIDER}" \
+              --arg ai_fallback_provider "${INPUT_AI_FALLBACK_PROVIDER}" \
               --arg database_url_secret "${{ steps.discover.outputs.database_url_secret }}" \
-              --arg openai_api_key_secret_arn "${{ steps.discover.outputs.openai_api_key_secret_arn }}" \
+              --arg deepseek_api_key_secret_arn "${{ steps.discover.outputs.deepseek_api_key_secret_arn }}" \
+              --arg ollama_cloud_api_key_secret_arn "${{ steps.discover.outputs.ollama_cloud_api_key_secret_arn }}" \
               '
               def upsert_env($name; $value):
                 .environment = ((.environment // []) | map(select(.name != $name)) + [{name: $name, value: $value}]);
+              def remove_env($name):
+                .environment = ((.environment // []) | map(select(.name != $name)));
               def upsert_secret($name; $valueFrom):
                 .secrets = ((.secrets // []) | map(select(.name != $name)) + [{name: $name, valueFrom: $valueFrom}]);
               def remove_secret($name):
@@ -194,13 +248,30 @@ jobs:
               | upsert_env("FRONTEND_BASE_URL"; $frontend_base_url)
               | upsert_env("CORS_ORIGINS"; $cors_origins)
               | upsert_env("SETTLE_TICK_SECONDS"; $settle_tick_seconds)
-              | upsert_env("OPENAI_BASE_URL"; $openai_base_url)
-              | upsert_env("OPENAI_MODEL"; $openai_model)
-              | upsert_secret("DATABASE_URL"; $database_url_secret)
-              | if ($openai_api_key_secret_arn | length) > 0
-                then upsert_secret("OPENAI_API_KEY"; $openai_api_key_secret_arn)
-                else remove_secret("OPENAI_API_KEY")
+              | upsert_env("DEEPSEEK_BASE_URL"; $deepseek_base_url)
+              | upsert_env("DEEPSEEK_MODEL"; $deepseek_model)
+              | upsert_env("OLLAMA_CLOUD_BASE_URL"; $ollama_cloud_base_url)
+              | upsert_env("OLLAMA_CLOUD_MODEL"; $ollama_cloud_model)
+              | upsert_env("CHAT_AI_PROVIDER"; $chat_ai_provider)
+              | upsert_env("PLANNER_AI_PROVIDER"; $planner_ai_provider)
+              | upsert_env("EXPLAINER_AI_PROVIDER"; $explainer_ai_provider)
+              | if ($ai_fallback_provider | length) > 0
+                then upsert_env("AI_FALLBACK_PROVIDER"; $ai_fallback_provider)
+                else remove_env("AI_FALLBACK_PROVIDER")
                 end
+              | remove_env("AI_DEFAULT_PROVIDER")
+              | remove_env("OPENAI_BASE_URL")
+              | remove_env("OPENAI_MODEL")
+              | upsert_secret("DATABASE_URL"; $database_url_secret)
+              | if ($deepseek_api_key_secret_arn | length) > 0
+                then upsert_secret("DEEPSEEK_API_KEY"; $deepseek_api_key_secret_arn)
+                else remove_secret("DEEPSEEK_API_KEY")
+                end
+              | if ($ollama_cloud_api_key_secret_arn | length) > 0
+                then upsert_secret("OLLAMA_CLOUD_API_KEY"; $ollama_cloud_api_key_secret_arn)
+                else remove_secret("OLLAMA_CLOUD_API_KEY")
+                end
+              | remove_secret("OPENAI_API_KEY")
               ' <<< '{}'
           )"
 

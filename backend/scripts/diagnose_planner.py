@@ -17,11 +17,18 @@ from app.agents import base, planner  # noqa: E402
 
 
 def main() -> None:
+    runtime = base.provider_runtime_state()
+    planner_provider = base._resolve_provider_name(base.PLANNER_ROUTE)
     print("Planner diagnostic configuration:")
     print(f"  MOCK_AI={os.getenv('MOCK_AI')}")
-    print(f"  OPENAI_MODEL={base.MODEL}")
-    print(f"  OPENAI_BASE_URL={base.BASE_URL}")
-    print(f"  OPENAI_API_KEY set={bool(os.getenv('OPENAI_API_KEY'))}")
+    print(f"  planner_provider={planner_provider}")
+    for provider_name, config in runtime.items():
+        print(
+            f"  {provider_name}: "
+            f"base_url={config['base_url']} "
+            f"model={config['model']} "
+            f"api_key_set={config['has_api_key']}"
+        )
     print()
 
     payload = planner.PlanDayInput(

@@ -135,6 +135,7 @@ def explain(payload: ExplainInput) -> Explanation:
             schema=SCHEMA,
             schema_name="explanation",
             mock=MOCK_BLOCKED if context.blocked_by else MOCK,
+            provider=base.EXPLAINER_ROUTE,
         )
     except base.AgentUnavailable:
         return _fallback(payload.verdict)

@@ -100,6 +100,16 @@ Current mixed example:
 ```env
 DATABASE_URL=postgresql+psycopg://<RDS_USER>:<URL_ENCODED_PASSWORD>@<RDS_HOST>:5432/tripsync
 TEST_DATABASE_URL=postgresql+psycopg://postgres:<URL_ENCODED_PASSWORD>@localhost:5432/tripsync_test
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+OLLAMA_CLOUD_API_KEY=
+OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/
+OLLAMA_CLOUD_MODEL=qwen3.5:cloud
+CHAT_AI_PROVIDER=ollama_cloud
+PLANNER_AI_PROVIDER=deepseek
+EXPLAINER_AI_PROVIDER=deepseek
+AI_FALLBACK_PROVIDER=
 OPENAI_API_KEY=
 OPENAI_BASE_URL=
 OPENAI_MODEL=gpt-4o-mini
@@ -117,12 +127,19 @@ Notes:
   is reachable from this machine
 - `TEST_DATABASE_URL` should stay local and disposable because tests rebuild schema
 - keep `DATABASE_URL` and `TEST_DATABASE_URL` on different databases
-- the backend uses `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` for any
-  OpenAI-compatible provider, not only OpenAI itself
-- local Ollama commonly uses `OPENAI_API_KEY=ollama` together with
+- preferred runtime now keeps two cloud providers side by side:
+  `DEEPSEEK_*` and `OLLAMA_CLOUD_*`
+- current recommended route split is:
+  `CHAT_AI_PROVIDER=ollama_cloud`
+  `PLANNER_AI_PROVIDER=deepseek`
+  `EXPLAINER_AI_PROVIDER=deepseek`
+- local Ollama is still possible through the legacy `OPENAI_*` fallback:
+  `OPENAI_API_KEY=ollama`
   `OPENAI_BASE_URL=http://localhost:11434/v1/`
-- cloud Ollama must not use `http://localhost:11434/v1/`; it needs a real cloud key
-  and `OPENAI_BASE_URL=https://ollama.com/v1/`
+- cloud Ollama must not use `http://localhost:11434/v1/`; it needs a real
+  `OLLAMA_CLOUD_API_KEY` and `OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/`
+- `OPENAI_*` should now be treated as a compatibility path, not the primary cloud
+  runtime shape
 - on Windows, pytest now forces the PostgreSQL test database and client connection to
   UTF-8 so non-ASCII fixtures stay valid
 - on this machine, the local AWS CLI credential copy also lives in `backend/.env`
@@ -358,10 +375,13 @@ state. The safest local workaround is usually not to drop that database blindly.
 point `TEST_DATABASE_URL` at a new disposable test-only database name such as
 `tripsync_test_codex` for the current shell and rerun pytest.
 
-`OpenAI` or compatible model key errors
+`AI provider` key or routing errors
 
 Use `MOCK_AI=1` for local development and demos that should not call a paid model API.
-For DeepSeek or another OpenAI-compatible provider, set `OPENAI_BASE_URL` and
-`OPENAI_MODEL` in `backend/.env`.
-For local Ollama, `OPENAI_API_KEY=ollama` is only a local placeholder.
-For Ollama Cloud, use a real provider key and `OPENAI_BASE_URL=https://ollama.com/v1/`.
+For the current dual-provider setup, make sure both `DEEPSEEK_API_KEY` and
+`OLLAMA_CLOUD_API_KEY` exist in `backend/.env`.
+If planner or explainer calls fail, check `PLANNER_AI_PROVIDER` and
+`EXPLAINER_AI_PROVIDER`.
+If chat calls fail, check `CHAT_AI_PROVIDER`.
+For local Ollama testing, use the legacy fallback only:
+`OPENAI_API_KEY=ollama` and `OPENAI_BASE_URL=http://localhost:11434/v1/`.
