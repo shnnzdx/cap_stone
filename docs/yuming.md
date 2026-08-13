@@ -1,8 +1,30 @@
 # Yuming Handoff
 
-This handoff records the cleanup completed in `/Users/carina/Desktop/main_sync_fresh`.
+This handoff keeps the earlier `/Users/carina/Desktop/main_sync_fresh` work and the follow-up local-only updates made in `/Users/carina/Desktop/main_sync_latest_20260813`.
 
-## 2026-08-13 Local Latest Database Isolation
+Older entries are kept for traceability. The order below is now intentional: current state first, operating rules second, latest summary third, detailed change log fourth, and older cleanup archive last.
+
+## Current Workspace Status
+
+### Latest Workspace Current Status
+
+Current local workspace:
+
+- `/Users/carina/Desktop/main_sync_latest_20260813`
+
+Current local runtime database:
+
+- `DATABASE_URL=postgresql+psycopg://localhost/latest_20260813`
+
+Important local-only notes:
+
+- No cloud deploy, push, or remote database change was performed.
+- The latest workspace no longer reuses the `main_sync_fresh` runtime database.
+- The local database has schema and one development login user, but no seeded fake trips.
+- The visible `/trip` page depends on the built preview bundle under `frontend/public/trip-app`.
+- After Trip frontend edits, run `cd frontend && npm run build:trip-preview`.
+
+### Local Latest Database Isolation
 
 Updated `/Users/carina/Desktop/main_sync_latest_20260813/backend/.env` so the latest local workspace no longer reuses the same runtime database as `main_sync_fresh`.
 
@@ -14,7 +36,19 @@ Updated `/Users/carina/Desktop/main_sync_latest_20260813/backend/.env` so the la
 - Added only the local development login with `python -m app.db.upsert_demo_login`
 - The login created `organizer@cadensy.local` / `12345678` without creating demo trips or memberships
 
-## 2026-08-13 Plan Generation Variety Fix
+## Operating Rules
+
+### Ongoing Change Logging Rule
+
+Request recorded on 2026-08-13:
+
+- Every future file change made by Codex in this project must be recorded in this handoff file.
+- Each entry should include what changed, which files were touched, and what verification was run.
+- Use `docs/yuming.md` as the running handoff/change log for this cleanup and follow-up work.
+
+## Latest Local Changes Summary
+
+### Plan Generation Variety Fix
 
 Fixed the backend generator so single-member trips do not repeat the same places every day.
 
@@ -25,193 +59,42 @@ Fixed the backend generator so single-member trips do not repeat the same places
 - Verified with:
   - `python -m pytest tests/test_plan_generation.py::test_long_single_member_trip_can_reuse_places_across_days tests/test_plan_generation.py::test_single_member_trip_prefers_new_places_before_reusing_across_days tests/test_plan_generation.py::test_single_member_budget_ceiling_does_not_block_initial_generation -q`
 
-## 2026-08-13 My Trips Empty State Polish
+### My Trips Empty State Polish
 
 Improved the empty "Other trips" area on the My Trips dashboard.
 
 - Replaced the flat white strip with a structured empty state block.
 - Added clearer copy explaining that created trips will appear there later.
-- Added a direct `Create trip` action inside the empty state.
 - Updated responsive styling so the empty state stacks cleanly on small screens.
 - Removed the plus icon from My Trips create buttons so the action reads as a simple text button.
 - Removed the duplicate `Create trip` button from the "Other trips" empty state because the page already has a `NEW TRIP` navigation entry.
 - Replaced the logged-in Trip workspace logo with the same Cadensy image mark and wordmark used before login.
 - Added the Cadensy logo image assets to the Trip public build source so the embedded `/trip-app` preview can load them.
 
-## Summary
+Current empty-state behavior:
 
-Completed three requested changes:
+- The `Other trips` empty state shows only explanatory copy.
+- It does not show a `Create trip` button.
+- Trip creation stays available from the top `NEW TRIP` navigation entry.
 
-1. Translated Chinese documentation content into English.
-2. Renamed documentation files so filenames are English and use `_` instead of `-`.
-3. Translated Chinese code comments and Python docstrings into English.
+Files changed:
 
-Runtime strings, UI copy, test data strings, Chinese keyword matching, and user-facing Chinese text inside executable code were left unchanged unless they were comments/docstrings.
-
-## Documentation Content Translated
-
-These files had Chinese documentation content translated to English:
-
-- `AGENTS.md`
-- `AI.md`
-- `AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md`
-- `backend/README.md`
-- `docs/AGENTS.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md`
-- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
-- `docs/PRODUCT.md`
-- `docs/PROPOSAL.md`
-- `docs/PROPOSAL_EN.md`
-- `docs/_archive/README.md`
-- `docs/_archive/capstone-project-proposal-revised-zh.md`
-- `docs/_archive/多人协作式 AI 旅行规划平台——完整项目想法.docx`
-- `docs/_archive/群体旅行决策引擎_中文方案.docx`
-- `docs/_archive/群体旅行决策引擎_功能优先级.xlsx`
-- `docs/frontend/ai-travel-hero-scroll-storytelling-final.md`
-- `docs/产品介绍页面.md`
-- `trip/BACKEND.md`
-- `trip/FRONTEND.md`
-- `trip/README.md`
-- `交接.md`
-
-Original backup:
-
-- `/private/tmp/main_sync_fresh_chinese_document_backup/20260812_230828`
-
-## Documentation Filename Cleanup
-
-Documentation filenames were normalized to avoid Chinese names and avoid hyphens. The affected files were:
-
-- `.agents/skills/improve-codebase-architecture/HTML-REPORT.md`
-- `INTEGRATION-ROADMAP.md`
-- `backend/app/agents/issue-tracker.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md`
-- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
-- `docs/_archive/capstone-project-proposal-revised.md`
-- `docs/_archive/collaborative-ai-travel-planning-platform-full-idea.docx`
-- `docs/_archive/group-travel-decision-engine-feature-priority.xlsx`
-- `docs/_archive/group-travel-decision-engine-proposal.docx`
-- `docs/frontend/3d-collaborative-idea-sphere-design.md`
-- `docs/frontend/ai-travel-hero-scroll-storytelling-final.md`
-- `docs/navigation-execution-notes.md`
-- `docs/navigation-known-wrong-behavior.md`
-- `docs/product-introduction-page.md`
-
-Examples of final naming:
-
-- `INTEGRATION-ROADMAP.md` -> `INTEGRATION_ROADMAP.md`
-- `docs/product-introduction-page.md` -> `docs/product_introduction_page.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md` -> `docs/HANDOFF_PROMPT_2026_08_11.md`
-- `docs/frontend/ai-travel-hero-scroll-storytelling-final.md` -> `docs/frontend/ai_travel_hero_scroll_storytelling_final.md`
-- `交接.md` -> `HANDOFF.md`
-- `docs/产品介绍页面.md` -> `docs/product_introduction_page.md`
-- `backend/app/agents/issue-tracker.md` -> `backend/app/agents/issue_tracker.md`
-
-Original backup:
-
-- `/private/tmp/main_sync_fresh_filename_backup/20260812_231559`
-
-## Code Comments Translated
-
-Chinese comments and Python docstrings were translated to English in these code files:
-
-- `trip/vite.config.js`
-- `frontend/app/site-shell.tsx`
-- `frontend/app/page.tsx`
-- `backend/tests/test_engine.py`
-- `backend/tests/conftest.py`
-- `backend/tests/test_preferences.py`
-- `backend/tests/test_trips.py`
-- `backend/tests/test_schema.py`
-- `backend/tests/test_chat.py`
-- `backend/tests/test_paths.py`
-- `backend/tests/test_jobs.py`
-- `backend/tests/test_agents_base.py`
-- `backend/data/poi_chicago.py`
-- `backend/app/agents/chat.py`
-- `backend/app/agents/base.py`
-- `backend/app/db/models.py`
-- `backend/app/db/session.py`
-- `backend/app/db/reset_demo.py`
-- `backend/app/db/seed.py`
-- `backend/app/db/clear_plan.py`
-- `backend/app/api/main.py`
-- `backend/app/jobs/scheduler.py`
-- `backend/app/agents/agent-server/agent.py`
-- `backend/app/agents/agent-server/main.py`
-- `backend/app/domain/preferences/service.py`
-- `backend/app/domain/constraints/types.py`
-- `backend/app/domain/constraints/engine.py`
-- `backend/app/domain/chat/service.py`
-- `backend/app/domain/plans/generator.py`
-- `backend/app/domain/decisions/orchestrator.py`
-- `backend/app/domain/trips/service.py`
-- `trip/legacy/context/TripContext.jsx`
-- `trip/legacy/components/StepStatus.jsx`
-- `trip/legacy/components/DemoSwitch.jsx`
-- `trip/legacy/components/DemoSwitch.module.css`
-- `trip/legacy/components/ReviewPanel.jsx`
-- `trip/legacy/components/LogicNote.module.css`
-- `trip/legacy/components/Sidebar.jsx`
-- `trip/legacy/components/primitives.module.css`
-- `trip/legacy/components/LogicNote.jsx`
-- `trip/legacy/components/SubNav.jsx`
-- `trip/legacy/components/TripRow.jsx`
-- `trip/legacy/components/PlanSectionCard.jsx`
-- `trip/legacy/components/primitives.jsx`
-- `trip/legacy/components/AiNote.jsx`
-- `trip/legacy/layouts/AppLayout.module.css`
-- `trip/legacy/layouts/TripWorkspace.jsx`
-- `trip/legacy/layouts/OrganizerLayout.jsx`
-- `trip/legacy/layouts/MemberLayout.jsx`
-- `trip/legacy/data/trips.js`
-- `trip/legacy/data/seed.js`
-- `trip/legacy/pages/HomePage.jsx`
-- `trip/legacy/pages/member/Chat.module.css`
-- `trip/legacy/pages/member/InvitePage.jsx`
-- `trip/legacy/pages/member/PreferencesStep.jsx`
-- `trip/legacy/pages/member/ReviewStep.jsx`
-- `trip/legacy/pages/member/TripListPage.jsx`
-- `trip/legacy/pages/member/ConfirmStep.jsx`
-- `trip/legacy/pages/organizer/PlanStage.jsx`
-- `trip/legacy/pages/organizer/ReviewStage.jsx`
-- `trip/legacy/pages/organizer/AnalyzeStage.jsx`
-- `trip/legacy/pages/organizer/CollectStage.jsx`
-- `trip/legacy/pages/organizer/CreateTripPage.jsx`
-- `trip/legacy/pages/organizer/TripListPage.jsx`
-- `trip/legacy/pages/organizer/LockStage.jsx`
-- `trip/src/final/TripMap.jsx`
-- `trip/src/final/final.css`
 - `trip/src/final/FinalApp.jsx`
-- `trip/src/final/TripAppState.jsx`
+- `trip/src/final/final.css`
+- `trip/public/images/cadensy-mark.png`
+- `trip/public/images/cadensy-wordmark.png`
+- `frontend/public/trip-app/index.html`
+- `frontend/public/trip-app/embed-manifest.json`
+- `frontend/public/trip-app/assets/*`
+- `frontend/public/trip-app/images/*`
 
-Original backup:
+Verification:
 
-- `/private/tmp/main_sync_fresh_code_comment_backup/20260812_234449`
+- `cd frontend && npm run build:trip-preview` passed.
 
-Repair backup for the 17 Python files that were re-written from the pre-translation backup after a docstring offset issue:
+## Detailed Trip Workspace Change Log
 
-- `/private/tmp/main_sync_fresh_python_repair_backup/20260812_234855`
-
-## Verification Completed
-
-The final checks passed:
-
-- Python syntax check: `64` Python files checked, `0` parse errors.
-- Chinese comment/docstring scan: `0` matches in code comments and Python docstrings.
-- Documentation filename scan: `0` Chinese documentation filenames.
-- Documentation filename scan: `0` documentation filenames containing `-`.
-
-## Notes For Next Person
-
-- The repository already had unrelated worktree changes before and during this cleanup. I did not revert unrelated edits.
-- `frontend/package-lock.json`, `trip/src/final/*`, `frontend/public/trip-app/*`, and generated app assets showed unrelated diffs in the working tree; treat them separately before committing.
-- If you need to audit only this cleanup, compare against the backup directories above rather than assuming every current `git status` entry came from this pass.
-- Chinese runtime strings still exist in places like UI labels, test values, chat keyword handling, and seed/demo content. That was intentional because the request was specifically about docs, filenames, and code comments.
-
-## Trip Workspace Local Fixes
-
-This section records the local-only fixes made in `/Users/carina/Desktop/main_sync_fresh` for the Trip workspace. No cloud deploy, push, or remote change was performed.
+This section is ordered sequentially. Each numbered entry records what changed, touched files, and verification where available.
 
 ### 1. Restored The Plan Empty-State UI Closer To The Monday Version
 
@@ -539,15 +422,64 @@ Verification:
 - `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
 - `cd frontend && npm run build` passed.
 
-### 12. Ongoing Change Logging Rule
+### 12. Fixed Confirm Self-Accept And Cross-Day Change Backend Error
 
 Request recorded on 2026-08-13:
 
-- Every future file change made by Codex in this project must be recorded in this handoff file.
-- Each entry should include what changed, which files were touched, and what verification was run.
-- Use `docs/yuming.md` as the running handoff/change log for this cleanup and follow-up work.
+Problems investigated:
 
-### 13. Fixed Long Single-Member Trip Generation And Trip Switching
+- A change that only affected the proposer could create a Confirm conversation that already showed the proposer as accepted but still stayed in `Awaiting confirmation`.
+- Moving a plan item to another day could show `I could not reach the backend`; backend logs showed this was actually a 500 from trying to write a Python `date` object into a JSONB change log.
+
+Files changed:
+
+- `backend/app/domain/decisions/orchestrator.py`
+- `backend/tests/test_paths.py`
+- `backend/tests/test_trips.py`
+- `docs/yuming.md`
+
+What changed:
+
+- `_log()` now serializes patch values with `_json_patch()` before writing `PlanChange.patch`, so `day_date` is stored as an ISO string in JSONB while the domain layer can still use real `date` objects for `PlanItem.day_date`.
+- `_do_confirm()` now auto-applies Confirm when the only involved member is the proposer, because the proposer is already counted as accepted. This avoids leaving a self-only confirmation stuck behind an extra Accept click.
+- Added regression coverage for self-only Confirm auto-application.
+- Added regression coverage for submitting a `day_date` change through the API without causing a JSON serialization 500.
+
+Verification:
+
+- `cd backend && .venv/bin/python -m pytest tests/test_paths.py::test_a_self_only_confirmation_applies_without_an_extra_click tests/test_paths.py::test_touching_a_booking_needs_everyone_to_confirm tests/test_paths.py::test_the_change_lands_only_when_the_last_person_agrees tests/test_trips.py::test_submit_change_with_day_date_writes_json_safe_plan_change tests/test_trips.py::test_submit_change_access_is_scoped_to_plan_item` passed: 5 tests.
+- Backend Python AST check passed: 64 files checked, 0 parse errors.
+
+### 13. Fixed Same-Day Time Overlap Routing
+
+Request recorded on 2026-08-13:
+
+Problem investigated:
+
+- Moving one itinerary item into a time that already has another same-day item, for example moving a 2 PM activity to 7 PM when a 7 PM dinner already exists, could be treated as a clean direct change.
+- That allowed two plan items to silently overlap instead of being surfaced as a scheduling conflict.
+
+Files changed:
+
+- `backend/app/domain/decisions/orchestrator.py`
+- `backend/tests/test_paths.py`
+- `docs/yuming.md`
+
+What changed:
+
+- Added schedule-overlap detection in the decision orchestrator.
+- The check compares the changed item's proposed `day_date`, `start_hour`, and `duration_min` against other items in the same plan on the same date.
+- If another item overlaps and no higher-priority rule already routes to Confirm/Reopen/Round, the change now routes to `ROUND` with a message that another plan is already scheduled at that time.
+- The read-only `classify_change()` path uses the same overlap check, so AI/chat previews report the conflict before writing anything.
+- Added regression tests for both real submission and read-only classification.
+
+Verification:
+
+- `cd backend && .venv/bin/python -m pytest tests/test_paths.py::test_moving_into_an_occupied_time_opens_a_round tests/test_paths.py::test_classifying_an_occupied_time_reports_a_round_without_writing tests/test_paths.py::test_a_clean_change_applies_immediately tests/test_paths.py::test_touching_a_booking_needs_everyone_to_confirm` passed: 4 tests.
+- `cd backend && .venv/bin/python -m pytest tests/test_paths.py` passed: 37 tests.
+- Backend Python AST check passed: 64 files checked, 0 parse errors.
+
+### 14. Fixed Long Single-Member Trip Generation And Trip Switching
 
 Problem:
 
@@ -615,7 +547,7 @@ Operational note:
 - The running local backend must be restarted or reloaded before the browser uses the updated generator/session-switching code.
 - The rollback-only generate check did not commit itinerary items to the database.
 
-### 14. Returned Trip Dates For The Top Trip Pill
+### 15. Returned Trip Dates For The Top Trip Pill
 
 Problem:
 
@@ -652,64 +584,7 @@ Verification:
 
 - `cd backend && .venv/bin/python -m pytest tests/test_trips.py -q` passed with `41 passed`.
 
-### 12. Fixed Confirm Self-Accept And Cross-Day Change Backend Error
-
-Request recorded on 2026-08-13:
-
-Problems investigated:
-
-- A change that only affected the proposer could create a Confirm conversation that already showed the proposer as accepted but still stayed in `Awaiting confirmation`.
-- Moving a plan item to another day could show `I could not reach the backend`; backend logs showed this was actually a 500 from trying to write a Python `date` object into a JSONB change log.
-
-Files changed:
-
-- `backend/app/domain/decisions/orchestrator.py`
-- `backend/tests/test_paths.py`
-- `backend/tests/test_trips.py`
-- `docs/yuming.md`
-
-What changed:
-
-- `_log()` now serializes patch values with `_json_patch()` before writing `PlanChange.patch`, so `day_date` is stored as an ISO string in JSONB while the domain layer can still use real `date` objects for `PlanItem.day_date`.
-- `_do_confirm()` now auto-applies Confirm when the only involved member is the proposer, because the proposer is already counted as accepted. This avoids leaving a self-only confirmation stuck behind an extra Accept click.
-- Added regression coverage for self-only Confirm auto-application.
-- Added regression coverage for submitting a `day_date` change through the API without causing a JSON serialization 500.
-
-Verification:
-
-- `cd backend && .venv/bin/python -m pytest tests/test_paths.py::test_a_self_only_confirmation_applies_without_an_extra_click tests/test_paths.py::test_touching_a_booking_needs_everyone_to_confirm tests/test_paths.py::test_the_change_lands_only_when_the_last_person_agrees tests/test_trips.py::test_submit_change_with_day_date_writes_json_safe_plan_change tests/test_trips.py::test_submit_change_access_is_scoped_to_plan_item` passed: 5 tests.
-- Backend Python AST check passed: 64 files checked, 0 parse errors.
-
-### 13. Fixed Same-Day Time Overlap Routing
-
-Request recorded on 2026-08-13:
-
-Problem investigated:
-
-- Moving one itinerary item into a time that already has another same-day item, for example moving a 2 PM activity to 7 PM when a 7 PM dinner already exists, could be treated as a clean direct change.
-- That allowed two plan items to silently overlap instead of being surfaced as a scheduling conflict.
-
-Files changed:
-
-- `backend/app/domain/decisions/orchestrator.py`
-- `backend/tests/test_paths.py`
-- `docs/yuming.md`
-
-What changed:
-
-- Added schedule-overlap detection in the decision orchestrator.
-- The check compares the changed item's proposed `day_date`, `start_hour`, and `duration_min` against other items in the same plan on the same date.
-- If another item overlaps and no higher-priority rule already routes to Confirm/Reopen/Round, the change now routes to `ROUND` with a message that another plan is already scheduled at that time.
-- The read-only `classify_change()` path uses the same overlap check, so AI/chat previews report the conflict before writing anything.
-- Added regression tests for both real submission and read-only classification.
-
-Verification:
-
-- `cd backend && .venv/bin/python -m pytest tests/test_paths.py::test_moving_into_an_occupied_time_opens_a_round tests/test_paths.py::test_classifying_an_occupied_time_reports_a_round_without_writing tests/test_paths.py::test_a_clean_change_applies_immediately tests/test_paths.py::test_touching_a_booking_needs_everyone_to_confirm` passed: 4 tests.
-- `cd backend && .venv/bin/python -m pytest tests/test_paths.py` passed: 37 tests.
-- Backend Python AST check passed: 64 files checked, 0 parse errors.
-
-### 15. Centered Assistant Change Card And Clarified Vote Options
+### 16. Centered Assistant Change Card And Clarified Vote Options
 
 Request recorded on 2026-08-13:
 
@@ -755,7 +630,7 @@ Verification:
 - `cd frontend && npm run build` passed. It showed the existing chunk-size warning only.
 - `git diff --check -- trip/src/final/final.css trip/src/final/plan-feature/PlanFeature.jsx trip/src/final/FinalApp.jsx backend/app/domain/decisions/orchestrator.py` passed.
 
-### 16. Auto-Settled Vote Rounds After Everyone Votes
+### 17. Auto-Settled Vote Rounds After Everyone Votes
 
 Request recorded on 2026-08-13:
 
@@ -800,7 +675,159 @@ Verification:
 - `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
 - `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
 
-### 21. Kept Day Date And Day Index Consistent When Moving An Activity
+### 18. Kept Account Login On My Trips And Added Per-Activity History
+
+Request recorded on 2026-08-13:
+
+Problems:
+
+- After entering the password, the app could automatically jump into the restored Mia/Chicago trip instead of landing on the `My Trips` dashboard.
+- Each numbered activity marker, such as `1`, `2`, or `3`, did not expose that activity's own change history.
+
+Files changed:
+
+- `shared/trip-navigation-policy/index.js`
+- `frontend/tests/trip-navigation-restoration-cutover.test.mjs`
+- `trip/src/final/TripAppState.jsx`
+- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `trip/src/final/final.css`
+- `frontend/public/trip-app`
+
+What changed:
+
+- Account users who land on the workspace home route `/` now stay on `My Trips` even if local storage still has a restored trip id.
+- Guest-backed sessions still default into their trip, because guests do not have a cross-trip account dashboard.
+- If the current route is already a specific trip route, restored trip context still stays valid so refreshing a trip page does not break.
+- Added a plan change-log loader in `TripAppState` using the existing backend endpoint:
+  - `GET /api/plans/:plan_id/changes`
+- `usePlanInteractionRuntime` now groups change log entries by `plan_item_id`.
+- Clicking the activity number marker opens or closes that item's `Change history` panel.
+- The panel shows:
+  - change origin, such as direct change, vote result, confirmed change, or booking status
+  - changed fields, such as title, place, time, date, duration, price, or status
+  - applied time
+  - reason when one exists
+
+Verification:
+
+- First reproduced the login landing bug with:
+  - `node --test frontend/tests/trip-navigation-restoration-cutover.test.mjs`
+  - It failed because account restoration redirected `/` to `/trip/t1/plan`.
+- After the fix:
+  - `node --test frontend/tests/trip-navigation-restoration-cutover.test.mjs frontend/tests/trip-navigation-target-policy.test.mjs frontend/tests/trip-navigation-route-guard-cutover.test.mjs frontend/tests/session-runtime-login-cutover.test.mjs frontend/tests/session-runtime-tripappstate-bootstrap-cutover.test.mjs` passed with `36 passed`.
+  - `cd trip && npm run build` passed.
+  - `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
+  - `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
+  - `git diff --check -- shared/trip-navigation-policy/index.js frontend/tests/trip-navigation-restoration-cutover.test.mjs trip/src/final/TripAppState.jsx trip/src/final/plan-feature/usePlanInteractionRuntime.js trip/src/final/plan-feature/PlanFeature.jsx trip/src/final/final.css` passed.
+
+### 19. Removed Activity Number History Indicator Dot
+
+Request recorded on 2026-08-13:
+
+Problem:
+
+- The activity number marker showed a small visual dot when that item had history.
+- The requested behavior is that `1`, `2`, `3`, etc. should not visually announce history status.
+- Users should click the number marker themselves to see whether the database has history for that activity.
+
+Files changed:
+
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `trip/src/final/final.css`
+- `frontend/public/trip-app`
+
+What changed:
+
+- Removed the `hasHistory` class from activity number markers.
+- Removed the `.activityIndex.hasHistory:after` dot style.
+- The history panel still reads only real backend data from `GET /api/plans/:plan_id/changes`, grouped by `plan_item_id`.
+- If the database has no `PlanChange` rows for that activity, the panel says `No changes recorded for this activity yet.`
+- No fake per-item history is created in the frontend.
+
+Verification:
+
+- `rg -n "hasHistory|activityIndex\\.hasHistory|activityIndex:after" trip/src/final -S` found no matches.
+- `cd trip && npm run build` passed.
+- `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
+- `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
+- `git diff --check -- trip/src/final/plan-feature/PlanFeature.jsx trip/src/final/final.css` passed.
+
+### 20. Made Activity History Appear Only After Real Recorded Changes
+
+Request recorded on 2026-08-13:
+
+Problems:
+
+- Activities with no database change history still opened an empty history panel.
+- After editing an activity, for example moving an activity to 8:00 PM, the item history could still look empty because the frontend only reloaded the change log when the number of days changed.
+
+Files changed:
+
+- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `frontend/public/trip-app`
+
+What changed:
+
+- Clicking an activity number now opens history only if `changeHistory[item.id]` has at least one real database record.
+- If there are no `PlanChange` rows for that activity, clicking the number does nothing and no history panel appears.
+- Removed the empty-state sentence from the per-activity history panel because unchanged activities should not show any history UI at all.
+- The change-log loader now re-runs when the plan data changes, not only when the day count changes. This lets a newly edited activity show its database-backed history after the plan refreshes.
+- The activity number still has no dot, badge, or visible history indicator.
+
+Verification:
+
+- `rg -n "No changes recorded|title=\"Show change history\"|hasHistory|activityIndex\\.hasHistory|activityIndex:after" trip/src/final -S` found no unwanted history indicator or empty-history UI.
+- `cd trip && npm run build` passed.
+- `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
+- `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
+- `git diff --check -- trip/src/final/plan-feature/usePlanInteractionRuntime.js trip/src/final/plan-feature/PlanFeature.jsx` passed.
+
+### 21. Excluded Initial Generation Rows From Activity Change History
+
+Request recorded on 2026-08-13:
+
+Problem:
+
+- The backend records generated itinerary items as `PlanChange` rows with origins such as `ai_generate` and `rule_generate`.
+- Those rows are database records, but they are not user-facing "this activity changed later" history.
+- Because the frontend grouped all `PlanChange` rows, activities that had never been edited could still open a history panel.
+
+Files changed:
+
+- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `frontend/public/trip-app`
+
+What changed:
+
+- Per-activity history now filters out initial generation origins:
+  - `ai_generate`
+  - `rule_generate`
+  - `initial_plan`
+- Only later decision/change origins remain visible, for example:
+  - `notice`
+  - `round`
+  - `reopen_round`
+  - `confirm`
+  - `booking`
+  - `deadlock_*`
+- Removed the unused `Initial plan` label from the frontend history label map.
+
+Why:
+
+- "History" on the activity number should mean the activity was changed after the plan existed, not merely that the plan was generated.
+- An activity changed to 8:00 PM should show history because that creates a later `PlanChange` row for the item.
+- An activity that only came from initial generation should not open any history panel.
+
+Verification:
+
+- `cd trip && npm run build` passed.
+- `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
+- `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
+
+### 22. Kept Day Date And Day Index Consistent When Moving An Activity
 
 Request recorded on 2026-08-13:
 
@@ -844,160 +871,7 @@ Operational note:
 - This is a backend behavior fix. The local backend process must be restarted before the browser uses the corrected day move logic.
 - `git diff --check -- backend/app/api/main.py backend/app/domain/decisions/orchestrator.py backend/tests/test_trips.py trip/src/final/TripAppState.jsx` passed.
 
-### 17. Kept Account Login On My Trips And Added Per-Activity History
-
-Request recorded on 2026-08-13:
-
-Problems:
-
-- After entering the password, the app could automatically jump into the restored Mia/Chicago trip instead of landing on the `My Trips` dashboard.
-- Each numbered activity marker, such as `1`, `2`, or `3`, did not expose that activity's own change history.
-
-Files changed:
-
-- `shared/trip-navigation-policy/index.js`
-- `frontend/tests/trip-navigation-restoration-cutover.test.mjs`
-- `trip/src/final/TripAppState.jsx`
-- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
-- `trip/src/final/plan-feature/PlanFeature.jsx`
-- `trip/src/final/final.css`
-- `frontend/public/trip-app`
-
-What changed:
-
-- Account users who land on the workspace home route `/` now stay on `My Trips` even if local storage still has a restored trip id.
-- Guest-backed sessions still default into their trip, because guests do not have a cross-trip account dashboard.
-- If the current route is already a specific trip route, restored trip context still stays valid so refreshing a trip page does not break.
-- Added a plan change-log loader in `TripAppState` using the existing backend endpoint:
-  - `GET /api/plans/:plan_id/changes`
-- `usePlanInteractionRuntime` now groups change log entries by `plan_item_id`.
-- Clicking the activity number marker opens or closes that item's `Change history` panel.
-- The panel shows:
-  - change origin, such as direct change, vote result, confirmed change, or booking status
-  - changed fields, such as title, place, time, date, duration, price, or status
-  - applied time
-  - reason when one exists
-- The activity number remains styled like the existing map-pin marker and gets a small dot when that item has history.
-
-Verification:
-
-- First reproduced the login landing bug with:
-  - `node --test frontend/tests/trip-navigation-restoration-cutover.test.mjs`
-  - It failed because account restoration redirected `/` to `/trip/t1/plan`.
-- After the fix:
-  - `node --test frontend/tests/trip-navigation-restoration-cutover.test.mjs frontend/tests/trip-navigation-target-policy.test.mjs frontend/tests/trip-navigation-route-guard-cutover.test.mjs frontend/tests/session-runtime-login-cutover.test.mjs frontend/tests/session-runtime-tripappstate-bootstrap-cutover.test.mjs` passed with `36 passed`.
-  - `cd trip && npm run build` passed.
-  - `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
-  - `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
-  - `git diff --check -- shared/trip-navigation-policy/index.js frontend/tests/trip-navigation-restoration-cutover.test.mjs trip/src/final/TripAppState.jsx trip/src/final/plan-feature/usePlanInteractionRuntime.js trip/src/final/plan-feature/PlanFeature.jsx trip/src/final/final.css` passed.
-
-### 18. Removed Activity Number History Indicator Dot
-
-Request recorded on 2026-08-13:
-
-Problem:
-
-- The activity number marker showed a small visual dot when that item had history.
-- The requested behavior is that `1`, `2`, `3`, etc. should not visually announce history status.
-- Users should click the number marker themselves to see whether the database has history for that activity.
-
-Files changed:
-
-- `trip/src/final/plan-feature/PlanFeature.jsx`
-- `trip/src/final/final.css`
-- `frontend/public/trip-app`
-
-What changed:
-
-- Removed the `hasHistory` class from activity number markers.
-- Removed the `.activityIndex.hasHistory:after` dot style.
-- The history panel still reads only real backend data from `GET /api/plans/:plan_id/changes`, grouped by `plan_item_id`.
-- If the database has no `PlanChange` rows for that activity, the panel says `No changes recorded for this activity yet.`
-- No fake per-item history is created in the frontend.
-
-Verification:
-
-- `rg -n "hasHistory|activityIndex\\.hasHistory|activityIndex:after" trip/src/final -S` found no matches.
-- `cd trip && npm run build` passed.
-- `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
-- `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
-- `git diff --check -- trip/src/final/plan-feature/PlanFeature.jsx trip/src/final/final.css` passed.
-
-### 19. Made Activity History Appear Only After Real Recorded Changes
-
-Request recorded on 2026-08-13:
-
-Problems:
-
-- Activities with no database change history still opened an empty history panel.
-- After editing an activity, for example moving an activity to 8:00 PM, the item history could still look empty because the frontend only reloaded the change log when the number of days changed.
-
-Files changed:
-
-- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
-- `trip/src/final/plan-feature/PlanFeature.jsx`
-- `frontend/public/trip-app`
-
-What changed:
-
-- Clicking an activity number now opens history only if `changeHistory[item.id]` has at least one real database record.
-- If there are no `PlanChange` rows for that activity, clicking the number does nothing and no history panel appears.
-- Removed the empty-state sentence from the per-activity history panel because unchanged activities should not show any history UI at all.
-- The change-log loader now re-runs when the plan data changes, not only when the day count changes. This lets a newly edited activity show its database-backed history after the plan refreshes.
-- The activity number still has no dot, badge, or visible history indicator.
-
-Verification:
-
-- `rg -n "No changes recorded|title=\"Show change history\"|hasHistory|activityIndex\\.hasHistory|activityIndex:after" trip/src/final -S` found no unwanted history indicator or empty-history UI.
-- `cd trip && npm run build` passed.
-- `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
-- `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
-- `git diff --check -- trip/src/final/plan-feature/usePlanInteractionRuntime.js trip/src/final/plan-feature/PlanFeature.jsx` passed.
-
-### 20. Excluded Initial Generation Rows From Activity Change History
-
-Request recorded on 2026-08-13:
-
-Problem:
-
-- The backend records generated itinerary items as `PlanChange` rows with origins such as `ai_generate` and `rule_generate`.
-- Those rows are database records, but they are not user-facing "this activity changed later" history.
-- Because the frontend grouped all `PlanChange` rows, activities that had never been edited could still open a history panel.
-
-Files changed:
-
-- `trip/src/final/plan-feature/usePlanInteractionRuntime.js`
-- `trip/src/final/plan-feature/PlanFeature.jsx`
-- `frontend/public/trip-app`
-
-What changed:
-
-- Per-activity history now filters out initial generation origins:
-  - `ai_generate`
-  - `rule_generate`
-  - `initial_plan`
-- Only later decision/change origins remain visible, for example:
-  - `notice`
-  - `round`
-  - `reopen_round`
-  - `confirm`
-  - `booking`
-  - `deadlock_*`
-- Removed the unused `Initial plan` label from the frontend history label map.
-
-Why:
-
-- "History" on the activity number should mean the activity was changed after the plan existed, not merely that the plan was generated.
-- An activity changed to 8:00 PM should show history because that creates a later `PlanChange` row for the item.
-- An activity that only came from initial generation should not open any history panel.
-
-Verification:
-
-- `cd trip && npm run build` passed.
-- `cd frontend && npm run build:trip-preview` passed and synced the embedded `/trip` preview bundle.
-- `cd frontend && npm run build` passed. It showed the existing chunk-size/static-analysis warnings only.
-
-### 21. Fixed Single-Member Budget Blocking And Preference Date Bounds
+### 23. Fixed Single-Member Budget Blocking And Preference Date Bounds
 
 Request recorded on 2026-08-13:
 
@@ -1052,7 +926,7 @@ Operational note:
 
 - The local backend must be restarted or be running with reload before the browser uses the updated generator and preference validation.
 
-### 22. Fixed Trip `111` Day-Date Mismatch In Current Plan
+### 24. Fixed Trip `111` Day-Date Mismatch In Current Plan
 
 Request recorded on 2026-08-13:
 
@@ -1124,3 +998,178 @@ Operational note:
 - The browser page at `localhost:3000/trip` uses the embedded preview bundle under `frontend/public/trip-app`.
 - After changing `trip/src`, run `cd frontend && npm run build:trip-preview` or the visible iframe can keep using stale frontend code.
 - If Chrome still shows the old date after this fix, hard-refresh the page and make sure the backend is restarted or running with reload.
+
+## Older Cleanup Archive
+
+These entries describe earlier repository cleanup work. They are kept after the current product/workspace log so the active handoff stays readable.
+
+## Summary
+
+Completed three requested changes:
+
+1. Translated Chinese documentation content into English.
+2. Renamed documentation files so filenames are English and use `_` instead of `-`.
+3. Translated Chinese code comments and Python docstrings into English.
+
+Runtime strings, UI copy, test data strings, Chinese keyword matching, and user-facing Chinese text inside executable code were left unchanged unless they were comments/docstrings.
+
+## Documentation Content Translated
+
+These files had Chinese documentation content translated to English:
+
+- `AGENTS.md`
+- `AI.md`
+- `AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md`
+- `backend/README.md`
+- `docs/AGENTS.md`
+- `docs/HANDOFF_PROMPT_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
+- `docs/PRODUCT.md`
+- `docs/PROPOSAL.md`
+- `docs/PROPOSAL_EN.md`
+- `docs/_archive/README.md`
+- `docs/_archive/capstone-project-proposal-revised-zh.md`
+- `docs/_archive/多人协作式 AI 旅行规划平台——完整项目想法.docx`
+- `docs/_archive/群体旅行决策引擎_中文方案.docx`
+- `docs/_archive/群体旅行决策引擎_功能优先级.xlsx`
+- `docs/frontend/ai-travel-hero-scroll-storytelling-final.md`
+- `docs/产品介绍页面.md`
+- `trip/BACKEND.md`
+- `trip/FRONTEND.md`
+- `trip/README.md`
+- `交接.md`
+
+Original backup:
+
+- `/private/tmp/main_sync_fresh_chinese_document_backup/20260812_230828`
+
+## Documentation Filename Cleanup
+
+Documentation filenames were normalized to avoid Chinese names and avoid hyphens. The affected files were:
+
+- `.agents/skills/improve-codebase-architecture/HTML-REPORT.md`
+- `INTEGRATION-ROADMAP.md`
+- `backend/app/agents/issue-tracker.md`
+- `docs/HANDOFF_PROMPT_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
+- `docs/_archive/capstone-project-proposal-revised.md`
+- `docs/_archive/collaborative-ai-travel-planning-platform-full-idea.docx`
+- `docs/_archive/group-travel-decision-engine-feature-priority.xlsx`
+- `docs/_archive/group-travel-decision-engine-proposal.docx`
+- `docs/frontend/3d-collaborative-idea-sphere-design.md`
+- `docs/frontend/ai-travel-hero-scroll-storytelling-final.md`
+- `docs/navigation-execution-notes.md`
+- `docs/navigation-known-wrong-behavior.md`
+- `docs/product-introduction-page.md`
+
+Examples of final naming:
+
+- `INTEGRATION-ROADMAP.md` -> `INTEGRATION_ROADMAP.md`
+- `docs/product-introduction-page.md` -> `docs/product_introduction_page.md`
+- `docs/HANDOFF_PROMPT_2026-08-11.md` -> `docs/HANDOFF_PROMPT_2026_08_11.md`
+- `docs/frontend/ai-travel-hero-scroll-storytelling-final.md` -> `docs/frontend/ai_travel_hero_scroll_storytelling_final.md`
+- `交接.md` -> `HANDOFF.md`
+- `docs/产品介绍页面.md` -> `docs/product_introduction_page.md`
+- `backend/app/agents/issue-tracker.md` -> `backend/app/agents/issue_tracker.md`
+
+Original backup:
+
+- `/private/tmp/main_sync_fresh_filename_backup/20260812_231559`
+
+## Code Comments Translated
+
+Chinese comments and Python docstrings were translated to English in these code files:
+
+- `trip/vite.config.js`
+- `frontend/app/site-shell.tsx`
+- `frontend/app/page.tsx`
+- `backend/tests/test_engine.py`
+- `backend/tests/conftest.py`
+- `backend/tests/test_preferences.py`
+- `backend/tests/test_trips.py`
+- `backend/tests/test_schema.py`
+- `backend/tests/test_chat.py`
+- `backend/tests/test_paths.py`
+- `backend/tests/test_jobs.py`
+- `backend/tests/test_agents_base.py`
+- `backend/data/poi_chicago.py`
+- `backend/app/agents/chat.py`
+- `backend/app/agents/base.py`
+- `backend/app/db/models.py`
+- `backend/app/db/session.py`
+- `backend/app/db/reset_demo.py`
+- `backend/app/db/seed.py`
+- `backend/app/db/clear_plan.py`
+- `backend/app/api/main.py`
+- `backend/app/jobs/scheduler.py`
+- `backend/app/agents/agent-server/agent.py`
+- `backend/app/agents/agent-server/main.py`
+- `backend/app/domain/preferences/service.py`
+- `backend/app/domain/constraints/types.py`
+- `backend/app/domain/constraints/engine.py`
+- `backend/app/domain/chat/service.py`
+- `backend/app/domain/plans/generator.py`
+- `backend/app/domain/decisions/orchestrator.py`
+- `backend/app/domain/trips/service.py`
+- `trip/legacy/context/TripContext.jsx`
+- `trip/legacy/components/StepStatus.jsx`
+- `trip/legacy/components/DemoSwitch.jsx`
+- `trip/legacy/components/DemoSwitch.module.css`
+- `trip/legacy/components/ReviewPanel.jsx`
+- `trip/legacy/components/LogicNote.module.css`
+- `trip/legacy/components/Sidebar.jsx`
+- `trip/legacy/components/primitives.module.css`
+- `trip/legacy/components/LogicNote.jsx`
+- `trip/legacy/components/SubNav.jsx`
+- `trip/legacy/components/TripRow.jsx`
+- `trip/legacy/components/PlanSectionCard.jsx`
+- `trip/legacy/components/primitives.jsx`
+- `trip/legacy/components/AiNote.jsx`
+- `trip/legacy/layouts/AppLayout.module.css`
+- `trip/legacy/layouts/TripWorkspace.jsx`
+- `trip/legacy/layouts/OrganizerLayout.jsx`
+- `trip/legacy/layouts/MemberLayout.jsx`
+- `trip/legacy/data/trips.js`
+- `trip/legacy/data/seed.js`
+- `trip/legacy/pages/HomePage.jsx`
+- `trip/legacy/pages/member/Chat.module.css`
+- `trip/legacy/pages/member/InvitePage.jsx`
+- `trip/legacy/pages/member/PreferencesStep.jsx`
+- `trip/legacy/pages/member/ReviewStep.jsx`
+- `trip/legacy/pages/member/TripListPage.jsx`
+- `trip/legacy/pages/member/ConfirmStep.jsx`
+- `trip/legacy/pages/organizer/PlanStage.jsx`
+- `trip/legacy/pages/organizer/ReviewStage.jsx`
+- `trip/legacy/pages/organizer/AnalyzeStage.jsx`
+- `trip/legacy/pages/organizer/CollectStage.jsx`
+- `trip/legacy/pages/organizer/CreateTripPage.jsx`
+- `trip/legacy/pages/organizer/TripListPage.jsx`
+- `trip/legacy/pages/organizer/LockStage.jsx`
+- `trip/src/final/TripMap.jsx`
+- `trip/src/final/final.css`
+- `trip/src/final/FinalApp.jsx`
+- `trip/src/final/TripAppState.jsx`
+
+Original backup:
+
+- `/private/tmp/main_sync_fresh_code_comment_backup/20260812_234449`
+
+Repair backup for the 17 Python files that were re-written from the pre-translation backup after a docstring offset issue:
+
+- `/private/tmp/main_sync_fresh_python_repair_backup/20260812_234855`
+
+## Verification Completed
+
+The final checks passed:
+
+- Python syntax check: `64` Python files checked, `0` parse errors.
+- Chinese comment/docstring scan: `0` matches in code comments and Python docstrings.
+- Documentation filename scan: `0` Chinese documentation filenames.
+- Documentation filename scan: `0` documentation filenames containing `-`.
+
+## Notes For Next Person
+
+- The repository already had unrelated worktree changes before and during this cleanup. I did not revert unrelated edits.
+- `frontend/package-lock.json`, `trip/src/final/*`, `frontend/public/trip-app/*`, and generated app assets showed unrelated diffs in the working tree; treat them separately before committing.
+- If you need to audit only this cleanup, compare against the backup directories above rather than assuming every current `git status` entry came from this pass.
+- Chinese runtime strings still exist in places like UI labels, test values, chat keyword handling, and seed/demo content. That was intentional because the request was specifically about docs, filenames, and code comments.
