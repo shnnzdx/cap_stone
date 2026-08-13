@@ -31,7 +31,7 @@ class InviteNotFound(Exception):
 
 
 def _initials(name: str) -> str:
-    """取名字的首字母。中文名取前两个字。"""
+    """Return initials for a name; for Chinese names, use the first two characters."""
     parts = [p for p in name.split() if p]
     if len(parts) >= 2:
         return (parts[0][0] + parts[1][0]).upper()
@@ -39,25 +39,24 @@ def _initials(name: str) -> str:
 
 
 def describe_me(db: Session, membership: TripMembership) -> dict:
-    """当前登录者在**这趟旅行里**是谁。
+    """Identify the current viewer **within this trip**.
 
-    角色属于 membership,不属于账户 —— 同一个人可以在 A 旅行是组织者、
-    B 旅行是参与者。所以这个接口的答案取决于你在哪趟旅行里问。
+    Role belongs to membership, not account. The same person can organize trip A and participate in
+    trip B, so the answer depends on which trip is being queried.
 
-    访客没有账户,名字来自加入时填的昵称,没有邮箱。
-    """
+    Guests have no account; their name comes from the join nickname and they have no email."""
     user = db.get(User, membership.user_id) if membership.user_id else None
     is_guest = user is None
     name = user.name if user else (membership.guest_display_name or "Guest")
 
     return {
         "membership_id": membership.id,
-        # 访客没有账户,前端需要一个稳定 id 时用 membership id
+        # Guests have no account, so use membership id when the frontend needs a stable id.
         "id": user.id if user else membership.id,
         "name": name,
         "initials": _initials(name),
         "email": user.email if user else None,
-        # organizer | participant | guest —— 访客的角色不看 membership.role
+        # organizer | participant | guest; guest role ignores membership.role.
         "role": "guest" if is_guest else membership.role,
         "trip_id": membership.trip_id,
         "is_guest": is_guest,
@@ -151,8 +150,8 @@ def list_user_trips(db: Session, account: User | TripMembership) -> list[dict]:
         plan = db.scalar(select(Plan).where(Plan.trip_id == trip.id))
         next_item = None
         if plan is not None:
-            # 卡片上写的是「下一个」，不是「第一个」——旅行开始之后，
-            # 不加这个日期条件就会一直显示第一天的事，那已经过去了。
+            # The card says "next", not "first"; after the trip starts,
+            # without this date condition it would keep showing the first day, which is already past.
             next_item = db.scalar(
                 select(PlanItem)
                 .where(PlanItem.plan_id == plan.id, PlanItem.day_date >= date.today())
@@ -166,8 +165,15 @@ def list_user_trips(db: Session, account: User | TripMembership) -> list[dict]:
                 "name": trip.name,
                 "destination": trip.destination,
                 "status": trip.status,
+                "preferred_start_date": trip.preferred_start_date.isoformat()
+                if trip.preferred_start_date
+                else None,
+                "preferred_end_date": trip.preferred_end_date.isoformat()
+                if trip.preferred_end_date
+                else None,
                 "member_count": member_count or 0,
                 "next_item_title": next_item.title if next_item else None,
+                "membership_id": my_membership.id,
                 "my_role": my_membership.role,
             }
         )

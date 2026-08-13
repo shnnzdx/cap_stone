@@ -1,15 +1,14 @@
-"""三条路径的执行者。
+"""Executor for the decision paths.
 
-判定引擎只回答"走哪条路",这个模块负责**真的去做**:
-写行程、开投票、建提案、到点结算。
+The classifier only says which path to take. This module performs the real effects: writing plan
+changes, opening rounds, creating proposals, and settling deadlines.
 
-它守着几条不能破的规矩:
+Rules it must never break:
 
-  - 没投票的人记成"没表态",**永远不记成同意**
-  - 提案要所有受影响的人都点头才写进行程,少一个都不行
-  - 重开轮里,没表态的人算"维持原样"
-  - 三条路径最后都往流水账追加一行,没有例外
-"""
+  - Non-voters are recorded as no response, **never as agreement**.
+  - Proposals write to the plan only after every affected person approves.
+  - In reopened rounds, non-response counts toward keeping the current decision.
+  - Every path appends to the decision log, with no exceptions."""
 
 from __future__ import annotations
 
@@ -53,31 +52,30 @@ SPLIT_UP = "split"
 PLANNING_WINDOW = timedelta(hours=24)
 TRAVELING_WINDOW = timedelta(hours=2)
 
-# 确认也要有截止时间，否则一个人不点头就能把一个时段无限期占住。
-# 比投票短，因为确认只涉及受影响的那几个人，不是全组。
+# Confirm also needs a deadline, or one non-response can hold a slot indefinitely.
+# It is shorter than voting because Confirm involves only affected members, not the whole group.
 PROPOSAL_PLANNING_WINDOW = timedelta(days=7)
 PROPOSAL_TRAVELING_WINDOW = timedelta(days=2)
 
 
 class ReasonRequired(Exception):
-    """重开一个已经定过的时段,必须写一句理由。"""
+    """Reopening an already-settled slot requires a written reason."""
 
 
 class AlreadyPending(Exception):
-    """这个时段已经有一轮投票开着,或者有一个提案等着确认。
+    """This slot already has an open round or a proposal waiting for confirmation.
 
-    数据库本来就拦得住,但那是最后一道防线 ——
-    在这里拦下来,用户看到的是一句人话,不是 500。
-    """
+    The database can block it, but that is the last defense. Blocking here gives users a readable
+    message instead of a 500."""
 
 
 class WrongTrip(Exception):
-    """这个身份不属于这趟旅行。"""
+    """This identity does not belong to this trip."""
 
 
 @dataclass
 class Outcome:
-    """一次改动的处理结果。接口层直接把它序列化给前端。"""
+    """Result of processing one change. The API layer serializes it directly to the frontend."""
 
     classification: Classification
     round_id: str | None = None
@@ -106,7 +104,7 @@ def _view(item: PlanItem, **overrides) -> ItemView:
 
 
 def _load_constraints(db: Session, trip_id: str) -> list[Constraint]:
-    """读出全组的硬底线。注意这里**没有**碰私密原文那张表。"""
+    """Read the group's hard constraints. This does **not** touch the raw private wording table."""
     rows = db.scalars(
         select(MemberConstraint)
         .join(TripMembership, TripMembership.id == MemberConstraint.trip_membership_id)
@@ -129,8 +127,18 @@ def _member_count(db: Session, trip_id: str) -> int:
 
 
 def _deadline_for(trip: Trip) -> datetime:
-    """人在街上的时候不跑 24 小时的异步投票。"""
+    """Do not run a 24-hour asynchronous vote while people are already on the street."""
     window = TRAVELING_WINDOW if trip.status == "traveling" else PLANNING_WINDOW
+    return _now() + window
+
+
+def _proposal_deadline_for(trip: Trip) -> datetime:
+    """Confirmation deadline. Once travel starts, waiting time is shortened using the same rule as voting."""
+    window = (
+        PROPOSAL_TRAVELING_WINDOW
+        if trip.status == "traveling"
+        else PROPOSAL_PLANNING_WINDOW
+    )
     return _now() + window
 
 
@@ -142,18 +150,8 @@ def _option_time_label(hour: float) -> str:
     return f"{display_hour}:{minute:02d} {suffix}"
 
 
-def _proposal_deadline_for(trip: Trip) -> datetime:
-    """确认的截止时间。旅行一开始，等待时间减半 —— 和投票同一条规矩。"""
-    window = (
-        PROPOSAL_TRAVELING_WINDOW
-        if trip.status == "traveling"
-        else PROPOSAL_PLANNING_WINDOW
-    )
-    return _now() + window
-
-
 def _options_for(item: PlanItem, request: str, patch: dict | None = None) -> list[dict]:
-    """候选项**必须包含「分头行动」** —— 这是产品规定,不是可选项。"""
+    """Options **must include split-up**. This is a product rule, not optional."""
     requested = {
         "id": "requested",
         "label": "Suggested change",
@@ -197,9 +195,6 @@ def _apply(db: Session, item: PlanItem, patch: dict) -> dict:
 
 
 def _day_index_for_date(db: Session, item: PlanItem, day_date: date) -> int:
-    if isinstance(day_date, str):
-        day_date = date.fromisoformat(day_date)
-
     trip = db.get(Trip, item.plan.trip_id)
     if trip and trip.preferred_start_date:
         return max(1, (day_date - trip.preferred_start_date).days + 1)
@@ -289,7 +284,7 @@ def _patch_from_json(patch: dict | None) -> dict:
 
 
 def _guard_not_pending(db: Session, item: PlanItem) -> None:
-    """一个时段同时只能有一件未决的事。先来的先办完,不许插队。"""
+    """A slot can have only one pending decision. First one must finish; no cutting in line."""
     if db.scalar(
         select(DecisionRound).where(
             DecisionRound.plan_item_id == item.id, DecisionRound.status == "open"
@@ -311,8 +306,6 @@ def _guard_not_pending(db: Session, item: PlanItem) -> None:
 
 def _changed_item_window(item: PlanItem, patch: dict) -> tuple[date, float, float]:
     day_date = patch.get("day_date", item.day_date)
-    if isinstance(day_date, str):
-        day_date = date.fromisoformat(day_date)
     start_hour = float(patch.get("start_hour", item.start_hour))
     duration_min = int(patch.get("duration_min", item.duration_min))
     return day_date, start_hour, start_hour + duration_min / 60
@@ -351,7 +344,7 @@ def _schedule_conflict_classification(conflict: PlanItem) -> Classification:
     )
 
 
-# ————————————————————— 入口 —————————————————————
+# -------------------- Entry points --------------------
 
 
 def propose_change(
@@ -364,7 +357,7 @@ def propose_change(
     trip_total_after: float | None = None,
     day_walk_km_after: float = 0.0,
 ) -> Outcome:
-    """有人想改一个安排。判定 + 执行,一步到位。"""
+    """Someone wants to change an item. Classify and execute in one step."""
     _guard_not_pending(db, item)
     plan = item.plan
     trip = db.get(Trip, plan.trip_id)
@@ -484,7 +477,7 @@ _VIEW_FIELDS = {
 }
 
 
-# ————————————————————— 路径 A:直接改 —————————————————————
+# -------------------- Path A: direct apply --------------------
 
 
 def _do_notice(db, item, patch, actor_membership_id, verdict) -> Outcome:
@@ -509,11 +502,11 @@ def _do_notice(db, item, patch, actor_membership_id, verdict) -> Outcome:
 
 
 def object_to_notice(db: Session, notice: UpdateNotice, request: str = "") -> Outcome:
-    """有人在通知上说「我有别的想法」→ 升级成投票。"""
+    """Someone clicked "I have a different idea" on a notice, so escalate to a vote."""
     item = db.get(PlanItem, notice.plan_item_id)
     trip = db.get(Trip, notice.trip_id)
-    # 和 propose_change 走同一道闸:这个时段已经有轮次/提案时,
-    # 用户该看到一句人话,而不是撞到 one_open_round_per_item 变成 500。
+    # Use the same guard as propose_change when this slot already has an open round or proposal.
+    # Users should see a humane message instead of hitting one_open_round_per_item as a 500.
     _guard_not_pending(db, item)
     notice.can_object = False
     notice.body = "Escalated to a group round after an objection."
@@ -525,7 +518,7 @@ def object_to_notice(db: Session, notice: UpdateNotice, request: str = "") -> Ou
     return _do_round(db, item, trip, request, verdict, kind="normal")
 
 
-# ————————————————————— 路径 B:投票 —————————————————————
+# -------------------- Path B: voting --------------------
 
 
 def _do_round(db, item, trip, request, verdict, *, kind, reason=None, patch=None) -> Outcome:
@@ -545,7 +538,7 @@ def _do_round(db, item, trip, request, verdict, *, kind, reason=None, patch=None
 
 
 def cast_vote(db: Session, round_: DecisionRound, membership_id: str, option_id: str) -> Vote:
-    """投票或改票。没有"弃权"这个选项 —— 不投就是没有记录。"""
+    """Vote or change vote. There is no abstain option; not voting means no record."""
     existing = db.scalar(
         select(Vote).where(
             Vote.round_id == round_.id, Vote.trip_membership_id == membership_id
@@ -562,12 +555,11 @@ def cast_vote(db: Session, round_: DecisionRound, membership_id: str, option_id:
 
 
 def _winner(round_: DecisionRound, votes: list[Vote], member_count: int) -> str:
-    """算出这一轮定下什么。
+    """Compute what this round settles.
 
-    普通轮:票多的赢,平票维持原样。没投票的人不影响结果。
-    重开轮:要推翻已经定过的事,得**超过总人数一半**明确支持才行。
-           没表态的人算在"维持原样"这边 —— 懒得理的人显然不觉得需要改。
-    """
+    Ordinary round: most votes wins; ties keep the current item. Non-voters do not affect the result.
+    Reopened round: overturning a settled decision requires support from **more than half of all members**.
+    Non-response counts toward keeping the current decision."""
     tally = Counter(v.option_id for v in votes)
     if not tally:
         return KEEP_CURRENT
@@ -585,7 +577,7 @@ def _winner(round_: DecisionRound, votes: list[Vote], member_count: int) -> str:
 
 
 def settle_round(db: Session, round_: DecisionRound) -> str:
-    """结算一轮。可以重复调用,结果不变。"""
+    """Settle one round. Repeated calls are idempotent."""
     if round_.status == "closed":
         return round_.winning_option_id
 
@@ -625,11 +617,10 @@ def settle_round(db: Session, round_: DecisionRound) -> str:
 
 
 def expire_due_proposals(db: Session, now: datetime | None = None) -> list[str]:
-    """到点还没凑齐同意的提案，**作废**。
+    """Expire proposals that do not collect enough approvals by the deadline.
 
-    作废不是拒绝，也不是通过 —— 行程一个字不变，想改的人重新提一次。
-    到期自动通过是绝对不行的：那等于把没回复算成同意。
-    """
+    Expiry is neither rejection nor approval. The plan stays unchanged and the proposer can submit again.
+    Auto-approval on expiry is forbidden because it treats silence as consent."""
     now = now or _now()
     due = db.scalars(
         select(ChangeProposal).where(
@@ -659,7 +650,7 @@ def expire_due_proposals(db: Session, now: datetime | None = None) -> list[str]:
 
 
 def settle_due_rounds(db: Session, now: datetime | None = None) -> list[str]:
-    """定时任务的唯一入口:把所有到期的轮结算掉。跑多少次都安全。"""
+    """Only scheduler entry point: settle all due rounds. Safe to run repeatedly."""
     now = now or _now()
     due = db.scalars(
         select(DecisionRound).where(
@@ -671,7 +662,7 @@ def settle_due_rounds(db: Session, now: datetime | None = None) -> list[str]:
     return [r.id for r in due]
 
 
-# ————————————————————— 路径 C:确认 —————————————————————
+# -------------------- Path C: confirmation --------------------
 
 
 def _do_confirm(
@@ -693,10 +684,10 @@ def _do_confirm(
     db.add(proposal)
     db.flush()
 
-    # 谁需要点头 —— 只拉真的被影响的人,不是全组。
-    #   已订的东西:钱是大家出的,全组都要点头
-    #   碰到某人的硬底线:只有那几个人 + 发起人
-    # 拉太宽的后果是提案永远凑不齐,那个时段就被无限期占住。
+    # Who must approve: include only genuinely affected people, not the whole group.
+    #   Booked item: shared money is involved, so the whole group approves.
+    #   Member hard constraint: only those members plus the proposer approve.
+    # Pulling too broadly makes proposals impossible to complete and holds the slot indefinitely.
     everyone = list(
         db.scalars(select(TripMembership).where(TripMembership.trip_id == trip.id))
     )
@@ -716,19 +707,20 @@ def _do_confirm(
             )
         )
     db.flush()
+
     if all(membership.id == actor_membership_id for membership in involved):
         decide_proposal(db, proposal, actor_membership_id, "accepted")
         return Outcome(classification=verdict, applied=True)
+
     return Outcome(classification=verdict, proposal_id=proposal.id)
 
 
 def decide_proposal(
     db: Session, proposal: ChangeProposal, membership_id: str, status: str
 ) -> bool:
-    """某人对提案表态。返回这次表态之后提案有没有落地。
+    """Record one member's decision on a proposal and return whether it applied after that decision.
 
-    只有**所有人都 accepted** 才写进行程。任何一个 declined 直接作废。
-    """
+    The plan changes only when **everyone accepted**. Any declined decision expires the proposal."""
     decision = db.scalar(
         select(ProposalDecision).where(
             ProposalDecision.proposal_id == proposal.id,
@@ -773,6 +765,6 @@ def decide_proposal(
 
 
 def withdraw_proposal(db: Session, proposal: ChangeProposal) -> None:
-    """发起人撤回。行程不变。"""
+    """The proposer withdraws. The plan stays unchanged."""
     proposal.status = "withdrawn"
     db.flush()

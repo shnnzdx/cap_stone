@@ -155,8 +155,8 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
     accepted_days: list[DayDraft] = []
 
     for day_index, day_date in enumerate(dates, start=1):
-        # 整趟旅行还剩几个时段 —— 规则兜底要靠它给后面的日子留预算，
-        # 不然前两天挑贵的，第三天就没钱了，整份行程被判成 blocked。
+        # Count remaining slots in the whole trip so fallback can reserve budget for later days.
+        # Otherwise early days pick expensive options and the later days can make the plan blocked.
         slots_left = (len(dates) - day_index + 1) * len(SLOTS)
         day = _build_day(
             slots_left=slots_left,
@@ -165,7 +165,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             constraints=constraints,
             organizer_id=organizer.id,
             already_selected=tuple(draft),
-            already_used=set() if allow_reuse_across_days else used,
+            already_used=used,
             interests=interests,
             allow_reuse_across_days=allow_reuse_across_days,
         )
@@ -341,13 +341,18 @@ def _build_day(
     allow_reuse_across_days: bool,
 ) -> DayDraft | None:
     for attempt in range(2):
+        effective_already_used = (
+            set()
+            if allow_reuse_across_days and attempt > 0
+            else set(already_used)
+        )
         candidates = _day_candidates(
             day_index=day_index,
             day_date=day_date,
             constraints=constraints,
             organizer_id=organizer_id,
             already_selected=already_selected,
-            already_used=already_used,
+            already_used=effective_already_used,
             attempt=attempt,
         )
         if not candidates:
@@ -360,7 +365,7 @@ def _build_day(
             constraints=constraints,
             organizer_id=organizer_id,
             already_selected=already_selected,
-            already_used=already_used,
+            already_used=effective_already_used,
             interests=interests,
         )
         if day is None:
@@ -372,7 +377,7 @@ def _build_day(
                 constraints=constraints,
                 organizer_id=organizer_id,
                 already_selected=already_selected,
-                already_used=already_used,
+                already_used=effective_already_used,
                 attempt=attempt,
             )
 
@@ -550,10 +555,9 @@ def _rules_day(
 def _budget_headroom(
     constraints: tuple[Constraint, ...], spent: float
 ) -> float | None:
-    """还能花多少 —— 按最紧的那条预算上限算，不是平均。
+    """Remaining spend, based on the tightest budget ceiling rather than the average.
 
-    返回 None 表示没有人设过预算上限。
-    """
+    Return None when no one has set a budget ceiling."""
     ceilings = [
         c.params.get("max_total_per_person")
         for c in constraints
@@ -580,9 +584,9 @@ def _pick_rule_candidate(
     already_used: set[str],
     attempt: int,
 ) -> Poi | None:
-    # 给后面的时段留预算。不留的话贪心会前重后轻：
-    # 头两天挑贵的，第三天没钱了，整份行程被判成 blocked。
-    # 在"留得住"的范围内挑最贵的 —— 把预算用足，而不是排一堆免费的。
+    # Reserve budget for later slots. Without this, greedy selection front-loads cost.
+    # If the first two days pick expensive places, the third day can run out of budget and block the plan.
+    # Within the reserved budget, choose the most expensive viable option so the plan uses the budget instead of overusing free stops.
     headroom = _budget_headroom(constraints, trip_total_before)
     if headroom is not None and slots_left > 0:
         per_slot = headroom / slots_left

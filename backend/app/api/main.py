@@ -1,11 +1,10 @@
-"""HTTP 接口层。
+"""HTTP API layer.
 
-这一层**很薄**,故意的:它只做三件事 —— 收参数、调 domain、把结果转成 JSON。
-所有规则都在 domain/ 里,这里一条业务判断都不写。
+This layer is intentionally thin: it accepts parameters, calls domain code, and converts results to JSON.
+All rules live in domain/; business decisions should not live here.
 
-身份验证走邮箱密码登录后的 bearer token；本地开发可以用
-DEV_ALLOW_MEMBERSHIP_HEADER=1 暂时保留 X-Membership-Id 调试入口。
-"""
+Authentication uses bearer tokens from email/password login. Local development may temporarily keep
+X-Membership-Id when DEV_ALLOW_MEMBERSHIP_HEADER=1."""
 
 from __future__ import annotations
 
@@ -59,7 +58,7 @@ def parse_cors_origins(raw: str | None = None) -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """后端一启动,定时结算就在后台转起来了 —— 不用另外开一个进程。"""
+    """The settlement scheduler starts with the backend, so no separate process is required."""
     from ..jobs import scheduler
 
     task = None
@@ -159,7 +158,7 @@ def _bearer_token(authorization: str | None) -> str | None:
     return token.strip()
 
 
-# ————————————————————— 输入输出的形状 —————————————————————
+# -------------------- Request and response shapes --------------------
 
 
 class ChangeRequest(BaseModel):
@@ -168,7 +167,7 @@ class ChangeRequest(BaseModel):
     start_hour: float | None = Field(default=None, ge=0, le=24)
     day_date: date | None = None
     price_per_person: float | None = Field(default=None, ge=0)
-    # 换地点时把新坐标一起带上,地图跟着动
+    # Include new coordinates when replacing a place so the map moves with it.
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
     request: str = ""
@@ -210,7 +209,7 @@ class PreferenceRequest(BaseModel):
 
 
 class ConstraintRequest(BaseModel):
-    # 只有六种。填不进去的，系统老实说保护不了，不硬塞。
+    # Only six kinds are supported. If it does not fit, say the system cannot protect it.
     kind: str = Field(
         pattern="^(time_window|budget_ceiling|date_range|walk_limit|dietary|avoid_tag)$"
     )
@@ -279,9 +278,9 @@ def _item_out(item: PlanItem) -> dict:
         "price_per_person": item.price_per_person,
         "source": item.source,
         "settledness": item.settledness,
-        # 地图直接用这两个数字画点。换地点时它俩跟着变。
+        # The map draws directly from these two numbers; they change when the place changes.
         "coords": [item.lat, item.lng] if item.lat is not None else None,
-        # 没有配图时给 null，前端有占位框兜着，不要在这里编一张
+        # Use null when no image exists; the frontend has a placeholder. Do not invent one here.
         "photoUrl": item.photo_url,
     }
 
@@ -358,11 +357,10 @@ def _canonical_day_date(trip: Trip | None, day_index: int, items: list[dict]) ->
 
 
 def _outcome_out(outcome: orch.Outcome) -> dict:
-    """判定结果转 JSON。
+    """Convert classification results to JSON.
 
-    注意 findings 里只有脱敏后的说法 —— 类型上就没有姓名和原文,
-    所以这里不需要"记得过滤"。
-    """
+    findings contain only sanitized wording. The type has no names or raw text, so there is no
+    last-minute filtering step to remember."""
     verdict = outcome.classification
     result = _classification_out(verdict)
     result.update(
@@ -381,7 +379,7 @@ def _classification_out(verdict) -> dict:
         "headline": verdict.headline,
         "detail": verdict.detail,
         "needs_reason": verdict.needs_reason,
-        # 四条判据全给,命中的那条 hit=true —— 前端直接渲染成"为什么是这条路"的清单
+        # Return all four checks with hit=true on the matched one so the frontend can explain the path.
         "checks": [
             {
                 "id": c.id,
@@ -463,7 +461,7 @@ def _proposal_out(db: Session, proposal: ChangeProposal) -> dict:
     }
 
 
-# ————————————————————— 读 —————————————————————
+# -------------------- Reads --------------------
 
 
 @app.get("/api/health")
@@ -550,11 +548,10 @@ def get_me(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    """我是谁 —— 前端的 currentUser 从这里来,不再写死。
+    """Who am I. The frontend currentUser comes from here instead of being hard-coded.
 
-    角色属于 membership,所以换 X-Membership-Id 就等于换一个人登录,
-    界面会自动变成那个人的视角。
-    """
+    Role belongs to membership, so changing X-Membership-Id is equivalent to logging in as another
+    member and the UI follows that perspective."""
     return trip_service.describe_me(db, me)
 
 
@@ -825,7 +822,7 @@ def get_change_log(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> list[dict]:
-    """流水账。这趟旅行的每个决定是怎么来的。"""
+    """Decision log showing how every decision in this trip was made."""
     _require_scoped_plan(db, me, plan_id)
     changes = db.scalars(
         select(PlanChange)
@@ -845,7 +842,7 @@ def get_change_log(
     ]
 
 
-# ————————————————————— 写 —————————————————————
+# -------------------- Writes --------------------
 
 
 @app.post("/api/trips")
@@ -869,8 +866,8 @@ def create_trip(
         "destination": created.trip.destination,
         "status": created.trip.status,
         "plan_id": created.plan.id,
-        # 创建者在新 trip 里是另一个 membership。不返回它，前端就没法把身份切过去，
-        # 之后调这趟旅行的任何接口都会因为"身份属于别的旅行"被拒。
+        # The creator has a different membership in the new trip. Return it so the frontend can switch identity.
+        # Otherwise every later call for this trip is rejected because the identity belongs to another trip.
         "membership_id": created.membership.id,
         "member": trip_service.describe_me(db, created.membership),
     }
@@ -981,10 +978,9 @@ def classify_only(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    """只试算,不执行 —— AI 私聊里的"我帮你算了一下"就用这个。
+    """Dry-run only, no execution. Private AI chat uses this for impact checks.
 
-    不花钱、不慢,因为判定不靠 AI。
-    """
+    It is cheap and fast because classification does not use AI."""
     item = _require_scoped_plan_item(db, me, item_id)
     savepoint = db.begin_nested()
     try:
@@ -1005,7 +1001,7 @@ def submit_change(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    """真的提交一个改动。判定 + 执行一步到位。"""
+    """Submit a real change. Classification and execution happen together."""
     item = _require_scoped_plan_item(db, me, item_id)
     try:
         outcome = orch.propose_change(
@@ -1064,7 +1060,7 @@ def object_to_notice(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    """在通知上说「我有别的想法」→ 升级成投票。"""
+    """Clicking "I have a different idea" on a notice escalates it to a vote."""
     notice = _require_scoped_notice(db, me, notice_id)
     if not notice.can_object:
         raise HTTPException(404, "Nothing to object to")
@@ -1099,7 +1095,7 @@ def settle(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    """手动结算。真实场景由定时任务调 settle_due_rounds,这个接口给演示用。"""
+    """Manual settlement. Real usage is driven by the scheduler calling settle_due_rounds; this endpoint is for demos."""
     round_ = _require_scoped_round(db, me, round_id)
     orch.settle_round(db, round_)
     db.commit()
@@ -1125,15 +1121,15 @@ def get_proposal(
     db: Session = Depends(get_session),
     me: TripMembership = Depends(current_membership),
 ) -> dict:
-    """提案详情。**其他成员一律匿名** —— 当前用户是 You,其余是 Member A/B/C。"""
+    """Proposal detail. **Other members are always anonymous**: current user is You, others are Member A/B/C."""
     proposal = _require_scoped_proposal(db, me, proposal_id)
     return _proposal_out(db, proposal)
 
 
-# ————————————————————— 偏好与六种约束 —————————————————————
+# -------------------- Preferences and six constraint kinds --------------------
 #
-# 路径里没有"别人"这个位置 —— 想读别人的得先改 URL 设计，
-# 不是靠权限判断挡住的。
+# There is no "someone else" slot in the route; reading others would require changing the URL design.
+# This is blocked by shape, not just by an authorization check.
 
 
 @app.get("/api/trips/{trip_id}/preferences/me")
@@ -1217,7 +1213,7 @@ def list_members(
     me: TripMembership = Depends(current_membership),
     db: Session = Depends(get_session),
 ) -> dict:
-    """谁在这趟旅行里，交没交偏好。**只说交没交，不说交了什么。**"""
+    """Who is in this trip and whether they submitted preferences. **Only submission status, never content.**"""
     _require_scoped_trip(db, me, trip_id)
     return pref_service.list_members(db, me)
 

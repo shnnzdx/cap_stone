@@ -308,7 +308,7 @@ def test_create_trip_requires_name_and_destination(
 def test_next_item_skips_days_that_already_passed(
     client: TestClient, api_session: Session
 ):
-    """卡片上写的是「下一个」。旅行开始之后不能还显示第一天的事。"""
+    """The card says "next". After travel starts, it must not keep showing day-one items."""
     from datetime import timedelta
 
     user = _user(api_session, "Mia")
@@ -363,7 +363,7 @@ def test_a_finished_trip_has_no_next_item(client: TestClient, api_session: Sessi
 
 
 def test_a_guest_cannot_create_a_trip(client: TestClient, api_session: Session):
-    """访客在这趟旅行里权利和别人一样，但不能自己开新旅行 —— 那是账户层面的事。"""
+    """Guests have the same rights inside this trip, but cannot create new trips; that is account-level."""
     user = _user(api_session, "Mia")
     trip, _ = _trip_with_member(api_session, user)
     guest = TripMembership(
@@ -386,7 +386,7 @@ def test_a_guest_cannot_create_a_trip(client: TestClient, api_session: Session):
 def test_me_returns_the_role_of_this_trip_not_the_account(
     client: TestClient, api_session: Session
 ):
-    """同一个人在 A 旅行是组织者、B 旅行是参与者 —— 答案取决于你在哪趟旅行里问。"""
+    """The same person can organize trip A and participate in trip B; the answer depends on which trip is queried."""
     user = _user(api_session, "Mia Chen")
     _, organizer_here = _trip_with_member(
         api_session, user, name="Trip A", role="organizer"
@@ -400,7 +400,7 @@ def test_me_returns_the_role_of_this_trip_not_the_account(
 
     assert a["role"] == "organizer"
     assert b["role"] == "participant"
-    assert a["id"] == b["id"] == user.id     # 同一个人
+    assert a["id"] == b["id"] == user.id     # Same person.
     assert a["name"] == b["name"] == "Mia Chen"
     assert a["initials"] == "MC"
 
@@ -414,7 +414,7 @@ def test_me_reports_a_guest_as_guest_with_no_email(
         trip_id=trip.id,
         user_id=None,
         guest_display_name="Sam",
-        role="participant",     # 就算 membership 上写着 participant
+        role="participant",     # Even if membership says participant.
         status="joined",
     )
     api_session.add(guest)
@@ -422,11 +422,11 @@ def test_me_reports_a_guest_as_guest_with_no_email(
 
     body = client.get("/api/me", headers={"X-Membership-Id": guest.id}).json()
 
-    assert body["role"] == "guest"      # 也要报成 guest —— 没账户就是访客
+    assert body["role"] == "guest"      # Report guest anyway; no account means guest.
     assert body["is_guest"] is True
     assert body["name"] == "Sam"
     assert body["email"] is None
-    assert body["id"] == guest.id       # 没账户时给一个稳定的 id
+    assert body["id"] == guest.id       # Provide a stable id when there is no account.
 
 
 def test_me_needs_an_identity(client: TestClient):
@@ -434,7 +434,7 @@ def test_me_needs_an_identity(client: TestClient):
 
 
 def test_creating_a_trip_returns_the_new_membership(client: TestClient, api_session: Session):
-    """不返回它，前端就没法把身份切过去 —— 之后调这趟旅行的任何接口都会 403。"""
+    """Without returning it, the frontend cannot switch identity and later calls for this trip will 403."""
     user = _user(api_session, "Mia")
     _, auth = _trip_with_member(api_session, user)
 
@@ -445,7 +445,7 @@ def test_creating_a_trip_returns_the_new_membership(client: TestClient, api_sess
     ).json()
 
     assert body["membership_id"]
-    assert body["membership_id"] != auth.id          # 是新 trip 里的那个
+    assert body["membership_id"] != auth.id          # This is the membership in the new trip.
     membership = api_session.get(TripMembership, body["membership_id"])
     assert membership.trip_id == body["id"]
     assert membership.role == "organizer"
@@ -454,10 +454,9 @@ def test_creating_a_trip_returns_the_new_membership(client: TestClient, api_sess
 def test_an_identity_from_another_trip_is_refused_not_silently_answered(
     client: TestClient, api_session: Session
 ):
-    """拿 A 旅行的身份去问 B 旅行的成员名单，必须 403。
+    """Using trip A identity to ask for trip B members must return 403.
 
-    悄悄返回 A 的数据更糟 —— 用户以为在看 B，看到的是别人那趟的人数和进度。
-    """
+    Silently returning A's data would be worse: the user thinks they are viewing B but sees another trip's members and progress."""
     user = _user(api_session, "Mia")
     trip_a, auth_a = _trip_with_member(api_session, user, name="Trip A")
     trip_b, _ = _trip_with_member(api_session, user, name="Trip B")
@@ -734,6 +733,7 @@ def test_current_plan_reports_canonical_day_dates_from_trip_window(
         PlanItem(
             plan_id=plan.id,
             day_index=2,
+            # Historical bad data: an item can be left with a stale date after an old move-day change.
             day_date=date(2026, 8, 19),
             start_hour=10.0,
             title="Shedd Aquarium",
@@ -1593,5 +1593,3 @@ def test_revoke_invite_route_is_trip_scoped_and_keeps_organizer_policy(
     api_session.refresh(invite_b)
     assert invite_a.revoked_at is not None
     assert invite_b.revoked_at is None
-
-

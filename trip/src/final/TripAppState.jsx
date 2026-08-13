@@ -85,8 +85,8 @@ const normalizeItem = item => ({
   place: item.place,
   status: item.settledness === 'booked' ? 'Booked' : '',
   locked: item.settledness === 'booked',
-  // 行程上不显示价格。后端的 price_per_person 照常返回、照常参与预算上限的判定，
-  // 只是不摊在每条安排上 —— 钱的影响挂在「这次改动」上说更有用。
+  // Do not display item prices on the itinerary. Backend still returns price_per_person and uses it for budget classification.
+  // Money impact is clearer on the change itself than spread across every plan item.
   note: '',
   coords: item.coords,
   dayDate: item.day_date,
@@ -540,8 +540,8 @@ export function TripAppProvider({ children }) {
       setError('')
       return true
     } catch (err) {
-      // 用户主动操作失败 → 立刻告诉他。
-      // 后台轮询失败 → 忍两次再说：网络抖一下就弹横幅，用户会看到它反复闪。
+      // User-initiated failures are shown immediately.
+      // Background polling failures are tolerated twice so brief network blips do not flash banners repeatedly.
       if (!background || pollFailuresRef.current >= 2) {
         setError(err.message || 'Failed to load trip data')
       }
@@ -654,8 +654,8 @@ export function TripAppProvider({ children }) {
     window.top.location.href = loginUrl()
   }, [identityHeadersFor, publicRequestJson, sessionRuntime, technicalSessionFacts])
 
-  // 真的在后端建一个 trip。以前这里造一个 draft- 开头的假 id 塞进内存，
-  // 后端根本不知道这趟旅行存在 —— 所以生成行程、邀请、偏好全都点不动。
+  // Create a real backend trip. This used to create an in-memory draft id.
+  // The backend did not know that trip existed, so generation, invites, and preferences could not work.
   const createTrip = useCallback(async payload => {
     setLoading(current => ({ ...current, action: true }))
     try {
@@ -663,7 +663,12 @@ export function TripAppProvider({ children }) {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      const normalizedTrip = normalizeTrip(created)
+      const normalizedTrip = {
+        ...normalizeTrip(created),
+        isCreated: true,
+        membership_id: created.membership_id,
+        my_role: 'organizer',
+      }
       setTrip(normalizedTrip)
       setPlanId(null)
       setPlanBlockedReason('')
@@ -673,8 +678,8 @@ export function TripAppProvider({ children }) {
       setActiveRounds([])
       setActiveProposals([])
       setTrips(current => [normalizedTrip, ...current.filter(item => item.id !== normalizedTrip.id)])
-      // 你在新 trip 里是另一个 membership。不切过去的话，
-      // 邀请、生成、偏好全都会因为"身份属于别的旅行"被拒。
+      // You have a different membership in the new trip. If the frontend does not switch to it,
+      // invites, generation, and preferences are rejected because the identity belongs to another trip.
       if (created.membership_id) {
         adoptTechnicalTripContext({
           membershipId: created.membership_id,
@@ -754,8 +759,8 @@ export function TripAppProvider({ children }) {
     }
   }, [notify, requestJson])
 
-  // ————————————————————— 偏好与六种约束 —————————————————————
-  // 路径里没有"别人"这个位置 —— 后端也一样，想读别人的得先改 URL 设计。
+  // -------------------- Preferences and six constraint kinds --------------------
+  // There is no "someone else" slot in the route; backend has the same shape.
 
   const loadMyPreferences = useCallback(async () => {
     const tripId = resolveActiveTripId()
@@ -809,8 +814,8 @@ export function TripAppProvider({ children }) {
     }
   }, [hasAccountSession, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates, requestJson, resolveActiveTripId])
 
-  // 加一条约束会返回 conflicts —— 它撞到了哪几项安排。
-  // 后端只报告，不自动改行程：用户可能宁愿放宽自己的要求，那是他的选择。
+  // Adding a constraint returns conflicts showing which plan items it hits.
+  // Backend reports only and does not auto-edit; the user may prefer relaxing the requirement.
   const addConstraint = useCallback(async payload => {
     const tripId = resolveActiveTripId()
     return requestJson(`/api/trips/${tripId}/constraints`, {

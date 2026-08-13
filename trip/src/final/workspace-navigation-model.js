@@ -77,6 +77,7 @@ export function buildWorkspaceNavigationModel(input) {
  * @param {{
  *   currentRoutePath: string,
  *   currentUser?: Record<string, any> | null,
+ *   tripSummaries?: Array<Record<string, any>> | null,
  *   activeTrip?: Record<string, any> | null,
  *   activeTripId?: string | null,
  *   explain?: boolean,
@@ -87,6 +88,7 @@ export function resolveCurrentWorkspaceRoute(input) {
   try {
     normalized = normalizeWorkspaceSessionFacts({
       currentUser: input.currentUser,
+      tripSummaries: input.tripSummaries,
       activeTrip: input.activeTrip,
       activeTripId: input.activeTripId,
       currentRoutePath: input.currentRoutePath,

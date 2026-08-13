@@ -24,8 +24,8 @@ const nightsBetween = range => range.start && range.end ? Math.max(0, Math.round
 const formatShortDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'
 const formatDateRange = range => range.start && range.end ? `${formatShortDate(range.start)} – ${formatShortDate(range.end)}, 2026` : 'Select dates'
 const formatInviteDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
-// 改动卡上的日期。写成 "Sat, Aug 15" —— 换天的改动只看时间是分不清的。
-// 日期选择器给的是 Date 对象，后端要 YYYY-MM-DD
+// Date shown on change cards. Use "Sat, Aug 15" because time alone cannot distinguish date changes.
+// Date picker returns a Date object; the backend expects YYYY-MM-DD.
 const toISODate = value => {
   if (!value) return null
   const d = new Date(value)
@@ -70,7 +70,7 @@ function ScrollToTop() {
   return null
 }
 
-// 弹层通用:点击外部即关闭
+// Shared overlay behavior: click outside to close.
 function useClickOutside(active, onClose) {
   const ref = useRef(null)
   useEffect(() => {
@@ -84,7 +84,7 @@ function useClickOutside(active, onClose) {
   return ref
 }
 
-// 路由里的 tripId 命中用户创建的 trip 时返回它,否则回落到芝加哥演示 trip
+// Return the user-created trip when route tripId matches; otherwise fall back to the Chicago demo trip.
 function useCurrentTrip() {
   const { tripId } = useParams()
   const app = useTripApp()
@@ -113,7 +113,10 @@ function DateRangePicker({ value, onChange }) {
 const cx = (...classes) => classes.filter(Boolean).join(' ')
 
 function Logo() {
-  return <Link to="/" className="logo"><span className="logoMark">C</span><span>Cadensy</span></Link>
+  return <Link to="/" className="logo brandLogoLink" aria-label="CADENSY home">
+    <img className="brandLogoMark" src="/images/cadensy-mark.png" alt="" />
+    <img className="brandLogoWordmark" src="/images/cadensy-wordmark.png" alt="CADENSY" />
+  </Link>
 }
 
 function Badge({ children, tone = 'neutral' }) {
@@ -229,16 +232,16 @@ function WorkspaceRouteGuard() {
     if (location.pathname !== initialPathRef.current) return null
     if (!app.currentUser || app.loading.initial) return null
     if (app.hasAccountSession && app.tripSummariesStatus !== 'ready') return null
-      return resolveRestoredWorkspaceDestination({
-        currentRoutePath: location.pathname,
-        hasAccountSession: app.hasAccountSession,
-        membershipId: app.membershipId,
-        currentUser: app.currentUser,
-        tripSummaries: app.tripSummaries,
-        activeTrip: app.trip || trip || null,
-        activeTripId: app.activeTripId,
-        restoredTripId: app.restoredTripId,
-      })
+    return resolveRestoredWorkspaceDestination({
+      currentRoutePath: location.pathname,
+      hasAccountSession: app.hasAccountSession,
+      membershipId: app.membershipId,
+      currentUser: app.currentUser,
+      tripSummaries: app.tripSummaries,
+      activeTrip: app.trip || trip || null,
+      activeTripId: app.activeTripId,
+      restoredTripId: app.restoredTripId,
+    })
   }, [
     app.activeTripId,
     app.hasAccountSession,
@@ -299,7 +302,7 @@ function Home() {
       <section className="homeContent">
         <div className="dashboardMasthead">
           <div><span className="eyebrow">My trips</span><h1>Start your first shared plan</h1><p>Your account is ready. Create a trip frame, then invite the people planning with you.</p></div>
-          <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>Create first trip <span>＋</span></Link>
+          <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>Create first trip</Link>
         </div>
       </section>
     </main>
@@ -332,7 +335,7 @@ function Home() {
     <section className="homeContent">
       <div className="dashboardMasthead">
         <div><span className="eyebrow">My trips</span><h1>Your shared plans</h1><p>Continue the trip that needs you, or revisit another plan.</p></div>
-        <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>New trip <span>＋</span></Link>
+        <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>New trip</Link>
       </div>
       {currentTrip && <section className="dashboardSection dashboardContinue">
         <div className="dashboardSectionHead"><span>Continue planning</span><small>Current workspace</small></div>
@@ -363,7 +366,13 @@ function Home() {
               onOpen={() => openDashboardTrip(created)}
             />)}
           </div>
-          : <div className="emptyState quietEmptyState dashboardEmptyTrips"><span></span><h2>No other trips yet</h2><p>Only real trips from your account will appear here.</p></div>}
+          : <div className="dashboardEmptyTrips">
+            <div className="dashboardEmptyTripsCopy">
+              <span className="eyebrow">No saved workspaces</span>
+              <h2>No other trips yet</h2>
+              <p>Create a trip here, then it will stay on this page for you to reopen later.</p>
+            </div>
+          </div>}
       </section>
     </section>
   </main>
@@ -383,7 +392,7 @@ function TripShell({ children }) {
 function MissingTripShell() {
   return <div className="tripPage">
     <header className="tripUnifiedHeader">
-      <div className="tripUnifiedBrand"><Link className="brandBack" to={workspaceHomeHref()}><span className="logoMark">T</span><span className="backArrow">â†</span><span>My Trips</span></Link></div>
+      <div className="tripUnifiedBrand"><Link className="brandBack" to={workspaceHomeHref()}><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link></div>
       <div className="tripUnifiedCenter"><div className="tripUnifiedTitleRow"><h1>Trip not found</h1></div></div>
       <div className="tripUnifiedRight"><Account/></div>
     </header>
@@ -402,12 +411,12 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
     activeTrip: currentTrip,
     activeTripId: app.activeTripId,
   }), [app.activeTripId, currentTrip, currentUser, location.pathname])
-  // 组织者不是超级用户,只是多了几个「维护公共框架」的入口。
-  // Plan / Chat / Updates / Preferences 三种角色完全一致。
+  // The organizer is not a super-user; they only get extra controls for maintaining the shared frame.
+  // Plan, Chat, Updates, and Preferences are identical across the three roles.
   const isGuest = currentUser.role === 'guest'
   return <div className="tripPage">
     <header className="tripUnifiedHeader">
-      {/* trip 页里 logo 和「My Trips」原本是两个指向同一处的链接,合并成一个返回入口 */}
+      {/* The trip logo and My Trips used to link to the same place; merge them into one return entry. */}
       <div className="tripUnifiedBrand">
         {!navigation.contextHref
           ? <span className="brandBack" aria-label="Cadensy"><span className="logoMark">C</span><span>Cadensy</span></span>
@@ -432,8 +441,7 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
   </div>
 }
 
-/* 行程元信息胶囊。原本贴在顶栏最上方,信息又长又碎;
-   改成灵动岛式的深色胶囊,放进内容区顶部,只留最少的字。 */
+/* Trip metadata capsule. It used to sit at the top bar with long fragmented text; move it into the content area as a compact dark capsule. */
 function TripPill({ trip: t, role }) {
   const city = (t.destination || '').split(',')[0].trim()
   const dates = (t.dates || '').replace(/,?\s*\d{4}$/, '')
@@ -446,19 +454,18 @@ function TripPill({ trip: t, role }) {
     <span>{dates}</span>
     <i/>
     <span>{t.people}</span>
-    {/* 三种角色都标出来。参与者不显示标记会让人以为"没角色"，
-        而参与者恰恰是这个产品里权利最完整的默认身份。 */}
+    {/* Show all three roles. If participant has no marker, it can look role-less even though it is the default full-rights role. */}
     <><i/><span className={`pillRole role-${role}`}>{role === 'guest' ? 'Guest' : role === 'organizer' ? 'Organizer' : 'Participant'}</span></>
   </div>
 }
 
-// Guest 绑定账户:保留原 membership,不新建成员,已提交的偏好不丢
+// Guest account binding: keep the existing membership, do not create a member, and keep submitted preferences.
 function SaveToAccount() {
   const app = useTripApp()
   return <Button secondary onClick={() => app.notify('Account signup connects to the backend later — your membership and preferences carry over')}>Save to account</Button>
 }
 
-// 组织者专属。只显示「加没加入 / 交没交偏好」,永远不显示偏好内容。
+// Organizer-only. Show only joined/submitted status, never preference content.
 function MembersPage() {
   const app = useTripApp()
   const [roster, setRoster] = useState(null)
@@ -470,7 +477,7 @@ function MembersPage() {
     app.loadMembers()
       .then(data => {
         if (cancelled) return
-        // 后端只回答"交没交"，不回答"交了什么" —— 这一页永远看不到偏好内容。
+        // Backend answers only whether someone submitted, not what they submitted; this page never sees preference content.
         setRoster((data.members || []).map(member => ({
           id: member.membership_id,
           name: member.name,
@@ -532,7 +539,7 @@ function MembersPage() {
   </TripShell>
 }
 
-// 倒计时环:剩余时间占整个窗口的比例
+// Countdown ring: remaining time as a share of the full window.
 function DeadlineRing({ round, closed }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -556,7 +563,7 @@ function DeadlineRing({ round, closed }) {
   </div>
 }
 
-// 路径 B 的界面:并行表态的卡片,不是聊天
+// Path B UI: a parallel response card, not chat.
 function DecisionRoundCard({ round, compact }) {
   const app = useTripApp()
   const navigate = useNavigate()
@@ -585,7 +592,7 @@ function DecisionRoundCard({ round, compact }) {
         <h3>{closed ? `Settled: ${winner?.title}` : `This block is contested: ${round.itemTitle}`}</h3>
         <p>{closed
           ? 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
-          : isReopen ? 'No response counts as keeping the current decision, so a change needs a clear majority.' : 'The whole group weighs in at once, so this is settled in one round instead of one conversation at a time.'}</p>
+          : isReopen ? 'No response counts as keeping the current decision, so a change needs a clear majority.' : 'Vote on the option, not the person. Ideas stay anonymous while the group chooses what happens to this block.'}</p>
         {isReopen && round.reason && <p><strong>Reason:</strong> {round.reason}</p>}
       </div>
       <DeadlineRing round={round} closed={closed}/>
@@ -609,7 +616,7 @@ function DecisionRoundCard({ round, compact }) {
       })}
     </div>
     {!closed && <div className="roundFooter">
-      <span>Anonymous — nobody sees who picked what.</span>
+      <span>Anonymous — cards are choices, not members.</span>
       <div className="roundFooterActions">
         {isOrganizer && <button type="button" className="roundDiscuss" disabled={app.loading.action} onClick={extend}>{app.loading.action ? 'Extending...' : 'Extend'}</button>}
         <button type="button" className="roundDiscuss" onClick={() => navigate(tripHref(currentTrip.id, 'conflict'))}>None of these work — discuss instead</button>
@@ -721,7 +728,7 @@ function PersonalThread() {
   </section>
 }
 
-// 路径 C:只有受影响成员 + AI。除了当前用户,所有人匿名。
+// Path C: only affected members plus AI. Everyone except the current user is anonymous.
 function TradeoffThread() {
   const app = useTripApp()
   const currentTrip = useCurrentTrip()
@@ -818,8 +825,8 @@ function UpdatesPage() {
   </TripShell>
 }
 
-// 六种约束，但用户看到的是六句自己会说的话 —— 没有人需要知道 "time_window" 是什么。
-// AI 做好之后这些入口照样留着，只是多一个"直接说说看"的输入框，AI 预填参数。
+// Six constraint kinds, but users see natural wording; nobody needs to know what "time_window" means.
+// Keep these entry points after AI is ready; add a free-text input that lets AI prefill parameters.
 const CONSTRAINT_KINDS = [
   { kind: 'time_window', label: "I can't do early mornings", hint: 'Or late nights' },
   { kind: 'budget_ceiling', label: 'I have a spending limit', hint: 'A ceiling, not a target' },
@@ -903,6 +910,7 @@ function ConstraintParams({ kind, params, onChange }) {
 function PreferencesPage() {
   const app = useTripApp()
   const currentTrip = useCurrentTrip()
+  const navigate = useNavigate()
   const [form, setForm] = useState(app.preferences)
   const [constraints, setConstraints] = useState([])
   const [conflicts, setConflicts] = useState([])
@@ -911,6 +919,10 @@ function PreferencesPage() {
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!currentTrip) {
+      setLoaded(true)
+      return undefined
+    }
     let cancelled = false
     app.loadMyPreferences()
       .then(data => {
@@ -937,7 +949,7 @@ function PreferencesPage() {
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoaded(true) })
     return () => { cancelled = true }
-  }, [app.loadMyPreferences])
+  }, [app.loadMyPreferences, currentTrip])
 
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const toggleStyle = style => setForm(current => {
@@ -986,8 +998,11 @@ function PreferencesPage() {
       })
       app.submitPreferencesFor(currentTrip.id)
       app.notify('Preferences saved · shared anonymously')
+      navigate(tripHref(currentTrip.id, 'plan'), { replace: true })
     } catch { /* handled upstream */ }
   }
+
+  if (!currentTrip) return <TripShell />
 
   return <TripShell>
     <div className="preferenceWrap editorialForm">
@@ -1006,8 +1021,7 @@ function PreferencesPage() {
         <div className="wide needsPanel">
           <label>Things that are not negotiable</label>
           <p className="needsHint">Only these are checked against the plan. Anything else, say it to the group.</p>
-          {/* 隐私承诺只说一次，放在最私密的东西正上方 —— 说三遍反而像在极力保证。
-              最后半句主动说破预算那个例外：承诺得比做到的多，是最伤信任的一种错。 */}
+          {/* State the privacy promise once, directly above the most private inputs. Repeating it sounds defensive; call out the budget exception explicitly. */}
           <div className="privacyBox"><div><strong>Private by default</strong><p>Nobody sees this — not even the organizer.</p></div><Badge tone="green">Protected</Badge></div>
           {constraints.map(entry => <div className="needRow savedNeed" key={entry.id}>
             <div><strong>{labelFor(entry.kind)}</strong><small>{constraintSummary(entry)}</small><small className="needVisibility">Visible to: {visibilityLabel(entry.visibility)}</small></div>
@@ -1057,7 +1071,7 @@ function AccountPage({ section = 'profile' }) {
   const tabs = useMemo(() => buildWorkspaceNavigationModel({
     currentRoutePath: location.pathname,
     currentUser,
-    activeTrip: app.trip || trip,
+    activeTrip: app.trip || trip || null,
     activeTripId: app.activeTripId,
   }).entries, [app.activeTripId, app.trip, currentUser, location.pathname])
   const pages = {
@@ -1137,8 +1151,8 @@ function CreateTrip() {
     if (creating) return
     setCreating(true)
     try {
-      // 后端要的是这几个字段。theme / assumptions 等目前后端不存，先不传，
-      // 免得给人"填了会被用上"的错觉。
+      // Backend currently expects only these fields. It does not store theme or assumptions yet, so do not send them.
+      // Avoid implying that unused fields will affect anything.
       const created = await app.createTrip({
         name: form.name.trim(),
         destination: form.destination.trim(),
@@ -1160,7 +1174,7 @@ function CreateTrip() {
     <section className="createHero"><div><span className="roleChip">Organizer</span><h1>Create the trip frame.</h1><p>Set the destination, date window, group size, and shared assumptions. Guests add their preferences after joining.</p></div><div className="createHeroPhoto"><Badge tone="blue">New trip</Badge></div></section>
     <section className="preferenceCard createGrid createFlow">
       <div className="formChapter wide"><span>01</span><h2>Where and why</h2></div>
-      <label>Trip name<input value={form.name} placeholder="e.g. Mia's 30th in Chicago" onChange={e => set('name', e.target.value)}/></label><label>Destination<input value={form.destination} placeholder="e.g. Chicago, Illinois" onChange={e => set('destination', e.target.value)}/></label>
+      <label>Trip name<input value={form.name} placeholder="e.g. Summer city weekend" onChange={e => set('name', e.target.value)}/></label><label>Destination<input value={form.destination} placeholder="e.g. Chicago, Illinois" onChange={e => set('destination', e.target.value)}/></label>
       <label>Trip theme<input value={form.theme} placeholder="e.g. Birthday weekend" onChange={e => set('theme', e.target.value)}/></label><label>Expected group size<input type="number" min="1" value={form.groupSize} placeholder="6" onChange={e => set('groupSize', e.target.value)}/></label>
       <div className="formChapter wide"><span>02</span><h2>Date window</h2></div>
       <div className="wide dateField"><DateRangePicker value={dateRange} onChange={setDateRange}/></div>
@@ -1283,7 +1297,7 @@ function JoinInvitePage() {
     return resolveInviteJoinRoute({
       currentRoutePath: joinHref(token),
       currentUser: app.currentUser,
-      activeTrip: app.trip || trip,
+      activeTrip: app.trip || trip || null,
       activeTripId: app.activeTripId,
       membershipId: app.membershipId,
       token,

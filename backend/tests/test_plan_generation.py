@@ -650,43 +650,6 @@ def test_unsolvable_budget_blocks_without_writing_items(db: Session):
     assert db.query(PlanItem).count() == 0
 
 
-def test_blocked_api_response_currently_reports_rules_and_writes_no_items(
-    client: TestClient, api_session: Session
-):
-    setup = _make_trip(api_session, days=4, budget_ceiling=1.0)
-
-    response = client.post(
-        f"/api/trips/{setup['trip'].id}/plans/generate",
-        headers={"X-Membership-Id": setup["organizer"].id},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "blocked"
-    assert body["generated_by"] == "rules"
-    assert body["used_ai"] is False
-    assert body["planner_note"] is None
-    assert body["blocked_reason"]
-    assert body["days"] == [
-        {"day_index": 1, "day_date": setup["trip"].preferred_start_date.isoformat(), "items": []},
-        {"day_index": 2, "day_date": (setup["trip"].preferred_start_date + timedelta(days=1)).isoformat(), "items": []},
-        {"day_index": 3, "day_date": (setup["trip"].preferred_start_date + timedelta(days=2)).isoformat(), "items": []},
-        {"day_index": 4, "day_date": (setup["trip"].preferred_start_date + timedelta(days=3)).isoformat(), "items": []},
-    ]
-    assert api_session.query(PlanItem).count() == 0
-
-
-def test_blocked_reason_does_not_leak_identity(db: Session):
-    setup = _make_trip(db, days=4, budget_ceiling=1.0)
-
-    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
-
-    assert "Mia" not in result.blocked_reason
-    assert "Sam" not in result.blocked_reason
-    assert setup["organizer"].id not in result.blocked_reason
-    assert setup["participant"].id not in result.blocked_reason
-
-
 def test_single_member_budget_ceiling_does_not_block_initial_generation(db: Session):
     setup = _make_trip(db, days=4, budget_ceiling=1.0)
     participant_constraints = db.scalars(
@@ -736,6 +699,69 @@ def test_long_single_member_trip_can_reuse_places_across_days(db: Session):
             item.title for item in result.items if item.day_index == day_index
         ]
         assert len(day_titles) == len(set(day_titles))
+
+
+def test_single_member_trip_prefers_new_places_before_reusing_across_days(db: Session):
+    setup = _make_trip(db, days=5, budget_ceiling=800.0)
+    participant_constraints = db.scalars(
+        select(MemberConstraint).where(
+            MemberConstraint.trip_membership_id == setup["participant"].id
+        )
+    ).all()
+    for constraint in participant_constraints:
+        db.delete(constraint)
+    db.delete(setup["participant"])
+    db.flush()
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    day_titles = {
+        day_index: [
+            item.title for item in result.items if item.day_index == day_index
+        ]
+        for day_index in range(1, 6)
+    }
+    assert len({tuple(titles) for titles in day_titles.values()}) == 5
+    all_titles = [title for titles in day_titles.values() for title in titles]
+    assert len(all_titles) == len(set(all_titles))
+
+
+def test_blocked_api_response_currently_reports_rules_and_writes_no_items(
+    client: TestClient, api_session: Session
+):
+    setup = _make_trip(api_session, days=4, budget_ceiling=1.0)
+
+    response = client.post(
+        f"/api/trips/{setup['trip'].id}/plans/generate",
+        headers={"X-Membership-Id": setup["organizer"].id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "blocked"
+    assert body["generated_by"] == "rules"
+    assert body["used_ai"] is False
+    assert body["planner_note"] is None
+    assert body["blocked_reason"]
+    assert body["days"] == [
+        {"day_index": 1, "day_date": setup["trip"].preferred_start_date.isoformat(), "items": []},
+        {"day_index": 2, "day_date": (setup["trip"].preferred_start_date + timedelta(days=1)).isoformat(), "items": []},
+        {"day_index": 3, "day_date": (setup["trip"].preferred_start_date + timedelta(days=2)).isoformat(), "items": []},
+        {"day_index": 4, "day_date": (setup["trip"].preferred_start_date + timedelta(days=3)).isoformat(), "items": []},
+    ]
+    assert api_session.query(PlanItem).count() == 0
+
+
+def test_blocked_reason_does_not_leak_identity(db: Session):
+    setup = _make_trip(db, days=4, budget_ceiling=1.0)
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert "Mia" not in result.blocked_reason
+    assert "Sam" not in result.blocked_reason
+    assert setup["organizer"].id not in result.blocked_reason
+    assert setup["participant"].id not in result.blocked_reason
 
 
 def test_non_organizer_cannot_generate_plan(client: TestClient, api_session: Session):

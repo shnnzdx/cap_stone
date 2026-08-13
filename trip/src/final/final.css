@@ -1444,6 +1444,14 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   }
 }
 
+.changeConfirmCard .assistantChangeCompare>div,
+.changeConfirmCard .assistantChangeCompare .new{
+  background:transparent!important;
+  border:0!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+}
+
 .profileMenu{
   width:310px!important;
   padding:8px!important;
@@ -1634,8 +1642,7 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   }
 }
 
-/* ——— Preferences：六种约束的填写 ———
-   用户看到的是六句自己会说的话，不是六个类型名。 */
+/* Preferences: entering the six constraint kinds. Users see natural sentences, not type names. */
 .needsHint{margin:-4px 0 12px;color:var(--muted);font-size:12px}
 .needPicker{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
 .needPicker button{display:flex;flex-direction:column;gap:3px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left}
@@ -1656,6 +1663,32 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .savedNeed>div{display:grid;gap:2px;flex:1}
 .savedNeed small{color:var(--muted);font-size:11px;font-family:var(--font-mono,ui-monospace,monospace)}
 
+.brandLogoLink{
+  gap:12px!important;
+  line-height:0!important;
+}
+.brandLogoMark{
+  display:block;
+  width:46px;
+  height:46px;
+  object-fit:contain;
+  flex:none;
+}
+.brandLogoWordmark{
+  display:block;
+  width:132px;
+  height:auto;
+  object-fit:contain;
+  flex:none;
+}
+.editorialNav .brandLogoMark{
+  width:42px;
+  height:42px;
+}
+.editorialNav .brandLogoWordmark{
+  width:124px;
+}
+
 /* My Trips is a decision index: current plan first, actions second, archive-like rows last. */
 .homePage{
   background:
@@ -1668,8 +1701,8 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .dashboardMasthead{align-items:center!important;margin:0 0 42px!important}
 .dashboardMasthead h1{font-size:clamp(38px,4.4vw,60px)!important;font-weight:540!important;letter-spacing:-.045em!important}
 .dashboardMasthead p{max-width:560px;margin-top:9px!important;font-size:15px!important}
-.dashboardNewTrip{min-height:46px;padding:0 8px 0 18px;border-radius:999px;font-weight:650}
-.dashboardNewTrip span{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.14);font-size:17px}
+.dashboardNewTrip{min-height:46px;padding:0 22px;border-radius:999px;font-weight:650}
+.dashboardNewTrip span,.dashboardEmptyTripAction span{display:none!important}
 .dashboardSection{margin-top:38px}
 .dashboardSectionHead{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:13px;padding-bottom:10px;border-bottom:1px solid rgba(86,119,153,.13)}
 .dashboardSectionHead>span{color:var(--text-primary);font-size:12px;font-weight:720;letter-spacing:.11em;text-transform:uppercase}
@@ -1693,6 +1726,48 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .dashboardAttention .dashboardAlert b{color:var(--text-primary);font-size:12px;white-space:nowrap}
 .dashboardOthers{margin-top:48px}
 .dashboardOthers .dashboardGrid{grid-template-columns:1fr;gap:0;border-top:1px solid rgba(86,119,153,.13)}
+.dashboardEmptyTrips{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  min-height:154px;
+  margin-top:16px;
+  padding:28px 32px;
+  border:1px solid rgba(86,119,153,.14);
+  border-radius:22px;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.92),rgba(247,250,252,.78)),
+    linear-gradient(90deg,rgba(45,83,111,.06),transparent 42%);
+  box-shadow:0 18px 46px rgba(23,49,77,.06);
+}
+.dashboardEmptyTripsCopy{
+  position:relative;
+  max-width:560px;
+  padding-left:28px;
+}
+.dashboardEmptyTripsCopy:before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:5px;
+  bottom:7px;
+  width:3px;
+  border-radius:999px;
+  background:var(--text-primary);
+  opacity:.82;
+}
+.dashboardEmptyTrips h2{
+  margin:4px 0 7px;
+  font-size:clamp(24px,2.2vw,34px);
+  font-weight:560;
+  letter-spacing:-.025em;
+}
+.dashboardEmptyTrips p{
+  max-width:480px;
+  margin:0;
+  color:#6f7c8b;
+  font-size:14px;
+}
 .dashboardTripCard--compact{display:grid;grid-template-columns:136px minmax(0,1fr);min-height:126px;border:0;border-bottom:1px solid rgba(86,119,153,.13);border-radius:0;background:transparent;box-shadow:none;overflow:visible}
 .dashboardTripCard--compact:hover{border-color:rgba(86,119,153,.22);background:rgba(255,255,255,.38);box-shadow:none;transform:translateX(4px)}
 .dashboardTripCard--compact .tripPhoto{height:94px;margin:16px 0;padding:10px;border-radius:10px}
@@ -1710,6 +1785,7 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   .dashboardTripCard--featured .tripPhoto{min-height:240px}
   .dashboardTripCard--featured .dashboardTripBody{padding:30px}
   .dashboardAttentionList{grid-template-columns:1fr}
+  .dashboardEmptyTrips{align-items:flex-start;flex-direction:column;padding:24px}
   .dashboardTripCard--compact .dashboardTripBody{grid-template-columns:1fr}
   .dashboardTripCard--compact .cardFooter{grid-column:1;grid-row:auto;margin-top:13px;padding:11px 0 0;border-top:1px solid rgba(86,119,153,.13);border-left:0}
 }
@@ -1722,7 +1798,7 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   .dashboardTripCard--compact .tripPhoto{height:82px;margin:14px 0}
   .dashboardTripCard--compact .dashboardTripBody{padding:14px 0 14px 16px}
 }
-/* 撞到了什么。只报告，不自动改 —— 改行程还是放宽要求，是用户的选择。 */
+/* What it conflicts with. Report only; choosing plan edits versus relaxed requirements belongs to the user. */
 .conflictPanel{padding:16px 18px;border:1px solid #f0c894;border-radius:13px;background:var(--orangeSoft)}
 .conflictPanel>strong{display:block;margin-bottom:4px}
 .conflictPanel>p{margin:0 0 10px;font-size:12px}
@@ -1816,6 +1892,104 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   line-height:1.6!important;
 }
 
+.compactSetupHeading{
+  max-width:720px!important;
+  margin:0 auto 14px!important;
+}
+
+.compactSetupHeading h1{
+  margin:4px 0 0!important;
+  font-size:32px!important;
+}
+
+.setupCompactPanel{
+  display:grid;
+  gap:16px;
+  max-width:720px;
+  margin:0 auto;
+  padding:24px;
+  border:1px solid #dfe6ee;
+  border-radius:8px;
+  background:#fff;
+  box-shadow:0 10px 28px rgba(23,49,77,.055);
+}
+
+.setupCompactTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+
+.setupCompactTop h2{
+  margin:9px 0 3px;
+  color:var(--text-primary);
+  font-size:24px;
+  font-weight:640;
+  line-height:1.2;
+}
+
+.setupCompactTop p{
+  margin:0!important;
+  color:#6f7b8b!important;
+}
+
+.compactLead{
+  max-width:600px;
+  margin:0!important;
+  color:#6f7b8b!important;
+  font-size:15px;
+  line-height:1.55;
+}
+
+.setupCompactCount{
+  flex:none;
+  padding:6px 11px;
+  border-radius:999px;
+  background:#eef4fa;
+  color:var(--text-primary);
+  font-size:12px;
+  font-weight:760;
+}
+
+.setupCompactCount.done{
+  background:#eef7f0;
+  color:#2f6a56;
+}
+
+.setupCompactCount.blocked{
+  background:#fff3e8;
+  color:#8a4b20;
+}
+
+.compactActionRow{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:10px;
+  padding-top:2px;
+}
+
+.compactActionRow .btn{
+  min-width:150px;
+}
+
+.compactActionRow .btnGhost{
+  min-width:auto;
+  padding-left:8px;
+  padding-right:8px;
+}
+
+.compactHint{
+  margin:-2px 0 0!important;
+  color:#7b8592!important;
+  font-size:13px;
+}
+
+.compactError{
+  margin-top:0;
+}
+
 .chatLayout,
 .preferenceCard,
 .decisionCard,
@@ -1858,107 +2032,29 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
     flex-direction:column;
     align-items:flex-start!important;
   }
+
+  .setupCompactPanel{
+    padding:18px;
+  }
+
+  .setupCompactTop{
+    display:grid;
+  }
+
+  .compactActionRow{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .compactActionRow .btn{
+    width:100%;
+  }
 }
 
-.changeConfirmCard .assistantChangeCompare>div,
-.changeConfirmCard .assistantChangeCompare .new{
-  background:transparent!important;
-  border:0!important;
-  box-shadow:none!important;
-  backdrop-filter:none!important;
-}
-
-.dashboardEmptyTrips{
-  max-width:none!important;
-  margin:18px 0 0!important;
-  padding:24px 0 0!important;
-  border-top:1px solid rgba(86,119,153,.13)!important;
-}
-
-.compactSetupHeading{
-  max-width:720px!important;
-  margin:0 auto 14px!important;
-}
-
-.compactSetupHeading h1{
-  margin:4px 0 0!important;
-  font-size:32px!important;
-}
-
-.setupCompactPanel{
-  display:grid;
-  gap:16px;
-  max-width:720px;
-  margin:0 auto;
-  padding:24px;
-  border:1px solid #dfe6ee;
-  border-radius:8px;
-  background:#fff;
-}
-
-.setupCompactTop{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  gap:16px;
-  align-items:start;
-}
-
-.setupCompactTop h2{
-  margin:10px 0 6px;
-}
-
-.setupCompactTop p,
-.compactLead,
-.compactHint,
-.compactError p{
-  color:#586779;
-}
-
-.setupCompactCount{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  min-width:92px;
-  padding:10px 14px;
-  border-radius:999px;
-  background:#eef4fb;
-  color:#315f96;
-  font-size:12px;
-  font-weight:800;
-}
-
-.setupCompactCount.done{
-  background:#e8f6ef;
-  color:#226c65;
-}
-
-.setupCompactCount.blocked{
-  background:#fff1e7;
-  color:#a85c26;
-}
-
-.compactActionRow{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-}
-
-.compactHint{
-  margin:0;
-  font-size:13px;
-}
-
-.compactError{
-  display:grid;
-  gap:6px;
-  padding:14px 16px;
-  border:1px solid #f0d2be;
-  border-radius:10px;
-  background:#fff8f3;
-}
-
-.compactError strong{
-  color:#8d4e25;
+.activityIndex{
+  position:relative!important;
+  border:1px solid rgba(23,49,77,.18)!important;
+  cursor:pointer!important;
 }
 
 .activityIndex.open{
@@ -1983,12 +2079,16 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   margin-bottom:10px;
 }
 
+.itemHistoryHead strong{
+  color:var(--text-primary);
+  font-size:13px;
+  font-weight:650;
+}
+
 .itemHistoryHead span{
   color:#7b8592;
   font-size:11px;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.08em;
+  font-weight:650;
 }
 
 .itemHistoryPanel ol{
@@ -2022,16 +2122,6 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .itemHistoryPanel small{
   color:#7b8592;
   font-size:11px;
-}
-
-@media(max-width:720px){
-  .setupCompactPanel{
-    padding:18px;
-  }
-
-  .setupCompactTop{
-    grid-template-columns:1fr;
-  }
 }
 
 @media(max-width:600px){

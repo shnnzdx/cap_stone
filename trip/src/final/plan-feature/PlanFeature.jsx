@@ -21,7 +21,7 @@ const formatChangeDay = value => value
   : null
 
 const formatPlanHour = value => {
-  if (value === null || value === undefined || value === '') return '-'
+  if (value === null || value === undefined || value === '') return '—'
   const numeric = Number(value)
   const whole = Math.floor(numeric)
   const minutes = Math.round((numeric - whole) * 60)
@@ -70,7 +70,7 @@ const formatPatchValue = (key, value) => {
   if (key === 'start_hour') return formatPlanHour(value)
   if (key === 'day_date') return formatChangeDay(value) || value
   if (key === 'duration_min') return `${value} min`
-  if (value === null || value === undefined || value === '') return '-'
+  if (value === null || value === undefined || value === '') return '—'
   return String(value)
 }
 
@@ -441,7 +441,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
             onDismiss={() => actions.dismissProposal(message.id)}
           />}
         </div>)}
-        {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '-'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
+        {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
       </div>
       <div className="drawerComposer"><input ref={view.inputRef} value={view.draft} onChange={event => actions.updateDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && actions.sendMessage()} placeholder={view.placeholder}/><button aria-label="Send message" disabled={view.sending || !view.draft.trim()} onClick={actions.sendMessage}>{view.sending ? '...' : '↑'}</button></div>
@@ -497,7 +497,7 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
                   <ActivityPhoto item={item}/>
                   <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{item.title}</h3></div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div><p className="activityMeta">⌖ {item.place} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
                   <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => actions.openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
-                  {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0, 2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
+                  {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
                   {view.historyOpen === item.id && (view.changeHistory[item.id] || []).length > 0 && <div className="itemHistoryPanel">
                     <div className="itemHistoryHead"><strong>Change history</strong><span>{(view.changeHistory[item.id] || []).length} records</span></div>
                     <ol>{view.changeHistory[item.id].map(change => <li key={change.id}>
