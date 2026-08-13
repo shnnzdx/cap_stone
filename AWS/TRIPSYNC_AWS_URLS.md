@@ -43,8 +43,14 @@ https://github.com/shnnzdx/cap_stone/actions/runs/31355307955/artifacts/90504252
 Cloud Fixed Accounts Upsert workflow:
 https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-fixed-accounts-upsert.yml
 
+Cloud Fixed Accounts Upsert successful run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31662909315
+
 Cloud Demo Purge workflow:
 https://github.com/shnnzdx/cap_stone/actions/workflows/cloud-demo-purge.yml
+
+Cloud Demo Purge successful run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31663298728
 
 Backend AI Runtime Config workflow:
 https://github.com/shnnzdx/cap_stone/actions/workflows/backend-ai-runtime-config.yml

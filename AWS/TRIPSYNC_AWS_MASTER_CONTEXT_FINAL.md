@@ -2351,8 +2351,8 @@ AWS/archive/completed-phases/
 
 Historical note:
 
-As of Thursday, August 13, 2026, the cloud demo login and cloud demo seed paths
-described below were retired and replaced by:
+As of Thursday, August 13, 2026, the older cloud seeding paths were retired.
+The only current cloud data administration entry points are:
 
 ```text
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
@@ -2361,32 +2361,6 @@ AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 .github/workflows/cloud-demo-purge.yml
 ```
-
-Before that retirement, cloud demo login seeding used:
-
-```text
-AWS/CLOUD_DEMO_LOGIN_RUNBOOK.md
-.github/workflows/cloud-demo-login-upsert.yml
-```
-
-This path keeps RDS private and writes the demo organizer login through a one-off ECS task instead of direct laptop-to-RDS access.
-
-Successful cloud demo login run:
-
-```text
-https://github.com/shnnzdx/cap_stone/actions/runs/31398395569
-```
-
-Before that retirement, cloud demo dataset upsert used:
-
-```text
-AWS/CLOUD_DEMO_SEED_RUNBOOK.md
-.github/workflows/cloud-demo-seed-upsert.yml
-```
-
-This path keeps RDS private and writes the full demo trip dataset through a
-one-off ECS task instead of direct laptop-to-RDS access or destructive cloud
-reseeding.
 
 For backend AI runtime activation, use:
 

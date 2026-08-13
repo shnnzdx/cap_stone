@@ -32,6 +32,17 @@ Use `BACKEND_AI_RUNTIME_RUNBOOK.md` when the deployed backend should switch from
 `MOCK_AI=1` to a real provider and the AI runtime secret may need to be
 provisioned first.
 
+## Current Manual AWS Workflows
+
+Use only these current manual AWS operator entry points for cloud data and
+runtime administration:
+
+```text
+.github/workflows/cloud-fixed-accounts-upsert.yml
+.github/workflows/cloud-demo-purge.yml
+.github/workflows/backend-ai-runtime-config.yml
+```
+
 ## Local AWS CLI Credentials
 
 On this machine, the local operator copy of the AWS CLI credentials lives in:
