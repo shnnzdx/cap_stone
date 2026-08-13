@@ -42,6 +42,15 @@ jobs:
     environment: Main
 
     steps:
+      - name: Enforce main branch for cloud operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::This workflow may only run from the main branch. Re-run it from main."
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:

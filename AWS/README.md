@@ -43,6 +43,12 @@ runtime administration:
 .github/workflows/backend-ai-runtime-config.yml
 ```
 
+Important:
+
+- all AWS deploy and cloud-admin workflows must be dispatched from `main`
+- the workflows now hard-fail if they are started from any other branch
+- treat `main` as the only cloud release branch for this repository
+
 ## Local AWS CLI Credentials
 
 On this machine, the local operator copy of the AWS CLI credentials lives in:

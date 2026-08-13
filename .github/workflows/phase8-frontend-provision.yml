@@ -34,6 +34,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Enforce main branch for cloud deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::This workflow may only deploy from the main branch. Re-run it from main."
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:

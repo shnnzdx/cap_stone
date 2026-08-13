@@ -225,6 +225,13 @@ OPENAI_BASE_URL=https://api.deepseek.com
 OPENAI_MODEL=deepseek-v4-flash
 ```
 
+Cloud branch policy:
+
+```text
+Only main may deploy to or mutate the live AWS environment.
+All current manual cloud workflows hard-fail when dispatched from any branch other than main.
+```
+
 ## Cost Reminder
 
 The live proof can incur charges while running.
