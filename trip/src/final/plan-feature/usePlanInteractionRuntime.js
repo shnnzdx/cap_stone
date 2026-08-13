@@ -9,11 +9,21 @@ const groupCommentsByItem = rows => (rows || []).reduce((grouped, comment) => {
   return grouped
 }, {})
 
+const groupChangesByItem = rows => (rows || []).reduce((grouped, change) => {
+  if (['ai_generate', 'rule_generate', 'initial_plan'].includes(change.origin)) return grouped
+  const itemId = change.plan_item_id || change.planItemId
+  if (!itemId) return grouped
+  grouped[itemId] = [...(grouped[itemId] || []), change]
+  return grouped
+}, {})
+
 export function usePlanInteractionRuntime({ currentTrip }) {
   const app = useTripApp()
   const location = useLocation()
   const [openDays, setOpenDays] = useState(['day2'])
   const [comments, setComments] = useState({})
+  const [changeHistory, setChangeHistory] = useState({})
+  const [historyOpen, setHistoryOpen] = useState(null)
   const [commenting, setCommenting] = useState(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [commentError, setCommentError] = useState('')
@@ -81,6 +91,26 @@ export function usePlanInteractionRuntime({ currentTrip }) {
     }
   }, [app.loadComments, days.length])
 
+  useEffect(() => {
+    if (!app.loadChangeLog || !app.planId || !days.length) {
+      setChangeHistory({})
+      return undefined
+    }
+    let cancelled = false
+    const load = async () => {
+      try {
+        const rows = await app.loadChangeLog()
+        if (!cancelled) setChangeHistory(groupChangesByItem(rows))
+      } catch {
+        if (!cancelled) setChangeHistory({})
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [app.loadChangeLog, app.planId, days])
+
   const toggleDay = useCallback(id => {
     setOpenDays(current => current.includes(id) ? current.filter(x => x !== id) : [...current, id])
   }, [])
@@ -126,6 +156,12 @@ export function usePlanInteractionRuntime({ currentTrip }) {
     setMenuOpen(null)
   }, [])
 
+  const toggleHistory = useCallback(itemId => {
+    if (!(changeHistory[itemId] || []).length) return
+    setHistoryOpen(current => current === itemId ? null : itemId)
+    setMenuOpen(null)
+  }, [changeHistory])
+
   const cancelCommentComposer = useCallback(() => {
     setCommenting(null)
     setCommentDraft('')
@@ -149,6 +185,8 @@ export function usePlanInteractionRuntime({ currentTrip }) {
       railDays,
       openDays,
       comments,
+      changeHistory,
+      historyOpen,
       commenting,
       commentDraft,
       commentError,
@@ -167,6 +205,7 @@ export function usePlanInteractionRuntime({ currentTrip }) {
       showDayOnMap,
       showAllOnMap,
       toggleCommentComposer,
+      toggleHistory,
       cancelCommentComposer,
       updateCommentDraft,
       submitComment,

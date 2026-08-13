@@ -113,7 +113,8 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
         onResolvedOutcome?.({ kind: 'focus-round', itemId: targetItem.id, outcome, targetItem })
       } else {
         setPendingRedirect('Affected members need to confirm. Opening the conversation...')
-        onCommand?.({ type: 'navigate', to: tripHref((app.trip || trip).id, 'conflict'), delayMs: 850 })
+        const tripId = app.activeTripId || app.trip?.id || trip?.id
+        if (tripId) onCommand?.({ type: 'navigate', to: tripHref(tripId, 'conflict'), delayMs: 850 })
       }
     } catch (err) {
       const applyError = err.status === 409

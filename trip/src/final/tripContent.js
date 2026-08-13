@@ -3,7 +3,6 @@ import {
   demoGuestDraft,
   demoInitialComments,
   demoInitialDays,
-  demoOtherTrips,
   demoPersonalUpdates,
   demoRouteSegments,
   demoTrip,
@@ -11,18 +10,19 @@ import {
   demoTripStyles,
 } from "../../../shared/tripsync-demo-data.js";
 
-export const tripMembers = demoTripMembers;
+export const demoDataEnabled = import.meta.env.VITE_ENABLE_DEMO_DATA === "1";
 
-export const trip = {
+export const tripMembers = demoDataEnabled ? demoTripMembers : [];
+
+export const trip = demoDataEnabled ? {
   ...demoTrip,
   id: import.meta.env.VITE_TRIP_ID || demoTrip.id,
-};
+} : null;
 
-export const otherTrips = demoOtherTrips;
-export const initialDays = demoInitialDays;
-export const routeSegments = demoRouteSegments;
+export const initialDays = demoDataEnabled ? demoInitialDays : [];
+export const routeSegments = demoDataEnabled ? demoRouteSegments : [];
 export const tripStyles = demoTripStyles;
-export const baseUpdates = demoBaseUpdates;
-export const personalUpdates = demoPersonalUpdates;
-export const initialComments = demoInitialComments;
-export const guestDraft = demoGuestDraft;
+export const baseUpdates = demoDataEnabled ? demoBaseUpdates : [];
+export const personalUpdates = demoDataEnabled ? demoPersonalUpdates : [];
+export const initialComments = demoDataEnabled ? demoInitialComments : {};
+export const guestDraft = demoDataEnabled ? demoGuestDraft : { name: "", email: "" };

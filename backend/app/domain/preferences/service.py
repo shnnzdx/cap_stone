@@ -25,6 +25,7 @@ from ...db.models import (
     Plan,
     PlanItem,
     Preference,
+    Trip,
     TripMembership,
     User,
 )
@@ -48,6 +49,10 @@ class NotYours(Exception):
 
 class UnknownConstraintKind(Exception):
     """只有六种。填不进去的,系统会老实说保护不了,而不是硬塞一个。"""
+
+
+class PreferenceDateOutOfTripRange(Exception):
+    """Preference dates must stay within the trip date window."""
 
 
 def _now() -> datetime:
@@ -148,6 +153,7 @@ class PreferenceData:
 def save_mine(
     db: Session, membership: TripMembership, data: PreferenceData
 ) -> dict:
+    _validate_preference_dates(db, membership, data)
     pref = db.scalar(
         select(Preference).where(Preference.trip_membership_id == membership.id)
     )
@@ -172,6 +178,34 @@ def save_mine(
     membership.status = "preferences_submitted"
     db.flush()
     return read_mine(db, membership)
+
+
+def _validate_preference_dates(
+    db: Session, membership: TripMembership, data: PreferenceData
+) -> None:
+    trip = db.get(Trip, membership.trip_id)
+    if trip is None:
+        return
+
+    ranges = (
+        ("preferred dates", data.preferred_start_date, data.preferred_end_date),
+        ("available dates", data.available_start_date, data.available_end_date),
+    )
+    for label, start, end in ranges:
+        if start is not None and end is not None and end < start:
+            raise PreferenceDateOutOfTripRange(f"{label} must end on or after they start")
+
+    if trip.preferred_start_date is None or trip.preferred_end_date is None:
+        return
+
+    for label, start, end in ranges:
+        for value in (start, end):
+            if value is None:
+                continue
+            if value < trip.preferred_start_date or value > trip.preferred_end_date:
+                raise PreferenceDateOutOfTripRange(
+                    f"{label} must stay within the trip date window"
+                )
 
 
 # ————————————————————— 六种约束的增删改 —————————————————————

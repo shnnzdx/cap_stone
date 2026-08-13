@@ -644,6 +644,116 @@ def test_submit_change_access_is_scoped_to_plan_item(
     assert item_b.start_hour == 14.0
 
 
+def test_submit_change_with_day_date_writes_json_safe_plan_change(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    _, item = _plan_item(api_session, trip)
+    new_day = (item.day_date + timedelta(days=1)).isoformat()
+
+    response = client.post(
+        f"/api/plans/items/{item.id}/changes",
+        headers={"X-Membership-Id": membership.id},
+        json={"day_date": new_day, "request": "Move this to the next day"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "notice"
+    api_session.refresh(item)
+    assert item.day_date.isoformat() == new_day
+    change = api_session.scalars(
+        select(PlanChange).where(PlanChange.plan_item_id == item.id)
+    ).one()
+    assert change.patch["day_date"] == new_day
+
+
+def test_submit_change_with_day_date_moves_item_to_matching_day_index(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    trip.preferred_start_date = date(2026, 8, 19)
+    trip.preferred_end_date = date(2026, 8, 20)
+    plan = Plan(trip_id=trip.id)
+    api_session.add(plan)
+    api_session.flush()
+    first_day = PlanItem(
+        plan_id=plan.id,
+        day_index=1,
+        day_date=date(2026, 8, 19),
+        start_hour=9.0,
+        title="First day coffee",
+        place="Cafe",
+    )
+    moved = PlanItem(
+        plan_id=plan.id,
+        day_index=2,
+        day_date=date(2026, 8, 20),
+        start_hour=14.0,
+        title="Logan Square walk",
+        place="Logan Square",
+    )
+    api_session.add_all([first_day, moved])
+    api_session.flush()
+
+    response = client.post(
+        f"/api/plans/items/{moved.id}/changes",
+        headers={"X-Membership-Id": membership.id},
+        json={"day_date": "2026-08-19", "request": "Move this to August 19"},
+    )
+
+    assert response.status_code == 200
+    api_session.refresh(moved)
+    assert moved.day_date == date(2026, 8, 19)
+    assert moved.day_index == 1
+    plan_response = client.get(
+        f"/api/trips/{trip.id}/plans/current",
+        headers={"X-Membership-Id": membership.id},
+    )
+    assert plan_response.status_code == 200
+    days = plan_response.json()["days"]
+    assert [day["day_index"] for day in days] == [1]
+    assert {item["title"] for item in days[0]["items"]} == {
+        "First day coffee",
+        "Logan Square walk",
+    }
+
+
+def test_current_plan_reports_canonical_day_dates_from_trip_window(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    trip.preferred_start_date = date(2026, 8, 19)
+    trip.preferred_end_date = date(2026, 8, 20)
+    plan = Plan(trip_id=trip.id)
+    api_session.add(plan)
+    api_session.flush()
+    api_session.add(
+        PlanItem(
+            plan_id=plan.id,
+            day_index=2,
+            day_date=date(2026, 8, 19),
+            start_hour=10.0,
+            title="Shedd Aquarium",
+            place="Museum Campus",
+        )
+    )
+    api_session.flush()
+
+    response = client.get(
+        f"/api/trips/{trip.id}/plans/current",
+        headers={"X-Membership-Id": membership.id},
+    )
+
+    assert response.status_code == 200
+    day = response.json()["days"][0]
+    assert day["day_index"] == 2
+    assert day["day_date"] == "2026-08-20"
+    assert day["items"][0]["day_date"] == "2026-08-19"
+
+
 def test_item_comment_access_is_scoped_to_plan_item(
     client: TestClient, api_session: Session
 ):
@@ -972,6 +1082,9 @@ def test_preference_dates_are_saved_and_read_back(
     trip, membership = _trip_with_member(api_session, user)
     start = date.today() + timedelta(days=30)
     end = start + timedelta(days=3)
+    trip.preferred_start_date = start
+    trip.preferred_end_date = end
+    api_session.flush()
 
     saved = client.put(
         f"/api/trips/{trip.id}/preferences/me",
@@ -979,8 +1092,8 @@ def test_preference_dates_are_saved_and_read_back(
         json={
             "preferred_start_date": start.isoformat(),
             "preferred_end_date": end.isoformat(),
-            "available_start_date": (start - timedelta(days=1)).isoformat(),
-            "available_end_date": (end + timedelta(days=1)).isoformat(),
+            "available_start_date": start.isoformat(),
+            "available_end_date": end.isoformat(),
         },
     )
     assert saved.status_code == 200
@@ -988,15 +1101,44 @@ def test_preference_dates_are_saved_and_read_back(
     row = api_session.scalar(select(Preference).where(Preference.trip_membership_id == membership.id))
     assert row.preferred_start_date == start
     assert row.preferred_end_date == end
-    assert row.available_start_date == start - timedelta(days=1)
-    assert row.available_end_date == end + timedelta(days=1)
+    assert row.available_start_date == start
+    assert row.available_end_date == end
 
     body = client.get(
         f"/api/trips/{trip.id}/preferences/me",
         headers={"X-Membership-Id": membership.id},
     ).json()
     assert body["preference"]["preferred_start_date"] == start.isoformat()
-    assert body["preference"]["available_end_date"] == (end + timedelta(days=1)).isoformat()
+    assert body["preference"]["available_end_date"] == end.isoformat()
+
+
+def test_preference_dates_outside_trip_window_are_rejected_for_any_role(
+    client: TestClient, api_session: Session
+):
+    organizer_user = _user(api_session, "Mia")
+    trip, organizer = _trip_with_member(api_session, organizer_user, role="organizer")
+    participant = _add_member(api_session, trip, "Sam")
+    start = date.today() + timedelta(days=30)
+    end = start + timedelta(days=3)
+    trip.preferred_start_date = start
+    trip.preferred_end_date = end
+    api_session.flush()
+
+    for membership in (organizer, participant):
+        response = client.put(
+            f"/api/trips/{trip.id}/preferences/me",
+            headers={"X-Membership-Id": membership.id},
+            json={
+                "preferred_start_date": (start - timedelta(days=1)).isoformat(),
+                "preferred_end_date": end.isoformat(),
+                "available_start_date": start.isoformat(),
+                "available_end_date": (end + timedelta(days=1)).isoformat(),
+            },
+        )
+
+        assert response.status_code == 422
+
+    assert api_session.scalars(select(Preference)).all() == []
 
 
 def test_foreign_preference_path_is_rejected_instead_of_using_my_trip(
@@ -1145,6 +1287,39 @@ def test_round_vote_and_settle_routes_are_trip_scoped(
     api_session.refresh(round_b)
     assert round_a.status == "closed"
     assert round_b.status == "open"
+
+
+def test_round_auto_settles_when_every_member_has_voted(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, member = _trip_with_member(api_session, user, name="Trip A")
+    _, item, round_, _ = _round_and_proposal(api_session, trip, member)
+    round_.options = [
+        {"id": "keep", "label": "Keep current", "title": item.title},
+        {
+            "id": "requested",
+            "label": "Suggested change",
+            "title": "Move to 3 AM",
+            "patch": {"start_hour": 3.0},
+        },
+        {"id": "split", "label": "Split up", "title": "Split for this block"},
+    ]
+    api_session.flush()
+
+    vote = client.post(
+        f"/api/rounds/{round_.id}/votes",
+        headers={"X-Membership-Id": member.id},
+        json={"option_id": "requested"},
+    )
+
+    assert vote.status_code == 200
+    assert vote.json()["status"] == "closed"
+    assert vote.json()["winning_option_id"] == "requested"
+    api_session.refresh(round_)
+    api_session.refresh(item)
+    assert round_.status == "closed"
+    assert item.start_hour == 3.0
 
 
 def test_round_extend_route_is_trip_scoped_and_keeps_organizer_policy(

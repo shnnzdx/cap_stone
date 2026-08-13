@@ -31,7 +31,7 @@ function resolveRestoration(overrides = {}) {
   });
 }
 
-test("phase 9 restoration uses the restored trip as a policy intent instead of leaving home as the implicit winner", () => {
+test("account restoration leaves the My Trips dashboard as the login landing page", () => {
   const resolution = resolveRestoration({
     tripSummaries: [
       { id: "t1", status: "Planning", my_role: "participant" },
@@ -40,13 +40,14 @@ test("phase 9 restoration uses the restored trip as a policy intent instead of l
     explain: true,
   });
 
-  assert.equal(resolution.disposition, "redirect");
-  assert.equal(resolution.destinationHref, "/trip/t1/plan");
-  assert.equal(resolution.diagnostics?.acceptedCode, "restored-selection-accepted");
+  assert.equal(resolution.disposition, "allow");
+  assert.equal(resolution.destinationHref, "/");
+  assert.equal(resolution.diagnostics?.acceptedCode, "current-route-allowed");
 });
 
-test("phase 9 restoration keeps a valid restored trip eligible even when multiple memberships exist", () => {
+test("phase 9 restoration keeps a valid restored trip eligible when the current route is already that trip", () => {
   const resolution = resolveRestoration({
+    currentRoutePath: "/trip/t1/plan",
     tripSummaries: [
       { id: "t1", status: "Planning", my_role: "participant" },
       { id: "t2", status: "Traveling", my_role: "participant" },
@@ -55,7 +56,7 @@ test("phase 9 restoration keeps a valid restored trip eligible even when multipl
     explain: true,
   });
 
-  assert.equal(resolution.disposition, "redirect");
+  assert.equal(resolution.disposition, "allow");
   assert.equal(resolution.destinationHref, "/trip/t1/plan");
   assert.equal(resolution.diagnostics?.acceptedCode, "restored-selection-accepted");
 });
@@ -82,8 +83,9 @@ test("phase 9 restoration rejects stale restored selections through policy when 
   assert.equal(resolution.diagnostics?.rejectedIntents?.[0]?.code, "stale-restored-selection");
 });
 
-test("phase 9 restoration preserves unknown trip state as a valid restored-selection input", () => {
+test("phase 9 restoration preserves unknown trip state when the current route is already the restored trip", () => {
   const resolution = resolveRestoration({
+    currentRoutePath: "/trip/t1/plan",
     tripSummaries: [
       { id: "t1", my_role: "participant" },
     ],
@@ -93,7 +95,7 @@ test("phase 9 restoration preserves unknown trip state as a valid restored-selec
     explain: true,
   });
 
-  assert.equal(resolution.disposition, "redirect");
+  assert.equal(resolution.disposition, "allow");
   assert.equal(resolution.destinationHref, "/trip/t1/plan");
   assert.equal(resolution.diagnostics?.acceptedCode, "restored-selection-accepted");
 });

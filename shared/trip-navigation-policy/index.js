@@ -123,7 +123,6 @@ function resolveDestination(input, options = {}) {
   const candidates = [
     buildInviteCandidate(input),
     buildReturnTargetCandidate(input),
-    buildRestoredSelectionCandidate(input),
   ].filter(Boolean);
 
   for (const candidate of candidates) {
@@ -147,6 +146,38 @@ function resolveDestination(input, options = {}) {
   }
 
   const currentRouteResult = evaluateCurrentRoute(input);
+  if (currentRouteResult.valid && shouldPreferCurrentRouteBeforeRestoration(input)) {
+    diagnostics.acceptedIntent = "current-route";
+    diagnostics.acceptedCode = currentRouteResult.code;
+    diagnostics.fallbackApplied = false;
+    return finalizeResolution(
+      currentRouteResult.destination,
+      input.intent.currentRoute,
+      diagnostics,
+      options,
+    );
+  }
+
+  const restoredSelectionCandidate = buildRestoredSelectionCandidate(input);
+  if (restoredSelectionCandidate) {
+    if (restoredSelectionCandidate.valid) {
+      diagnostics.acceptedIntent = restoredSelectionCandidate.intent;
+      diagnostics.acceptedCode = restoredSelectionCandidate.code;
+      diagnostics.fallbackApplied = false;
+      return finalizeResolution(
+        restoredSelectionCandidate.destination,
+        input.intent.currentRoute,
+        diagnostics,
+        options,
+      );
+    }
+    diagnostics.rejectedIntents.push({
+      intent: restoredSelectionCandidate.intent,
+      code: restoredSelectionCandidate.code,
+      ...(restoredSelectionCandidate.detailCode ? { detailCode: restoredSelectionCandidate.detailCode } : {}),
+    });
+  }
+
   if (currentRouteResult.valid) {
     diagnostics.acceptedIntent = "current-route";
     diagnostics.acceptedCode = currentRouteResult.code;
@@ -175,6 +206,15 @@ function resolveDestination(input, options = {}) {
     diagnostics,
     options,
   );
+}
+
+function shouldPreferCurrentRouteBeforeRestoration(input) {
+  const route = input.intent.currentRoute;
+  if (!route) return false;
+  if (route.kind !== "home" && route.kind !== "create-trip" && route.kind !== "account") {
+    return false;
+  }
+  return hasAccountBackedMembership(reachableMembershipEntries(input.relevantTripsById));
 }
 
 /**

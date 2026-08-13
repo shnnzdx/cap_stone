@@ -1,6 +1,144 @@
 {
   "version": 1,
   "skills": {
+    "amazon-bedrock": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/amazon-bedrock/SKILL.md",
+      "computedHash": "375d6953fccac5a156dbe3d0d235f5b4baffa9f176370c7fea88a1d2e264550c"
+    },
+    "aws-ai-ml": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-ai-ml/SKILL.md",
+      "computedHash": "26bf7310247503b66a98429328d084d94fe7ab74fd8448877465621ab7208bc2"
+    },
+    "aws-auth": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-auth/SKILL.md",
+      "computedHash": "030a0ca8658f990df39312a1e48983aae3906146a3c82f48957a0f5ad7eb3fb7"
+    },
+    "aws-billing-and-cost-management": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-billing-and-cost-management/SKILL.md",
+      "computedHash": "cbb10c60f94ef9f28615622e8d05884e51e370bec8c80e2df568ad0cfb3bee0a"
+    },
+    "aws-blocks": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-blocks/SKILL.md",
+      "computedHash": "ea1c043e6e4de72a6efa09f29881881d36ff4d435b8bdbf5446e48b9463f0c6f"
+    },
+    "aws-cdk": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-cdk/SKILL.md",
+      "computedHash": "8420503ad38a5c30e577b5919fca7b5116d1892137ccc32f84a633621d1b2a2c"
+    },
+    "aws-cloudformation": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-cloudformation/SKILL.md",
+      "computedHash": "869ad40b5876591e41c87f49613e3ea2ed52ea48dbc5c435bbc70134a0157d39"
+    },
+    "aws-compute": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-compute/SKILL.md",
+      "computedHash": "af2631ca41b66bdfa14a1c48fea6dfdd8aa1c2261f075c21a2a0dd05ead88567"
+    },
+    "aws-containers": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-containers/SKILL.md",
+      "computedHash": "21a74dcf5fd73d247972e31bbc2cd7faeaf67e89f9df65c7ca0aba5cef622588"
+    },
+    "aws-database": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-database/SKILL.md",
+      "computedHash": "4e4c7ecb5c6589562031239a38172f4641f3f2f54f55c7936d26f87d1ecd491a"
+    },
+    "aws-deployment": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-deployment/SKILL.md",
+      "computedHash": "a2280e9058305e4c82ac36ee6e2b2dc7cdc3ba073793acae64ee877aa70d288b"
+    },
+    "aws-iam": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-iam/SKILL.md",
+      "computedHash": "c9ab01f7ce5f253f79082fed85aa810738700437d005f84d5fd918a573942cbc"
+    },
+    "aws-messaging-and-streaming": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-messaging-and-streaming/SKILL.md",
+      "computedHash": "8c4d0cc8a49bf96429cc9c36ac75d40f8296ec2c5d2b146fe910e4bcaff41a9a"
+    },
+    "aws-networking": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-networking/SKILL.md",
+      "computedHash": "c8c32736d1112912434a8809de0d5efd6c4df1ba43b3be19f20e176c8fdbc678"
+    },
+    "aws-observability": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-observability/SKILL.md",
+      "computedHash": "8db0e3d02e027703863827dddf04cf7305ff7ea93c98065443964d256cd74062"
+    },
+    "aws-sdk-js-v3-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-js-v3-usage/SKILL.md",
+      "computedHash": "ca541bb9a31c92b48237a48b7128ee7f6ac83bc978ace3b8d6fbfc2ef42dcf55"
+    },
+    "aws-sdk-python-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-python-usage/SKILL.md",
+      "computedHash": "cd923292daf31a95cb016ca556a1adc50411772e5b3477b9af87f555bdfa5a8b"
+    },
+    "aws-sdk-swift-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-swift-usage/SKILL.md",
+      "computedHash": "e483d03096afc0158e4b1c1bf497957de74484b3d0471d96f67ccc66f2c2c529"
+    },
+    "aws-secrets-manager": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "plugins/aws-core/skills/aws-secrets-manager/SKILL.md",
+      "computedHash": "09688090c95eb14a0ad0d209e8957abf448d59511afba4d3369834dc1bdc4722"
+    },
+    "aws-security": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-security/SKILL.md",
+      "computedHash": "3d76ac36fe9543b7aeebe0ec332bdc1d58291f41d09030a99598941de375f646"
+    },
+    "aws-serverless": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-serverless/SKILL.md",
+      "computedHash": "1f32c27406a0a90077f24dedf5742ef6e527070f21019809694b0b6bc58cf023"
+    },
+    "launch-with-aws": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/launch-with-aws/SKILL.md",
+      "computedHash": "61729a81fb9f0a09745c1212dfa80ecdb4d919d98c3cb0120d62c8222bac521c"
+    },
+    "signing-in-to-aws": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/signing-in-to-aws/SKILL.md",
+      "computedHash": "28d48ab49c2620553274ecb421a8816b961f2e114c90511f8b93ac6ff1997606"
+    },
     "brandkit": {
       "source": "Leonxlnx/taste-skill",
       "sourceType": "github",

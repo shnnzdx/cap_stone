@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { baseUpdates as fallbackBaseUpdates, initialDays as fallbackDays, personalUpdates as fallbackPersonalUpdates, trip as fallbackTrip } from './tripContent.js'
+import { baseUpdates as fallbackBaseUpdates, demoDataEnabled, initialDays as fallbackDays, personalUpdates as fallbackPersonalUpdates, trip as fallbackTrip } from './tripContent.js'
 import { restoreTripAppBootstrapState } from './technicalSessionBootstrap.js'
 import { createSessionRuntime, SESSION_RUNTIME_CODES } from '../../../shared/session-runtime/index.js'
 import { classifyTechnicalSessionInvalidation } from './technicalSessionInvalidation.js'
@@ -13,6 +13,18 @@ const TRIP_ID = import.meta.env.VITE_TRIP_ID
 const MEMBERSHIP_ID = import.meta.env.VITE_MEMBERSHIP_ID
 const DEV_ALLOW_MEMBERSHIP_HEADER = import.meta.env.VITE_DEV_ALLOW_MEMBERSHIP_HEADER === '1'
 const loginUrl = () => `${window.location.origin}/login?next=/trip`
+
+const emptyPreferences = {
+  preferredRange: { start: null, end: null },
+  availableRange: { start: null, end: null },
+  idealBudget: '',
+  maxBudget: '',
+  budgetVisibility: 'planning',
+  pace: 'Balanced',
+  interests: [],
+  essentialNeeds: [],
+  avoid: '',
+}
 
 const makeDefaultDate = (month, day) => new Date(2026, month, day)
 
@@ -47,13 +59,22 @@ const titleForDay = items => {
   return `${items[0].title} and ${items[items.length - 1].title}`
 }
 
+const formatTripDateRange = raw => {
+  const start = raw.preferred_start_date ? formatDayDate(raw.preferred_start_date) : ''
+  const end = raw.preferred_end_date ? formatDayDate(raw.preferred_end_date) : ''
+  if (start && end) return `${start} - ${end}`
+  return start || end || ''
+}
+
 const normalizeTrip = raw => ({
-  ...fallbackTrip,
   id: raw.id,
-  name: raw.name,
-  destination: raw.destination,
-  status: raw.status?.replace(/^\w/, c => c.toUpperCase()) || fallbackTrip.status,
-  people: raw.member_count || fallbackTrip.people,
+  name: raw.name || 'Untitled trip',
+  destination: raw.destination || 'Destination not set',
+  dates: raw.dates || formatTripDateRange(raw),
+  status: raw.status?.replace(/^\w/, c => c.toUpperCase()) || 'Planning',
+  people: raw.member_count || 1,
+  onboarding: raw.onboarding || {},
+  organizerPreference: raw.organizerPreference || raw.organizer_preference || null,
 })
 
 const normalizeItem = item => ({
@@ -80,10 +101,11 @@ const normalizePlan = raw => {
   const days = raw.days || []
   return days.map(day => {
     const items = (day.items || []).map(normalizeItem)
+    const dayDate = day.day_date || items[0]?.dayDate
     return {
       id: `day${day.day_index}`,
       label: `Day ${day.day_index}`,
-      date: formatDayDate(items[0]?.dayDate),
+      date: formatDayDate(dayDate),
       title: titleForDay(items),
       summary: `${items.length} activities`,
       items,
@@ -269,6 +291,7 @@ export function TripAppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [days, setDays] = useState(fallbackDays)
   const [planId, setPlanId] = useState(null)
+  const [planBlockedReason, setPlanBlockedReason] = useState('')
   const [notices, setNotices] = useState([])
   const [baseUpdates, setBaseUpdates] = useState(fallbackBaseUpdates)
   const [personalUpdates] = useState(fallbackPersonalUpdates)
@@ -285,7 +308,7 @@ export function TripAppProvider({ children }) {
   const [tripSummariesStatus, setTripSummariesStatus] = useState(() => (bootstrapSession.hasAccountSession ? 'idle' : 'not-needed'))
   const [inviteCopied, setInviteCopied] = useState(false)
   const [preferencesSubmittedFor, setPreferencesSubmittedFor] = useState([])
-  const [preferences, setPreferences] = useState({
+  const [preferences, setPreferences] = useState(() => demoDataEnabled ? {
     preferredRange: { start: makeDefaultDate(7, 14), end: makeDefaultDate(7, 17) },
     availableRange: { start: makeDefaultDate(7, 13), end: makeDefaultDate(7, 18) },
     idealBudget: '$500',
@@ -297,7 +320,7 @@ export function TripAppProvider({ children }) {
       { id: 'need-1', text: 'No activities before 9:00 AM', importance: 'required', visibility: 'planning' },
     ],
     avoid: 'Very crowded nightlife venues',
-  })
+  } : emptyPreferences)
   const pollTimerRef = useRef(null)
   const pollFailuresRef = useRef(0)
   const pollDelayRef = useRef(5000)
@@ -306,6 +329,17 @@ export function TripAppProvider({ children }) {
     membershipId,
     activeTripId,
   }), [activeTripId, hasAccountSession, membershipId])
+
+  const resolveActiveTripId = useCallback(() => {
+    const tripId = activeTripId || trip?.id
+    if (!tripId) {
+      throw missingContextError(
+        'Missing trip session',
+        SESSION_RUNTIME_CODES.missingContext.MISSING_ACTIVE_TRIP_CONTEXT,
+      )
+    }
+    return tripId
+  }, [activeTripId, trip?.id])
 
   const notify = useCallback(message => {
     setToast(message)
@@ -415,7 +449,9 @@ export function TripAppProvider({ children }) {
   const refreshTrip = useCallback(async () => {
     if (!activeTripId) throw new Error('Missing trip session')
     const raw = await requestJson(`/api/trips/${activeTripId}`)
-    setTrip(normalizeTrip(raw))
+    const normalizedTrip = normalizeTrip(raw)
+    setTrip(normalizedTrip)
+    setTrips(current => current.map(item => item.id === normalizedTrip.id ? normalizedTrip : item))
     return raw
   }, [activeTripId, requestJson])
 
@@ -430,11 +466,13 @@ export function TripAppProvider({ children }) {
     try {
       const raw = await requestJson(`/api/trips/${activeTripId}/plans/current`)
       setPlanId(raw.plan_id)
+      setPlanBlockedReason(raw.blocked_reason || '')
       setDays(normalizePlan(raw))
       return raw
     } catch (err) {
       if (err.status === 404) {
         setPlanId(null)
+        setPlanBlockedReason('')
         setDays([])
         return null
       }
@@ -625,7 +663,16 @@ export function TripAppProvider({ children }) {
         method: 'POST',
         body: JSON.stringify(payload),
       })
-      setTrips(current => [{ ...created, isCreated: true }, ...current])
+      const normalizedTrip = normalizeTrip(created)
+      setTrip(normalizedTrip)
+      setPlanId(null)
+      setPlanBlockedReason('')
+      setDays([])
+      setNotices([])
+      setBaseUpdates([])
+      setActiveRounds([])
+      setActiveProposals([])
+      setTrips(current => [normalizedTrip, ...current.filter(item => item.id !== normalizedTrip.id)])
       // 你在新 trip 里是另一个 membership。不切过去的话，
       // 邀请、生成、偏好全都会因为"身份属于别的旅行"被拒。
       if (created.membership_id) {
@@ -643,6 +690,9 @@ export function TripAppProvider({ children }) {
           },
         })
       }
+      if (hasAccountSession) {
+        refreshTripSummaries().catch(() => setTripSummariesStatus('failed'))
+      }
       return created
     } catch (err) {
       setError(friendlyError(err))
@@ -650,7 +700,7 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [accountRequestJson, adoptTechnicalTripContext, currentUser])
+  }, [accountRequestJson, adoptTechnicalTripContext, currentUser, hasAccountSession, refreshTripSummaries])
 
   const createInvite = useCallback(async tripId => {
     return requestJson(`/api/trips/${tripId}/invite`, { method: 'POST' })
@@ -708,12 +758,12 @@ export function TripAppProvider({ children }) {
   // 路径里没有"别人"这个位置 —— 后端也一样，想读别人的得先改 URL 设计。
 
   const loadMyPreferences = useCallback(async () => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     return requestJson(`/api/trips/${tripId}/preferences/me`)
-  }, [activeTripId, requestJson, trip.id])
+  }, [requestJson, resolveActiveTripId])
 
   const saveMyPreferences = useCallback(async payload => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     setLoading(current => ({ ...current, action: true }))
     try {
       const saved = await requestJson(`/api/trips/${tripId}/preferences/me`, {
@@ -737,7 +787,19 @@ export function TripAppProvider({ children }) {
         pace: pref.travel_style || current.pace,
         interests: pref.top_interests?.length ? pref.top_interests : current.interests,
       }))
-      await refreshCurrentUser()
+      await Promise.all([
+        refreshCurrentUser(),
+        refreshTrip(),
+        refreshPlan(),
+        refreshUpdates(),
+        refreshActions(),
+        hasAccountSession
+          ? refreshTripSummaries().catch(() => {
+            setTripSummariesStatus('failed')
+            return null
+          })
+          : Promise.resolve([]),
+      ])
       return saved
     } catch (err) {
       setError(friendlyError(err))
@@ -745,17 +807,17 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [activeTripId, refreshCurrentUser, requestJson, trip.id])
+  }, [hasAccountSession, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates, requestJson, resolveActiveTripId])
 
   // 加一条约束会返回 conflicts —— 它撞到了哪几项安排。
   // 后端只报告，不自动改行程：用户可能宁愿放宽自己的要求，那是他的选择。
   const addConstraint = useCallback(async payload => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     return requestJson(`/api/trips/${tripId}/constraints`, {
       method: 'POST',
       body: JSON.stringify(payload),
     })
-  }, [activeTripId, requestJson, trip.id])
+  }, [requestJson, resolveActiveTripId])
 
   const updateConstraint = useCallback(async (constraintId, payload) =>
     requestJson(`/api/constraints/${constraintId}`, {
@@ -768,14 +830,19 @@ export function TripAppProvider({ children }) {
     [requestJson])
 
   const loadMembers = useCallback(async () => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     return requestJson(`/api/trips/${tripId}/members`)
-  }, [activeTripId, requestJson, trip.id])
+  }, [requestJson, resolveActiveTripId])
 
   const loadComments = useCallback(async () => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     return requestJson(`/api/trips/${tripId}/comments`)
-  }, [activeTripId, requestJson, trip.id])
+  }, [requestJson, resolveActiveTripId])
+
+  const loadChangeLog = useCallback(async () => {
+    if (!planId) return []
+    return requestJson(`/api/plans/${planId}/changes`)
+  }, [planId, requestJson])
 
   const addComment = useCallback(async (itemId, text) => {
     setLoading(current => ({ ...current, action: true }))
@@ -816,7 +883,7 @@ export function TripAppProvider({ children }) {
   }, [notify, refreshPlan, refreshUpdates, requestJson])
 
   const generatePlan = useCallback(async () => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
@@ -826,12 +893,12 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [activeTripId, refreshActions, refreshPlan, refreshTrip, refreshUpdates, requestJson, trip.id])
+  }, [refreshActions, refreshPlan, refreshTrip, refreshUpdates, requestJson, resolveActiveTripId])
 
   const remindMember = useCallback(async targetMembershipId => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     return requestJson(`/api/trips/${tripId}/members/${targetMembershipId}/remind`, { method: 'POST' })
-  }, [activeTripId, requestJson, trip.id])
+  }, [requestJson, resolveActiveTripId])
 
   const extendRound = useCallback(async roundId => {
     setLoading(current => ({ ...current, action: true }))
@@ -880,7 +947,7 @@ export function TripAppProvider({ children }) {
   }, [refreshActions, refreshPlan, refreshUpdates, requestJson])
 
   const chatWithTrip = useCallback(async ({ message, itemId, history = [] }) => {
-    const tripId = activeTripId || trip.id
+    const tripId = resolveActiveTripId()
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
@@ -900,7 +967,7 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [activeTripId, notify, requestJson, trip.id])
+  }, [notify, requestJson, resolveActiveTripId])
 
   const handleOutcome = useCallback(async (outcome, item) => {
     if (outcome.round_id) {
@@ -979,6 +1046,9 @@ export function TripAppProvider({ children }) {
       const existing = activeRounds.find(round => round.id === roundId)
       const normalized = normalizeRound(raw, { ...myVotes, [roundId]: optionId }, existing)
       setActiveRounds(current => [normalized, ...current.filter(round => round.id !== normalized.id)])
+      if (normalized.status === 'closed') {
+        await refreshAll({ background: true })
+      }
       return normalized
     } catch (err) {
       setError(err.message || 'Could not vote')
@@ -986,7 +1056,7 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [activeRounds, myVotes, requestJson])
+  }, [activeRounds, myVotes, refreshAll, requestJson])
 
   const resolveProposal = useCallback(async (proposalId, status = 'accepted') => {
     setLoading(current => ({ ...current, action: true }))
@@ -1025,7 +1095,7 @@ export function TripAppProvider({ children }) {
   const activeProposal = activeProposals.find(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)) || activeProposals[0] || null
 
   const value = useMemo(() => ({
-    trip, currentUser, days, planId,
+    trip, currentUser, days, planId, planBlockedReason,
     hasAccountSession,
     membershipId,
     activeTripId,
@@ -1082,12 +1152,13 @@ export function TripAppProvider({ children }) {
     deleteConstraint,
     loadMembers,
     loadComments,
+    loadChangeLog,
     addComment,
     setItemBooked,
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planId, loadMembers, loadComments, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')

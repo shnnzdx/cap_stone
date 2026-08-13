@@ -1,462 +1,270 @@
-# TripSync 产品逻辑
+# Cadensy Product Logic
 
-**给谁看**:团队成员、设计师、以后接手的人。
-**读完你会知道**:这个产品从头到尾怎么运转,每条规则什么时候生效,遇到怪情况怎么办。
+Audience:
 
-**本文只讲产品行为,不讲技术实现。**
+- product teammates
+- designers
+- future maintainers
 
-| 想知道什么 | 看哪份 |
-|---|---|
-| 为什么做这个、卖点、商业论证 | [`PROPOSAL.md`](PROPOSAL.md) |
-| **产品怎么运转** | **本文** |
-| 每个按钮点了会怎样 | [`../trip/FRONTEND.md`](../trip/FRONTEND.md) |
-| 数据结构、接口、规则的技术表述 | [`../trip/BACKEND.md`](../trip/BACKEND.md) |
-| 现在做到哪了 | [`../trip/交接.md`](../trip/交接.md) |
+This file explains product behavior, not low-level implementation.
 
-⬜ = 设计已定但还没做。**本文是设计的权威版,不是进度表。**
+Related docs:
 
----
+- `PROPOSAL.md`
+- `../trip/FRONTEND.md`
+- `../trip/BACKEND.md`
+- `../交接.md`
 
-## 一、产品在干什么
+## 1. What The Product Does
 
-六个人要一起去旅行。每个人的预算、时间、身体条件、想去的地方都不一样,
-而且有些事不方便当众说。
+Cadensy helps a group maintain one living travel plan without needing a meeting for every
+small change.
 
-**这个产品做一件事:让这六个人不用开会,也能维护一份大家都能接受的行程。**
+The product is not just an itinerary generator. It uses itinerary generation as one part of a
+larger goal:
 
-它不是行程生成器。生成行程是手段,**让一群人做出决定**才是目的。
+- fair group decision-making
+- private constraint protection
+- lightweight change handling
 
-### 三个核心主张
+Core claims:
 
-1. **绝大多数改动不需要惊动任何人。** 八成的改动直接生效,只发一条通知。
-2. **需要开口的时候,尽量不用聊天。** 聊天串行、没有截止、参与成本高、还会漏人。
-   能一键表态就不聊天。
-3. **私密的事情可以影响决定,但不会被公开。** 系统会说"有一条硬性要求被碰到了",
-   永远不说是谁、不说是什么。
+1. Most itinerary changes should not interrupt everyone.
+2. When group input is needed, use fast structured choices before falling back to chat.
+3. Private constraints may affect outcomes without being publicly exposed.
 
----
+## 2. Roles
 
-## 二、三种人
+Roles belong to a trip, not to the account identity alone.
 
-角色属于**这趟旅行**,不属于账户。同一个人可以在 A 旅行是组织者、B 旅行是普通成员。
+| Capability | Organizer | Participant | Guest |
+| --- | :--: | :--: | :--: |
+| View plan | Yes | Yes | Yes |
+| Submit own preferences | Yes | Yes | Yes |
+| Propose changes | Yes | Yes | Yes |
+| Vote and confirm | Yes | Yes | Yes |
+| Comment publicly | Yes | Yes | Yes |
+| View members | Yes | No | No |
+| Create invite links | Yes | No | No |
+| Handle deadlock exit | Yes | No | No |
+| Use dashboard across trips | Yes | Yes | No |
 
-| | 组织者 | 参与者 | 访客(无账户) |
-|---|:--:|:--:|:--:|
-| 看行程、和 AI 私聊、填自己的偏好 | ✅ | ✅ | ✅ |
-| 提改动、投票、确认提案、公开评论 | ✅ | ✅ | ✅ |
-| 看成员名单、催交、延长截止 ⬜ | ✅ | ✕ | ✕ |
-| 生成邀请链接 ⬜ | ✅ | ✕ | ✕ |
-| 接收谈不拢的僵局 ⬜ | ✅ | ✕ | ✕ |
-| 跨多趟旅行的仪表盘 | ✅ | ✅ | ✕ |
+Non-negotiable rules:
 
-**组织者不是老大。** 他多出来的只有"维护公共框架"的入口,没有任何决策特权。
+- organizer preference weight is not higher than anyone else's
+- organizers cannot read private preference wording
+- nobody can decide for another person
 
-三条不能破的规则:
+Guests are not reduced-rights trip members. The difference is mainly account persistence and
+cross-trip ownership.
 
-1. **组织者的偏好不比别人重。** 在算约束的时候和其他人完全一样。
-2. **组织者读不到私密偏好。** 和普通成员一视同仁。
-3. **谁都不能替别人做决定。** 不能替填、不能替确认、不能把"没回复"当同意。
+## 3. Full Journey
 
-**访客不是缩水版参与者。** 在这趟旅行里他的权利和有账户的人完全一样。
-差别只在账户层面:没有跨旅行的仪表盘、不能自己创建旅行、换个设备就进不去了。
-**邀请链接就是他的钥匙**,所以链接必须不可猜,而且能撤销。
+### Create
 
----
+An organizer creates a trip with:
 
-## 三、完整旅程
+- trip name
+- destination
+- date window
+- expected group size
+- currency
+- preference deadline
 
-### 第一步 · 组织者创建旅行
+### Join
 
-填:名字、目的地、大概什么时候、几个人、货币、偏好截止时间。
-系统生成一条邀请链接。
+Members join through an invite flow and only become members after an explicit join step.
 
-### 第二步 · 成员加入 ⬜
+### Preferences
 
-点开链接 → **先看到这趟旅行是什么,还没入伙** → 填个昵称 → 选"用账户加入"或"直接以访客加入"
-→ 这时候才真的成为成员。
+Each member can provide:
 
-> 点开链接不等于加入。不然链接被随便转发,人就莫名其妙进来了。
+- preferred dates
+- acceptable date range
+- ideal budget
+- maximum budget
+- essential needs
+- pace and interests
 
-### 第三步 · 每个人填自己的偏好 ⬜
+Each meaningful preference can have different visibility.
 
-三层结构,**每层都是两个字段,不能合并**:
+### Initial Plan
 
-| | 理想 | 底线 |
-|---|---|---|
-| 日期 | 最想哪几天去 | 最宽能接受哪几天 |
-| 预算 | 理想花多少 | 最多能花多少 |
+AI or rules generate an initial plan, but the result must still pass deterministic validation.
+If generation cannot satisfy the hard requirements, the system should block honestly instead of
+pretending the plan is valid.
 
-- **理想 ≤ 实际 ≤ 底线** = 可以接受,但系统要说明这是个取舍
-- **实际 > 底线** = 硬约束被碰,走 Confirm
+### Ongoing Use
 
-再加上"绝对不行"的事(见第五节)、旅行节奏、最多三个兴趣标签。
+After a plan exists, all meaningful edits route through the backend decision system.
 
-**每一条都能单独设可见性**:全组可见 / 只组织者可见 / 只给系统算。
+## 4. How Changes Enter The Plan
 
-### 第四步 · AI 生成第一版行程 ⬜
+Each itinerary slot has a settledness level:
 
-AI 从策展的景点库里排出完整行程,然后**必须过一遍规则检查**:
+- `loose`
+- `touched`
+- `settled`
+- `booked`
 
-有没有违反谁的硬约束、有没有超预算、时间撞不撞、两个地方赶不赶得过去、那天开不开门。
+The routing order is:
 
-- **过了** → 行程上线
-- **没过** → 带着失败原因重新生成一次
-- **还是没过** → 标记为"卡住了",给组织者一句匿名说明
-  (例:"当前方案超过至少一名成员的预算上限")
+1. hard blocker check
+2. reopened settled decision
+3. contested or touched slot
+4. direct notice
 
-> **绝不展示一份看起来正常、实际违规的行程。** 卡住了就说卡住了。
+### Notice
 
-### 第五步 · 日常:任何人想改任何东西
+The change applies immediately and the group gets an anonymous update notice.
 
-**这是整个产品最重要的一段。** 见第四节。
+Meaning:
 
-### 第六步 · 旅行开始
+- no one is forced into extra work
+- members can still object later
+- silence functions as acceptance because objection is cheap
 
-系统按日期自动切换状态 ⬜(规划中 → 即将出发 → 旅行中 → 已结束),**不需要谁点按钮**。
+### Round
 
-进入"旅行中"之后:
+The slot becomes a decision card with multiple options. Members respond in parallel. Silence
+does not count as explicit agreement, but it also does not block settlement forever.
 
-- 投票的截止时间从 24 小时缩到 **2 小时**
-- **所有"已定"的时段自动降级回"碰过"** —— 三天前定的事,在街上站着的时候不该还压着人
+### Reopened Round
 
-### 第七步 · 旅行结束
+Settled decisions are harder to overturn. A reopened round requires a written reason and a
+stronger support threshold.
 
-行程停止接受改动。流水账保留,可以完整回看这趟旅行的每个决定是怎么来的。
+### Confirm
 
----
+Only affected members must confirm. The proposal applies only after all required participants
+accept.
 
-## 四、一个改动怎么进入行程
+If confirm deadlocks, the organizer can only:
 
-### 先看这个时段有多"结实"
+- split the slot
+- clear the slot
 
-每个时段有四档,**越往下越难改**:
+The organizer cannot simply impose one side's choice.
 
-| 档 | 怎么到这一档 |
-|---|---|
-| **松** | AI 刚生成,没人碰过 |
-| **碰过** | 有人改过一次,直接生效了 |
-| **定了** | 投票结算过,或者所有人确认过 |
-| **订了** | 真的付钱订了 |
+## 5. Preferences And Constraints
 
-> **"直接生效"不算"定了"。** 它的意思是"暂时没人反对",不是"大家同意了"。
-> 这个区分很重要——否则一个没人注意到的小改动,会白白获得共识的地位。
+The product distinguishes ideals from boundaries.
 
-### 然后问三个问题,决定走哪条路
+Examples:
 
-```
-① 碰硬底线了吗？(已订 / 违反谁的绝对不行 / 超预算上限 / 超可用日期)
-       是 → 【确认】
-       否 ↓
-② 这个时段"定了"吗？
-       是 → 【重开轮】
-       否 ↓
-③ 这个时段"碰过"吗？
-       是 → 【投票】
-       否 → 【直接改】
-```
+| Topic | Ideal | Boundary |
+| --- | --- | --- |
+| Dates | preferred trip days | widest acceptable range |
+| Budget | ideal spend | maximum spend |
 
-**顺序不能颠倒。硬底线永远排最前**,不管这个时段多松。
+Supported hard-constraint categories currently include:
 
-### 直接改(约 80%)
+- `time_window`
+- `budget_ceiling`
+- `date_range`
+- `walk_limit`
+- `dietary`
+- `avoid_tag`
 
-行程当场就变了。全组收到一条**匿名**通知,**没有一个人被要求做任何事**。
+If a user need does not fit the enforceable categories, the system should not pretend it can
+guarantee that rule.
 
-通知底下有一个「我有别的想法」。谁点了,这事就升级成投票。
+## 6. Privacy
 
-> **沉默 = 默认接受。** 因为反对只要点一下,成本极低。
+The product promise is structural privacy, not best-effort wording.
 
-### 投票(约 15%)
+The system should be able to say:
 
-那个时段变成一张卡片(**不是聊天**)。三个选项,其中**必须有一个是「分头行动」**。
+- a private constraint is affected
+- one member is affected
+- a time or budget rule is involved
 
-全员一键表态,并行进行,显示 `n / 6 已表态`。有截止时间(平时 24 小时,旅行中 2 小时)。
-到点按票数落地。平票 → 维持原样。
+It should not say:
 
-卡片上有「都不行,我要谈」可以手动升级成确认。
+- who the private member is
+- their raw wording
+- hidden member-only reasoning
 
-> **沉默 = 没表态。既不算同意,也不阻塞。** 到点就按已有的票落地。
-> 全组一票没投也照样结算(维持原样),不会永远挂着。
+Important nuance:
 
-### 重开轮
+- the system should not claim impossible anonymity
+- in a small group, people may still infer who a constraint belongs to
+- the promise is that the system itself does not expose private details
 
-只有"定了"的时段会走这条。**比普通投票难三层**:
+## 7. AI Responsibilities
 
-1. **必须写一句为什么** —— 不写,提交不了
-2. **要过半数明确支持才能改** —— 6 个人里要有 4 个说该改
-3. **48 小时内不能重开第二次** ⬜
+AI appears in these product roles:
 
-> **沉默 = 维持原决定。** 和普通投票不一样,这里没表态的人算在"别折腾"那边。
-> 因为懒得理的人显然不觉得这事需要改。
+- translate natural-language preferences into structured constraints
+- explain trade-offs and confidence
+- mediate anonymous conflict conversations
+- generate or repair itinerary candidates
+- suggest options for contested slots
+- support private dry-run chat
 
-**为什么要有这条路**:不然"定了"的东西就永远改不动,行程会僵死。
-既要有出口,又不能让人随手推翻——所以有出口但有成本。
+AI does not own:
 
-### 确认(约 5%)
+- final path classification
+- vote counting
+- confirm acceptance rules
+- private data disclosure policy
 
-只有受影响的成员 + AI 进入一个对话。**全程匿名**:你显示 You,其他人显示 Member A / Member B。
-姓名和私密原因都不会出现。
+## 8. Trust And Provenance
 
-发起人默认已同意,其余每个人各自确认。**所有人都点头才写进行程。**
-任何一个人拒绝 → 提案作废,行程一个字不变。
+Data quality needs visible provenance.
 
-谈不拢 → 升级给组织者。
+The product should distinguish between:
 
-### 为什么不默认用聊天
+- verified information
+- AI-estimated information
+- manually curated information
+- not-yet-verified information
 
-聊天是这套工具里最贵的东西:串行、没有截止、参与成本高、没被拉进去的人根本不知道发生过。
-而投票是并行的、有截止的、一键完成的。
+The model should not self-certify trust.
 
-**把选择题塞进聊天,等于用最贵的工具解决最便宜的问题,而且会漏人。**
+## 9. Important Edge Cases
 
-举个例子:A 想逛街、B 想去河边、C 想去艺术馆。正确的流程是——
-A 的诉求直接生效;B 提出不同意见时才开一轮;**C 自动在同一轮里**。全程零次聊天。
+These product decisions matter:
 
-### 组织者怎么收拾僵局 ⬜
+- one slot should not have multiple unresolved decision objects at the same time
+- hard constraints should not silently disappear because of convenience
+- strict preference changes should not automatically overwrite previously settled group choices
+- booked items are more expensive to change and should route more conservatively
+- if AI cannot produce a valid plan, blocked is a valid result
 
-**组织者唯一能做的是"不做决定"**,两个出口:
+## 10. Scope
 
-- **分头行动** —— 这个时段拆开,想去 A 的去 A,想去 B 的去 B,之后汇合
-- **空出来** —— 这个时段谁都不安排,变成自由活动
+Current practical MVP shape:
 
-他**不能**选择任何一方的方案。这样死局有出口,但组织者还是没有替别人做主的权力。
+- small groups
+- one-city planning emphasis
+- 2-5 day trips
+- curated place library
+- no live booking infrastructure required
 
----
+Out of scope for this product layer:
 
-## 五、"绝对不行"怎么填
+- full payment splitting
+- multi-city optimization
+- live travel commerce
+- crisis replanning as a separate ops system
 
-自由文本电脑看不懂,所以约束只有**六种可判定的类型**:
+## 11. Success Criteria
 
-| 类型 | 例子 |
-|---|---|
-| 时间窗 | 不早于 9 点 / 不晚于 22 点 |
-| 预算上限 | 最多 $650 |
-| 可用日期 | 只有 13–18 号有空 |
-| 走路距离 | 每天走路不超过 3 公里 |
-| 饮食 | 必须有素食 |
-| 避开类型 | 不去夜店 |
+Functional success looks like this:
 
-每条还要标 **"绝对不行"还是"尽量满足"**。只有"绝对不行"会把改动顶到确认那条路。
+- members can join and submit visible and private needs
+- the system can generate a viable initial plan or explain why not
+- most changes resolve without heavy coordination
+- contested changes route into clear structured decisions
+- hard constraints stay protected
+- change history remains auditable
 
-### 用户怎么填(不用面对表单)
+Practical product metrics can include:
 
-> **你**:我腰不好,走不了太多路
-> **AI**:我把它记成「每天走路不超过 3 公里」,对吗?
-> **你**:对
-> **系统**:存下来 ✓
-
-**AI 只在这一刻出场。** 存下来之后,所有判定只看这条固定规则,**再也不问 AI**。
-
-**为什么不让 AI 每次都判**:大模型同一个问题问两次可能给不同答案。
-一个卖点是"公平"的产品,规则本身不能是飘的。
-
-### 填不进这六种怎么办
-
-系统**老实说**:"这条我保护不了,请你写在公开说明里让大家看到。"
-
-**不假装保护。** 假装比不保护更糟。
-
----
-
-## 六、隐私
-
-### 永远不会出现在任何人面前的东西
-
-- 用户写"绝对不行"时的**原话** —— 对组织者也一样
-- 冲突对话里其他成员的**姓名** —— 只有 Member A / Member B
-- **谁改了偏好** —— 通知固定写"一位成员更新了偏好"
-- **谁投了哪一票**
-
-### 系统会说什么
-
-不说:❌ "Mia 说她不能早起"
-只说:✅ "有一条时间要求被碰到了(影响 1 人)"
-
-### 一个我们主动承认的弱点
-
-**6 个人的小组里,匿名是脆的。**"有一条要求不能早于 9 点"——组里的人可能一猜就中。
-
-**对外不宣称"完全匿名"**,只说"系统自己不会说出去"。
-
----
-
-## 七、AI 出现在哪六个地方
-
-怎么动手做,见 [`AGENTS.md`](AGENTS.md)。本节只说**产品上它们各自负责什么**。
-
-| Agent | 干什么 | 硬性要求 |
-|---|---|---|
-| **Preference** | 把人话翻译成六种约束之一 | **必须用户确认**才生效 |
-| **Explainer** | 为什么这么排 / 牺牲了什么 / 这次改动的影响 | 只读,绝不改行程 |
-| **Mediator** | 冲突对话里的斡旋:开场、提替代方案、发现谈崩了建议升级 | 见下面「主持会议,但不数票」 |
-| **Planner** | 从策展景点库排出完整行程 | 必须过规则检查;失败重来一次;还失败就标"卡住了" |
-| **Options** | 给被争夺的时段出 3 个选项 | **必须包含「分头行动」** |
-| **Chat** | 听懂自然语言改动,变成 patch,跑一次只读判定,说人话 | 只返回 proposed_change;用户确认后才提交 |
-
-### 一条分界线:AI 主持会议,但不数票
-
-这是最容易搞错的地方。**"协调"要拆成两半:**
-
-| 这件事 | 谁做 |
-|---|---|
-| 对话里说什么、怎么措辞 | **AI** |
-| 提替代方案("改到 3 点就不碰这条了") | **AI** |
-| 把双方诉求翻译成不带情绪的话 | **AI** |
-| 提醒代价("这项已订,取消可能有费用") | **AI** |
-| 发现谈崩了,建议升级给组织者 | **AI** |
-| **谁同意了、够不够、什么时候写进行程** | **死逻辑** |
-| **提案通没通过** | **死逻辑**(数有几个 accepted) |
-| **"没回复"算不算同意** | **死逻辑**(永远不算) |
-
-对话里的**斡旋**是 AI 该干的——产品叫"AI 协调"就是因为它。
-但决策的**记账**必须是死的,否则公平无从谈起。
-
-### Mediator 的两条专属红线
-
-**1. 不许施压。**
-
-> 不得说「5 个人都同意了,就差你了」这类话。
-
-界面显示各人状态是事实,没问题。但让 AI 去推那个还没点头的人,
-**就是在把沉默变成压力**——和"沉默不算同意"是一个东西的两面。
-AI 可以说"目前这个方案还没通过",不能说"就等你了"。
-
-**2. 它提的替代方案是一个新提案,不是在原提案上偷偷改。**
-
-因为其他人是基于旧方案表的态,改了内容还沿用旧的同意,等于替他们做了决定。
-
-### AI 能不能自己改行程
-
-**能,但不需要特权,也没有特权。**
-
-AI 提交改动走的是**和人完全一样的那道门**:
-
-- 落在"直接改" → 当场生效(它大部分时候会落在这里,因为它通常在修冲突)
-- 落在"投票" → 它只能开一轮,改不动
-- 落在"确认" → 它只能建一个提案,**不能替任何人点头**
-
-所以 AI 出 bug 时能造成的最大破坏,是改了一个没人在乎的时段,而且全组都收到通知,
-谁不同意点一下就翻案。
-
-### AI 什么时候会自己动
-
-| 触发 | 它干什么 |
-|---|---|
-| 你在私聊里说想改 | 先帮你试算代价,返回待提交的 proposed_change |
-| **有人改了偏好,和现有行程冲突了** | 自己算出修复方案,自己提交 |
-| **投票刚定了新方案,把后面几天搞乱了** | 自己修连锁影响 |
-
-### 两条防线
-
-- **AI 改的东西要署名,不能匿名。** 匿名是为了保护人,AI 不需要保护,
-  而且用户有权知道这是机器改的。通知写「TripSync 调整了这里」。
-- **要有刹车。** 同一个条目不能连着改、一轮不能改超过 2–3 条。
-  不然出 bug 会疯狂重排整个行程。
-
----
-
-## 八、数据可不可信
-
-不接实时预订,所以每条信息都要打标签:
-
-**已验证** · **AI 估算** · **人工整理** · **未验证**
-
-**标签由系统打,不由 AI 自称。** 让模型给自己的可信度打分等于没打。
-
-除非真的验证过,**不得暗示某家酒店/餐厅/价格/活动现在可以直接订**。
-
----
-
-## 九、怪情况怎么办
-
-这一节是给做的时候查的。**不写清楚,每个人会各猜一套。**
-
-### 成员变动
-
-| 情况 | 怎么办 |
-|---|---|
-| 有人投票后退出旅行 | **票作废,总人数减一。** 正在开的轮按新人数重算"过半" |
-| 旅行开始后才有人加入 | 他的硬约束**只对以后的改动生效**,不追溯推翻已定的行程。想改要正常走重开轮 |
-| 组织者退出 | 必须先把组织者转给别人才能退。**一趟旅行不能没有组织者** |
-| 有人一直不填偏好 | **不阻塞任何事。** 他没有约束,系统就当他没有约束。不能因为他没填就停下 |
-
-### 时间
-
-| 情况 | 怎么办 |
-|---|---|
-| 偏好截止了还没填 | 截止时间**只是给组织者看的进度**,不产生任何强制效果。之后填的照样生效 |
-| 投票开着的时候旅行开始了 | **不改这一轮的截止时间。** 规则中途变会让人觉得被耍。下一轮才用新规则 |
-| 到点了一票没投 | 结算成"维持原样"。**不能永远挂着** |
-| 提案挂了三天没人理 | ⚠️ **还没定。** 见下面「需要拍板的事」 |
-
-### 同时发生
-
-| 情况 | 怎么办 |
-|---|---|
-| 一个人同时改三个不同时段 | 可以。不同时段互不影响 |
-| 两个人同时改同一个时段 | **第二个人被挡住**,提示"这个时段已经有一轮投票了,去投票或等它结束" |
-| 一个时段既有投票又有待确认 | 不可能。**一个时段同时只能有一件未决的事** |
-
-### 偏好变动
-
-| 情况 | 怎么办 |
-|---|---|
-| 有人把偏好**改严了**,导致已定行程违规 | 系统当场扫一遍行程。撞到"松/碰过"的 → 自动改掉发通知;撞到"定了/订了"的 → **走确认**,相关的人点头才生效 |
-| 有人把偏好**改松了** | 什么都不发生。行程不会因为限制放宽就自动变 |
-| 有人**删掉**一条硬约束,而这条正挡着一个待确认的提案 | 提案**不自动通过**。得发起人重新提一次——因为其他人是基于旧情况表的态 |
-
-> **为什么"改严"要走确认**:一个人改个偏好就能推翻全组定好的事,这个口子必须堵上。
-> 真的受伤了大家会同意;想钻空子的人得过别人这一关。
-
-### 已经订了的东西
-
-| 情况 | 怎么办 |
-|---|---|
-| 改一个已订的条目 | 永远走确认。而且明确提示**可能产生取消费用** |
-| 改动通过了,谁去退订 | **系统管不了。** 它只能留一条"这项预订需要有人去取消"的待办。真去退、真赔钱是线下的事 |
-| "标记为已预订"这个动作本身 | **唯一一个不走四条路径的操作。** 它只记录一个事实,没改任何人的安排 |
-
-### AI 出问题
-
-| 情况 | 怎么办 |
-|---|---|
-| 生成的行程过不了检查 | 带着失败原因重来一次;还不行标"卡住了",给组织者匿名说明 |
-| 没有任何组合能满足所有硬约束 | 同上。**这是有效结果,不是故障** —— 老实说"目前无解",比给一份假的强 |
-| AI 提的修复方案又违规了 | 它自己也要过判定。违规就走确认,和人一样 |
-| AI 服务挂了 / 没额度了 | 除了 AI 相关的功能,**其余全部照常**。判定、投票、确认都不依赖 AI |
-
----
-
-## 十、需要拍板的事
-
-⚠️ **确认没有截止时间,会永远挂着。**
-
-投票有截止时间,到点自动结算。但**确认没有**——如果有一个人一直不点头,
-这个提案就一直挂在那儿,那个时段也一直被占着(别人改不了)。
-
-三个选项:
-
-| | |
-|---|---|
-| **A**(推荐) | 给确认也加一个截止(比投票长,比如 48 小时),**到点自动作废**,不是自动通过 |
-| B | 不加截止,但发起人可以随时撤回,组织者可以强制关掉 |
-| C | 不管它,demo 里不会遇到 |
-
-推荐 A 的理由:**到期作废是安全的**(行程不变),到期通过是危险的(等于把沉默当同意,
-违反产品的基本原则)。而且不加截止的话,一个时段可能被无限期占住。
-
----
-
-## 十一、明确不做的事
-
-不做不是"以后再说",是**故意不做**:
-
-| 不做 | 为什么 |
-|---|---|
-| **Lock / 最终发布** | 旅行到出发前一直在变。锁定制造虚假的确定性 |
-| **满意度打分** | 它服务于"锁定一个版本"。没有版本要锁,它就没有落点 |
-| **多人联署才能重开** | 它要求私下拉票,而拉票正是这个产品要消灭的行为 |
-| **弃权按钮** | 沉默就是没有记录。做成一个按钮,早晚有人把它当成一种表态 |
-| **住宿单独选** | 酒店就是一条普通行程条目。四条路径对它一样成立,单独做一套只会让产品变复杂 |
-| **交通单独规划** | 同上。条目之间的路段是附属信息,不是独立决策 |
-| **费用分摊** | 只显示"每人大概多少"。谁欠谁多少是另一个产品(Splitwise)的事 |
-| **多城市 / 实时预订 / 支付** | 超出 MVP 范围,见 [`PROPOSAL.md`](PROPOSAL.md) 第八节 |
+- preference completion rate
+- time to first viable plan
+- share of changes resolved through Notice
+- round/confirm frequency
+- hard-constraint satisfaction rate
+- amount of accepted plan retained after revisions

@@ -73,6 +73,22 @@ local development for seeding or offline backend work:
 createdb -h localhost -p 5432 -U postgres tripsync
 ```
 
+Before seeding, running uvicorn, or running pytest, make sure PostgreSQL itself is
+already accepting connections on `localhost:5432`.
+
+Quick verification:
+
+```powershell
+pg_isready -h localhost -p 5432
+```
+
+If `pg_isready` is not on `PATH`, run the executable from your PostgreSQL installation
+folder instead. The expected healthy result is:
+
+```text
+localhost:5432 - accepting connections
+```
+
 ## 4. Configure `backend/.env`
 
 Create `backend/.env` from `backend/.env.example`.
@@ -285,6 +301,17 @@ Test safety rules:
 - pytest may recreate the PostgreSQL test database itself to guarantee a clean UTF-8
   test environment
 
+If you already have a local `tripsync_test` database that you do not want to touch, use
+another disposable test database name for the current shell instead of dropping it:
+
+```powershell
+cd backend
+$env:TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@localhost:5432/tripsync_test_codex'
+$env:DISABLE_SCHEDULER='1'
+$env:MOCK_AI='1'
+.\.venv\Scripts\python.exe -m pytest tests/test_plan_generation.py -q
+```
+
 ## 10. Common Problems
 
 `Could not reach the backend.`
@@ -317,6 +344,13 @@ to connect from inside AWS or VPN instead of directly from a laptop.
 The active runtime database exists but tables were not created. Run `python -m app.db.seed`
 only against a safe local or demo `DATABASE_URL`, or apply the appropriate schema
 initialization path for the target database.
+
+`duplicate key value violates unique constraint "pg_database_datname_index"`
+
+Pytest tried to recreate a test database name that already exists in a conflicting local
+state. The safest local workaround is usually not to drop that database blindly. Instead,
+point `TEST_DATABASE_URL` at a new disposable test-only database name such as
+`tripsync_test_codex` for the current shell and rerun pytest.
 
 `OpenAI` or compatible model key errors
 

@@ -8,7 +8,7 @@ Read these files before substantial work:
 
 - `README.md`
 - `INTEGRATION-ROADMAP.md`
-- `交接.md`
+- `HANDOFF.md`
 - `docs/navigation-known-wrong-behavior.md`
 
 If the task is backend cleanup or repo consolidation, also read:

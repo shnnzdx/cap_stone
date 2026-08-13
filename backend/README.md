@@ -69,6 +69,25 @@ $env:DISABLE_SCHEDULER='1'
 `.\.venv\Scripts\python.exe -m app.db.seed` will reset and rebuild demo data, so only
 use it for local development or disposable demo databases.
 
+If PostgreSQL is not running yet, start it before `seed`, `uvicorn`, or `pytest`.
+The exact command depends on your local installation. A quick readiness check is:
+
+```powershell
+pg_isready -h localhost -p 5432
+```
+
+If `pg_isready` is not on `PATH`, run the same check from your PostgreSQL install folder.
+
+If a focused pytest run collides with an older local `tripsync_test` database that you do
+not want to touch, use a different disposable test database name for the current shell
+instead of deleting that database blindly, for example:
+
+```powershell
+cd backend
+$env:TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@localhost:5432/tripsync_test_codex'
+.\.venv\Scripts\python.exe -m pytest tests/test_paths.py -q
+```
+
 ## Login Works Only When These Three Things Are True
 
 For the `frontend` login page to enter the Trip workspace successfully, all three must

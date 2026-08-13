@@ -286,6 +286,48 @@ def test_a_required_constraint_forces_confirmation_too(db, full_trip):
 # ————————————————————— 旅行中降级 —————————————————————
 
 
+def test_moving_into_an_occupied_time_opens_a_round(db, full_trip):
+    """Moving the 2 PM activity to 7 PM conflicts with the existing 7 PM dinner."""
+    item = full_trip["art"]
+
+    outcome = orch.propose_change(
+        db, item, {"start_hour": 19.0}, full_trip["me"].id, request="Move this to 7 PM"
+    )
+
+    assert outcome.classification.path is Path.ROUND
+    assert outcome.round_id is not None
+    assert outcome.applied is False
+    assert item.start_hour == 14.0
+    round_ = db.get(DecisionRound, outcome.round_id)
+    assert "Birthday dinner" in outcome.classification.detail
+    assert "split" in {option["id"] for option in round_.options}
+
+
+def test_classifying_an_occupied_time_reports_a_round_without_writing(db, full_trip):
+    result = orch.classify_change(
+        db, full_trip["art"], {"start_hour": 19.0}, full_trip["me"].id
+    )
+
+    assert result.path is Path.ROUND
+    assert "Birthday dinner" in result.detail
+    assert db.query(DecisionRound).count() == 0
+    assert db.query(PlanChange).count() == 0
+
+
+def test_a_self_only_confirmation_applies_without_an_extra_click(db, full_trip):
+    """If the proposer is the only affected member, their implicit acceptance should complete Confirm."""
+    outcome = orch.propose_change(
+        db, full_trip["art"], {"start_hour": 8.0}, full_trip["me"].id
+    )
+
+    assert outcome.classification.path is Path.CONFIRM
+    assert outcome.applied is True
+    assert outcome.proposal_id is None
+    assert full_trip["art"].start_hour == 8.0
+    assert full_trip["art"].settledness == Settledness.SETTLED.value
+    assert db.query(ChangeProposal).one().status == "applied"
+
+
 def test_deadlines_shrink_once_the_trip_starts(db, full_trip):
     """人都在街上了,不跑 24 小时的异步投票。"""
     full_trip["art"].settledness = Settledness.TOUCHED.value

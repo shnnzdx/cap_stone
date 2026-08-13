@@ -21,7 +21,7 @@ const formatChangeDay = value => value
   : null
 
 const formatPlanHour = value => {
-  if (value === null || value === undefined || value === '') return '—'
+  if (value === null || value === undefined || value === '') return '-'
   const numeric = Number(value)
   const whole = Math.floor(numeric)
   const minutes = Math.round((numeric - whole) * 60)
@@ -55,6 +55,47 @@ const formatStraightLineDistance = (from, to) => {
   if (miles < 0.1) return '<0.1 mi straight line'
   return `${miles.toFixed(miles < 10 ? 1 : 0)} mi straight line`
 }
+
+const fieldLabels = {
+  title: 'Title',
+  place: 'Place',
+  start_hour: 'Time',
+  day_date: 'Date',
+  duration_min: 'Duration',
+  price_per_person: 'Price',
+  settledness: 'Status',
+}
+
+const formatPatchValue = (key, value) => {
+  if (key === 'start_hour') return formatPlanHour(value)
+  if (key === 'day_date') return formatChangeDay(value) || value
+  if (key === 'duration_min') return `${value} min`
+  if (value === null || value === undefined || value === '') return '-'
+  return String(value)
+}
+
+const formatChangeSummary = change => {
+  const entries = Object.entries(change.patch || {})
+    .filter(([key]) => !['lat', 'lng', 'photo_url'].includes(key))
+  if (!entries.length) return 'Recorded the decision without changing visible fields.'
+  return entries
+    .map(([key, value]) => `${fieldLabels[key] || key}: ${formatPatchValue(key, value)}`)
+    .join(' · ')
+}
+
+const formatChangeTime = value => {
+  if (!value) return ''
+  return new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+const originLabel = origin => ({
+  notice: 'Direct change',
+  round: 'Vote result',
+  reopen_round: 'Reopened vote',
+  confirm: 'Confirmed change',
+  booking: 'Booking status',
+  organizer_resolution: 'Organizer resolution',
+}[origin] || origin || 'Change')
 
 const decisionPresentation = {
   notice: {
@@ -90,7 +131,7 @@ function Button({ children, secondary, ghost, className, ...props }) {
 function usePlanCurrentTrip() {
   const { tripId } = useParams()
   const app = useTripApp()
-  return app.trips.find(item => item.id === tripId) || app.trip || trip
+  return app.trips.find(item => item.id === tripId) || app.trip || trip || null
 }
 
 function ActivityPhoto({ item }) {
@@ -105,6 +146,8 @@ function NewTripPlan({ currentTrip }) {
   const [generateError, setGenerateError] = useState('')
   const [blockedReason, setBlockedReason] = useState('')
   const isOrganizer = app.currentUser.role === 'organizer'
+  const onboarding = currentTrip.onboarding || {}
+  const organizerPreferenceStatus = currentTrip.organizerPreference?.status || onboarding.organizer_preference?.status
 
   useEffect(() => {
     let cancelled = false
@@ -127,9 +170,40 @@ function NewTripPlan({ currentTrip }) {
   const total = Math.max(1, progress?.total || currentTrip.people || 1)
   const submitted = Math.min(total, progress?.submitted || 0)
   const missing = Math.max(0, total - submitted)
-  const meSubmitted = Boolean(progress?.meSubmitted)
+  const meSubmitted = Boolean(progress?.meSubmitted) || (isOrganizer && organizerPreferenceStatus === 'complete')
   const canGenerate = isOrganizer && meSubmitted && !app.loading.action
   const progressText = `${submitted} of ${total} people have shared what they need.`
+  const visibleBlockedReason = blockedReason || app.planBlockedReason || ''
+  const generationBlocked = Boolean(visibleBlockedReason)
+  const budgetBlocked = visibleBlockedReason.toLowerCase().includes('budget')
+  const dateBlocked = visibleBlockedReason.toLowerCase().includes('date')
+  const blockedHelp = budgetBlocked
+    ? 'Raise the maximum budget, remove the budget ceiling, or choose cheaper places.'
+    : dateBlocked
+      ? 'Set a valid trip date range, then try generating again.'
+      : 'Edit preferences, remove or loosen required constraints, or shorten the trip window.'
+  const headline = generationBlocked
+    ? 'The requirements blocked this itinerary'
+    : isOrganizer
+      ? meSubmitted ? 'Ready to generate' : 'Share your preferences first'
+      : meSubmitted ? 'You are ready' : 'Share your preferences first'
+  const body = generationBlocked
+    ? 'Cadensy could not build a valid plan from the current requirements.'
+    : isOrganizer
+      ? meSubmitted
+        ? missing > 0
+          ? `${progressText} You can generate now, but missing hard requirements will not be checked.`
+          : 'Everyone has shared preferences. You can generate the first itinerary.'
+        : 'Your own requirements need to be included before Cadensy creates the group plan.'
+      : meSubmitted
+        ? 'Your preferences are saved. The organizer will generate the itinerary when the group is ready.'
+        : 'Add your preferences so the organizer can generate a plan that checks your requirements.'
+  const statusLabel = generationBlocked ? 'Blocked' : missing === 0 ? 'Ready' : `${missing} waiting`
+  const primaryAction = isOrganizer
+    ? meSubmitted
+      ? { kind: 'generate', label: app.loading.action ? 'Generating...' : 'Generate itinerary' }
+      : { kind: 'preferences', label: 'Fill my preferences' }
+    : { kind: 'preferences', label: meSubmitted ? 'Review preferences' : 'Fill my preferences' }
 
   const generate = async () => {
     setGenerateError('')
@@ -137,41 +211,51 @@ function NewTripPlan({ currentTrip }) {
     try {
       const result = await app.generatePlan()
       if (result.status === 'blocked') {
-        setBlockedReason(result.blocked_reason || 'The itinerary is blocked.')
+        setBlockedReason(result.blocked_reason || 'The required budget limit is too low for the available places.')
         return
       }
       app.notify('Itinerary generated')
     } catch (err) {
-      if (err.status === 422) setGenerateError('Share your own preferences first.')
+      if (err.code === 'organizer_preference_missing' || err.status === 422) setGenerateError('Fill your preferences before generating the first itinerary.')
       else if (err.status === 409) setGenerateError('An itinerary already exists.')
       else setGenerateError('Could not generate the itinerary. Try again in a moment.')
     }
   }
 
   return <>
-    <div className="pageHeading editorialPageHeading"><div><span className="eyebrow">Current Plan</span><h1>No itinerary yet</h1><p>Waiting for preferences.</p></div></div>
-    <div className="planEmptyPanel">
-      <section className="collectPanel">
-        <div className="collectHead">
-          <div><span className="eyebrow">Collecting preferences</span><h3>{progressText}</h3></div>
-          <span className="collectCount">{missing === 0 ? 'All set' : `${missing} waiting`}</span>
-        </div>
-        <div className="collectBar"><i style={{ width: `${Math.min(100, (submitted / total) * 100)}%` }}/></div>
-        {!isOrganizer && <p className="fieldHint">Waiting for the organizer to generate the itinerary.</p>}
-        {isOrganizer && !meSubmitted && <p className="fieldHint">Share your own preferences first; the itinerary should be checked against what you need too. <Link className="inlineAction" to={tripHref(currentTrip.id, 'preferences')}>Open preferences →</Link></p>}
-        {isOrganizer && meSubmitted && missing > 0 && <div className="generateCopy"><p>{progressText}</p><p>{missing} {missing === 1 ? 'person has' : 'people have'} not shared theirs; their hard limits will not be taken into account.</p></div>}
-        {isOrganizer && meSubmitted && missing === 0 && <p className="fieldHint">Everyone's requirements will be checked.</p>}
-        {blockedReason && <div className="generationError"><strong>{blockedReason}</strong><p>You can loosen requirements or adjust the dates.</p></div>}
-        {generateError && <p className="formError">{generateError}</p>}
-        {currentTrip.deadline && <div className="collectDeadline"><span>◷</span><div><strong>Preferences deadline</strong><p>{currentTrip.deadline}</p></div></div>}
-      </section>
-      <div className="proposalCard tripFrameLine"><span>Trip frame</span><h3>{currentTrip.destination} · {currentTrip.dates}</h3><p>{currentTrip.assumptions || 'Share the invite link.'}</p></div>
-      <div className="btnRow">
-        {isOrganizer && <Button disabled={!canGenerate} onClick={generate}>{app.loading.action ? 'Generating...' : 'Generate itinerary'}</Button>}
-        {isOrganizer && <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'members')}>See who's in →</Link>}
-        <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>{submitted ? 'Edit my preferences' : 'Fill my preferences'}</Link>
+    <div className="pageHeading setupPageHeading compactSetupHeading">
+      <div>
+        <span className="eyebrow">Current Plan</span>
+        <h1>No itinerary yet</h1>
       </div>
     </div>
+    <section className="setupCompactPanel">
+      <div className="setupCompactTop">
+        <div>
+          <Badge tone={generationBlocked ? 'orange' : missing === 0 ? 'green' : 'blue'}>{isOrganizer ? 'Organizer step' : 'Waiting for organizer'}</Badge>
+          <h2>{headline}</h2>
+          <p>{submitted} of {total} preferences in</p>
+        </div>
+        <span className={cx('setupCompactCount', missing === 0 && !generationBlocked && 'done', generationBlocked && 'blocked')}>{statusLabel}</span>
+      </div>
+
+      <p className="compactLead">{body}</p>
+
+      <div className="compactActionRow">
+        {primaryAction.kind === 'generate'
+          ? <Button disabled={!canGenerate} onClick={generate}>{primaryAction.label}</Button>
+          : <Link className="btn" to={tripHref(currentTrip.id, 'preferences')}>{primaryAction.label}</Link>}
+        {primaryAction.kind === 'generate' && <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>Edit preferences</Link>}
+        {isOrganizer && <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'invite')}>Invite people</Link>}
+        {isOrganizer && meSubmitted && <Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'members')}>Check members</Link>}
+      </div>
+
+      {isOrganizer && !meSubmitted && <p className="compactHint">Only the organizer can generate the first itinerary, but your preferences must be in first.</p>}
+      {(visibleBlockedReason || generateError) && <div className="setupError compactError">
+        {visibleBlockedReason && <><strong>{visibleBlockedReason}</strong><p>{blockedHelp}</p></>}
+        {generateError && <p className="formError">{generateError}</p>}
+      </div>}
+    </section>
   </>
 }
 
@@ -204,7 +288,7 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
         <h3>{closed ? `Settled: ${winner?.title}` : `This block is contested: ${round.itemTitle}`}</h3>
         <p>{closed
           ? 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
-          : isReopen ? 'No response counts as keeping the current decision, so a change needs a clear majority.' : 'The whole group weighs in at once, so this is settled in one round instead of one conversation at a time.'}</p>
+          : isReopen ? 'No response counts as keeping the current decision, so a change needs a clear majority.' : 'Vote on the option, not the person. Ideas stay anonymous while the group chooses what happens to this block.'}</p>
         {isReopen && round.reason && <p><strong>Reason:</strong> {round.reason}</p>}
       </div>
       <DeadlineRing round={round} closed={closed}/>
@@ -228,7 +312,7 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
       })}
     </div>
     {!closed && <div className="roundFooter">
-      <span>Anonymous — nobody sees who picked what.</span>
+      <span>Anonymous — cards are choices, not members.</span>
       <div className="roundFooterActions">
         {isOrganizer && <button type="button" className="roundDiscuss" disabled={app.loading.action} onClick={extend}>{app.loading.action ? 'Extending...' : 'Extend'}</button>}
         <button type="button" className="roundDiscuss" onClick={() => onCommand?.({ type: 'navigate', to: tripHref(currentTrip.id, 'conflict') })}>None of these work — discuss instead</button>
@@ -357,7 +441,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
             onDismiss={() => actions.dismissProposal(message.id)}
           />}
         </div>)}
-        {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
+        {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '-'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
       </div>
       <div className="drawerComposer"><input ref={view.inputRef} value={view.draft} onChange={event => actions.updateDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && actions.sendMessage()} placeholder={view.placeholder}/><button aria-label="Send message" disabled={view.sending || !view.draft.trim()} onClick={actions.sendMessage}>{view.sending ? '...' : '↑'}</button></div>
@@ -368,17 +452,28 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
 
 export default function PlanFeature({ onCommand }) {
   const currentTrip = usePlanCurrentTrip()
+  if (!currentTrip) {
+    return <div className="emptyState quietEmptyState">
+      <span></span>
+      <h2>No trip loaded</h2>
+      <p>This plan needs a real trip from your account or an invite session.</p>
+    </div>
+  }
+  return <LoadedPlanFeature currentTrip={currentTrip} onCommand={onCommand}/>
+}
+
+function LoadedPlanFeature({ currentTrip, onCommand }) {
   const {
     view,
     actions,
   } = usePlanInteractionRuntime({ currentTrip })
   const app = view.app
 
-  if (currentTrip.isCreated || (!app.loading.initial && view.days.length === 0)) return <NewTripPlan currentTrip={currentTrip}/>
+  if (!app.loading.initial && view.days.length === 0) return <NewTripPlan currentTrip={currentTrip}/>
 
   return <div className={cx('planSplit', !view.drawerItem && 'withMap', view.drawerItem && 'withAssistant')}>
     <section className="planMainPane">
-      <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Button secondary className="askCadensyBtn" onClick={() => actions.openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask Cadensy</Button></div></div>
+      <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>Edit preferences</Link><Button secondary className="askCadensyBtn" onClick={() => actions.openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask Cadensy</Button></div></div>
       {app.loading.initial && <div className="planNotice"><span>…</span><div><strong>Loading trip data</strong><p>Fetching the current plan from the backend.</p></div></div>}
       {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
       {app.conflictCreated && !app.decisionResolved && <Link className="planNotice" to={tripHref(currentTrip.id, 'updates')}><span>!</span><div><strong>Proposed change waiting for confirmation</strong><p>A hard constraint is involved. The current plan remains active until the affected members accept.</p></div><b>Review →</b></Link>}
@@ -398,11 +493,19 @@ export default function PlanFeature({ onCommand }) {
               </div>
               <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
                 <article id={`trip-item-${item.id}`} className={cx('activityBlock', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
-                  <span className="activityIndex"><b>{index + 1}</b></span>
+                  <button type="button" className={cx('activityIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{index + 1}</b></button>
                   <ActivityPhoto item={item}/>
                   <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{item.title}</h3></div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div><p className="activityMeta">⌖ {item.place} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
                   <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => actions.openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
-                  {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
+                  {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0, 2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
+                  {view.historyOpen === item.id && (view.changeHistory[item.id] || []).length > 0 && <div className="itemHistoryPanel">
+                    <div className="itemHistoryHead"><strong>Change history</strong><span>{(view.changeHistory[item.id] || []).length} records</span></div>
+                    <ol>{view.changeHistory[item.id].map(change => <li key={change.id}>
+                      <span>{originLabel(change.origin)}</span>
+                      <p>{formatChangeSummary(change)}</p>
+                      <small>{formatChangeTime(change.applied_at)}{change.reason ? ` · ${change.reason}` : ''}</small>
+                    </li>)}</ol>
+                  </div>}
                   {view.commenting === item.id && <div className="publicComposer"><label>Group note</label><textarea rows="2" value={view.commentDraft} onChange={e => actions.updateCommentDraft(e.target.value)} placeholder="Whole group can see this note." />{view.commentError && <p className="formError">{view.commentError}</p>}<div><button onClick={actions.cancelCommentComposer}>Cancel</button><Button disabled={app.loading.action || !view.commentDraft.trim()} onClick={() => actions.submitComment(item.id)}>{app.loading.action ? 'Posting...' : 'Post note'}</Button></div></div>}
                 </article>
                 {app.activeRounds?.filter(round => round.itemId === item.id || round.itemTitle === item.title).map(round => <PlanDecisionRoundCard key={round.id} round={round} compact onCommand={onCommand}/>)}

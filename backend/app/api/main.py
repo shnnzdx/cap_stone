@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -326,6 +326,7 @@ def _plan_out(db: Session, trip_id: str) -> dict:
     plan = db.scalar(select(Plan).where(Plan.trip_id == trip_id))
     if plan is None:
         raise HTTPException(404, "No plan yet")
+    trip = db.get(Trip, trip_id)
     items = db.scalars(
         select(PlanItem)
         .where(PlanItem.plan_id == plan.id)
@@ -339,8 +340,21 @@ def _plan_out(db: Session, trip_id: str) -> dict:
         "status": plan.status,
         "blocked_reason": plan.blocked_reason,
         "estimated_total_per_person": plan.estimated_total_per_person,
-        "days": [{"day_index": d, "items": v} for d, v in sorted(days.items())],
+        "days": [
+            {
+                "day_index": d,
+                "day_date": _canonical_day_date(trip, d, v),
+                "items": v,
+            }
+            for d, v in sorted(days.items())
+        ],
     }
+
+
+def _canonical_day_date(trip: Trip | None, day_index: int, items: list[dict]) -> str | None:
+    if trip and trip.preferred_start_date:
+        return (trip.preferred_start_date + timedelta(days=day_index - 1)).isoformat()
+    return items[0]["day_date"] if items else None
 
 
 def _outcome_out(outcome: orch.Outcome) -> dict:
@@ -413,6 +427,16 @@ def _round_out(db: Session, round_: DecisionRound, me: TripMembership | None = N
         "tally": tally,
         "my_vote": my_vote,
     }
+
+
+def _round_has_all_votes(db: Session, round_: DecisionRound) -> bool:
+    item = db.get(PlanItem, round_.plan_item_id)
+    trip_id = item.plan.trip_id
+    votes = db.scalars(select(Vote).where(Vote.round_id == round_.id)).all()
+    total = len(
+        db.scalars(select(TripMembership).where(TripMembership.trip_id == trip_id)).all()
+    )
+    return total > 0 and len(votes) >= total
 
 
 def _proposal_out(db: Session, proposal: ChangeProposal) -> dict:
@@ -557,6 +581,12 @@ def get_trip(
         "name": trip.name,
         "destination": trip.destination,
         "status": trip.status,
+        "preferred_start_date": trip.preferred_start_date.isoformat()
+        if trip.preferred_start_date
+        else None,
+        "preferred_end_date": trip.preferred_end_date.isoformat()
+        if trip.preferred_end_date
+        else None,
         "member_count": len(
             db.scalars(select(TripMembership).where(TripMembership.trip_id == trip_id)).all()
         ),
@@ -1057,6 +1087,8 @@ def vote(
     if round_.status != "open":
         raise HTTPException(404, "Round is not open")
     orch.cast_vote(db, round_, me.id, body.option_id)
+    if _round_has_all_votes(db, round_):
+        orch.settle_round(db, round_)
     db.commit()
     return _round_out(db, round_, me)
 
@@ -1122,9 +1154,12 @@ def save_my_preferences(
     db: Session = Depends(get_session),
 ) -> dict:
     _require_scoped_trip(db, me, trip_id)
-    result = pref_service.save_mine(
-        db, me, pref_service.PreferenceData(**body.model_dump())
-    )
+    try:
+        result = pref_service.save_mine(
+            db, me, pref_service.PreferenceData(**body.model_dump())
+        )
+    except pref_service.PreferenceDateOutOfTripRange as exc:
+        raise HTTPException(422, str(exc)) from exc
     db.commit()
     return result
 

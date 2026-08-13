@@ -687,6 +687,57 @@ def test_blocked_reason_does_not_leak_identity(db: Session):
     assert setup["participant"].id not in result.blocked_reason
 
 
+def test_single_member_budget_ceiling_does_not_block_initial_generation(db: Session):
+    setup = _make_trip(db, days=4, budget_ceiling=1.0)
+    participant_constraints = db.scalars(
+        select(MemberConstraint).where(
+            MemberConstraint.trip_membership_id == setup["participant"].id
+        )
+    ).all()
+    for constraint in participant_constraints:
+        db.delete(constraint)
+    db.delete(setup["participant"])
+    db.add(
+        MemberConstraint(
+            trip_membership_id=setup["organizer"].id,
+            kind="budget_ceiling",
+            importance="required",
+            params={"max_total_per_person": 1.0},
+        )
+    )
+    db.flush()
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert result.blocked_reason is None
+    assert len(result.items) == 12
+
+
+def test_long_single_member_trip_can_reuse_places_across_days(db: Session):
+    setup = _make_trip(db, days=5, budget_ceiling=800.0)
+    participant_constraints = db.scalars(
+        select(MemberConstraint).where(
+            MemberConstraint.trip_membership_id == setup["participant"].id
+        )
+    ).all()
+    for constraint in participant_constraints:
+        db.delete(constraint)
+    db.delete(setup["participant"])
+    db.flush()
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert result.blocked_reason is None
+    assert len(result.items) == 15
+    for day_index in range(1, 6):
+        day_titles = [
+            item.title for item in result.items if item.day_index == day_index
+        ]
+        assert len(day_titles) == len(set(day_titles))
+
+
 def test_non_organizer_cannot_generate_plan(client: TestClient, api_session: Session):
     setup = _make_trip(api_session)
 

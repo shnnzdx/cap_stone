@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from data.poi_chicago import POIS
@@ -33,9 +33,13 @@ from ..constraints.types import (
 )
 
 SLOTS = (10.0, 14.0, 19.0)
-BLOCKED_REASON = (
+BUDGET_BLOCKED_REASON = (
     "At least one member's budget ceiling cannot be met with the places available."
 )
+CONSTRAINTS_BLOCKED_REASON = (
+    "Cadensy could not build a complete itinerary from the current dates and required constraints."
+)
+DATES_BLOCKED_REASON = "Trip dates are missing or invalid, so Cadensy cannot build an itinerary."
 RULES_DAY_NOTE = "Deterministic rules fallback generated this day."
 
 
@@ -134,9 +138,17 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
         raise PlanAlreadyHasItems("This trip already has plan items")
 
     plan = _plan_for_trip(db, trip)
-    constraints = _load_required_constraints(db, trip_id)
+    constraints = _load_required_constraints(
+        db,
+        trip_id,
+        enforce_budget_ceilings=_trip_membership_count(db, trip_id) > 1,
+    )
     interests = _load_interests(db, trip_id)
     dates = _trip_dates(trip)
+    blocked_reason = _blocked_reason(dates, constraints)
+    allow_reuse_across_days = not any(
+        constraint.kind is ConstraintKind.BUDGET_CEILING for constraint in constraints
+    )
 
     draft: list[DraftItem] = []
     used: set[str] = set()
@@ -153,19 +165,20 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             constraints=constraints,
             organizer_id=organizer.id,
             already_selected=tuple(draft),
-            already_used=used,
+            already_used=set() if allow_reuse_across_days else used,
             interests=interests,
+            allow_reuse_across_days=allow_reuse_across_days,
         )
         if day is None:
             plan.status = "blocked"
-            plan.blocked_reason = BLOCKED_REASON
+            plan.blocked_reason = blocked_reason
             plan.estimated_total_per_person = 0
             db.flush()
             return GenerationResult(
                 plan=plan,
                 status="blocked",
                 days=_days_out(dates, ()),
-                blocked_reason=BLOCKED_REASON,
+                blocked_reason=blocked_reason,
                 generated_by="rules",
                 used_ai=False,
                 planner_note=None,
@@ -176,14 +189,14 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
 
     if not _is_complete(dates, tuple(draft)):
         plan.status = "blocked"
-        plan.blocked_reason = BLOCKED_REASON
+        plan.blocked_reason = blocked_reason
         plan.estimated_total_per_person = 0
         db.flush()
         return GenerationResult(
             plan=plan,
             status="blocked",
             days=_days_out(dates, ()),
-            blocked_reason=BLOCKED_REASON,
+            blocked_reason=blocked_reason,
             generated_by="rules",
             used_ai=False,
             planner_note=None,
@@ -246,7 +259,27 @@ def _trip_dates(trip: Trip) -> tuple[date, ...]:
     return tuple(trip.preferred_start_date + timedelta(days=i) for i in range(count))
 
 
-def _load_required_constraints(db: Session, trip_id: str) -> tuple[Constraint, ...]:
+def _blocked_reason(
+    dates: tuple[date, ...], constraints: tuple[Constraint, ...]
+) -> str:
+    if not dates:
+        return DATES_BLOCKED_REASON
+    if any(constraint.kind is ConstraintKind.BUDGET_CEILING for constraint in constraints):
+        return BUDGET_BLOCKED_REASON
+    return CONSTRAINTS_BLOCKED_REASON
+
+
+def _trip_membership_count(db: Session, trip_id: str) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(TripMembership)
+        .where(TripMembership.trip_id == trip_id)
+    ) or 0
+
+
+def _load_required_constraints(
+    db: Session, trip_id: str, *, enforce_budget_ceilings: bool = True
+) -> tuple[Constraint, ...]:
     rows = db.scalars(
         select(MemberConstraint)
         .join(TripMembership, TripMembership.id == MemberConstraint.trip_membership_id)
@@ -265,6 +298,7 @@ def _load_required_constraints(db: Session, trip_id: str) -> tuple[Constraint, .
             params=_normalize_params(row.params or {}),
         )
         for row in rows
+        if enforce_budget_ceilings or row.kind != ConstraintKind.BUDGET_CEILING.value
     )
 
 
@@ -304,6 +338,7 @@ def _build_day(
     already_selected: tuple[DraftItem, ...],
     already_used: set[str],
     interests: tuple[str, ...],
+    allow_reuse_across_days: bool,
 ) -> DayDraft | None:
     for attempt in range(2):
         candidates = _day_candidates(
@@ -345,6 +380,7 @@ def _build_day(
             already_selected + day.items,
             constraints,
             organizer_id,
+            allow_reuse_across_days=allow_reuse_across_days,
         ):
             return day
 
@@ -712,16 +748,25 @@ def _validate_items(
     draft: tuple[DraftItem, ...],
     constraints: tuple[Constraint, ...],
     organizer_id: str,
+    *,
+    allow_reuse_across_days: bool = False,
 ) -> bool:
     total = _draft_total(draft)
     walk_by_date: dict[date, float] = {}
     seen_by_day: dict[int, set[float]] = {}
+    used_titles_by_day: dict[int, set[str]] = {}
     used_titles: set[str] = set()
 
     for item in draft:
-        if item.poi.title in used_titles:
-            return False
-        used_titles.add(item.poi.title)
+        if allow_reuse_across_days:
+            day_titles = used_titles_by_day.setdefault(item.day_index, set())
+            if item.poi.title in day_titles:
+                return False
+            day_titles.add(item.poi.title)
+        else:
+            if item.poi.title in used_titles:
+                return False
+            used_titles.add(item.poi.title)
         slots = seen_by_day.setdefault(item.day_index, set())
         if item.start_hour in slots:
             return False

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { TripAppProvider, useTripApp } from './TripAppState.jsx'
-import { otherTrips, trip, tripMembers, tripStyles } from './tripContent.js'
+import { trip, tripMembers, tripStyles } from './tripContent.js'
 import PlanFeature from './plan-feature/PlanFeature.jsx'
 import { serializeWorkspaceRoute } from '../../../shared/trip-navigation-route/index.js'
 import { buildTripPreviewAbsoluteUrl } from '../../../shared/tripsync-preview-contract.js'
@@ -88,7 +88,7 @@ function useClickOutside(active, onClose) {
 function useCurrentTrip() {
   const { tripId } = useParams()
   const app = useTripApp()
-  return app.trips.find(item => item.id === tripId) || app.trip || trip
+  return app.trips.find(item => item.id === tripId) || app.trip || trip || null
 }
 
 function DateRangePicker({ value, onChange }) {
@@ -151,11 +151,13 @@ function ActionBell() {
   const app = useTripApp()
   const [open, setOpen] = useState(false)
   const ref = useClickOutside(open, () => setOpen(false))
-  const currentTrip = app.trip || trip
-  const updatesHref = tripHref(currentTrip.id, 'updates')
+  const currentTrip = app.trip || trip || null
+  const updatesHref = currentTrip ? tripHref(currentTrip.id, 'updates') : workspaceHomeHref()
   const actions = []
-  app.activeRounds?.filter(round => round.status === 'open').forEach(round => actions.push({ trip: currentTrip.name, text: `${round.itemTitle || 'A block'} has a group round open`, to: updatesHref }))
-  app.activeProposals?.filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).forEach(proposal => actions.push({ trip: currentTrip.name, text: proposal.status === 'escalated' ? `${proposal.before?.title || 'A proposal'} is with the organizer` : `${proposal.before?.title || 'A proposal'} is waiting for confirmation`, to: updatesHref }))
+  if (currentTrip) {
+    app.activeRounds?.filter(round => round.status === 'open').forEach(round => actions.push({ trip: currentTrip.name, text: `${round.itemTitle || 'A block'} has a group round open`, to: updatesHref }))
+    app.activeProposals?.filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).forEach(proposal => actions.push({ trip: currentTrip.name, text: proposal.status === 'escalated' ? `${proposal.before?.title || 'A proposal'} is with the organizer` : `${proposal.before?.title || 'A proposal'} is waiting for confirmation`, to: updatesHref }))
+  }
   return <div className="actionBellWrap" ref={ref}>
     <button className={cx('actionBell', actions.length && 'hasActions')} type="button" onClick={() => setOpen(current => !current)} aria-label="Action inbox">🔔</button>
     {open && <div className="actionInbox">
@@ -197,10 +199,10 @@ function ProfileMenu() {
 
 const cardPhotos = ['photoLake', 'photoMountain', 'photoNight', 'photoChicago']
 
-function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to, variant = 'compact', action = 'Open trip' }) {
+function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to, onOpen, variant = 'compact', action = 'Open trip' }) {
   const app = useTripApp()
-  const currentTrip = app.trip || trip
-  return <Link className={`dashboardTripCard dashboardTripCard--${variant}`} to={to || tripHref(currentTrip.id, 'plan')}>
+  const currentTrip = app.trip || trip || null
+  return <Link className={`dashboardTripCard dashboardTripCard--${variant}`} to={to || (currentTrip ? tripHref(currentTrip.id, 'plan') : workspaceHomeHref())} onClick={onOpen}>
     <div className={`tripPhoto ${imageClass}`}><Badge tone={tone}>{status}</Badge></div>
     <div className="dashboardTripBody">
       <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
@@ -227,16 +229,16 @@ function WorkspaceRouteGuard() {
     if (location.pathname !== initialPathRef.current) return null
     if (!app.currentUser || app.loading.initial) return null
     if (app.hasAccountSession && app.tripSummariesStatus !== 'ready') return null
-    return resolveRestoredWorkspaceDestination({
-      currentRoutePath: location.pathname,
-      hasAccountSession: app.hasAccountSession,
-      membershipId: app.membershipId,
-      currentUser: app.currentUser,
-      tripSummaries: app.tripSummaries,
-      activeTrip: app.trip || trip,
-      activeTripId: app.activeTripId,
-      restoredTripId: app.restoredTripId,
-    })
+      return resolveRestoredWorkspaceDestination({
+        currentRoutePath: location.pathname,
+        hasAccountSession: app.hasAccountSession,
+        membershipId: app.membershipId,
+        currentUser: app.currentUser,
+        tripSummaries: app.tripSummaries,
+        activeTrip: app.trip || trip || null,
+        activeTripId: app.activeTripId,
+        restoredTripId: app.restoredTripId,
+      })
   }, [
     app.activeTripId,
     app.hasAccountSession,
@@ -252,9 +254,10 @@ function WorkspaceRouteGuard() {
   const resolution = useMemo(() => resolveCurrentWorkspaceRoute({
     currentRoutePath: location.pathname,
     currentUser: app.currentUser,
-    activeTrip: app.trip || trip,
+    tripSummaries: app.tripSummaries,
+    activeTrip: app.trip || trip || null,
     activeTripId: app.activeTripId,
-  }), [app.activeTripId, app.currentUser, app.trip, location.pathname])
+  }), [app.activeTripId, app.currentUser, app.trip, app.tripSummaries, location.pathname])
 
   useEffect(() => {
     if (restorationResolvedRef.current) return
@@ -301,10 +304,29 @@ function Home() {
       </section>
     </main>
   }
-  // Guest 没有账户,也就没有跨 trip 的仪表盘。直连过来就送回他所在的那趟旅行。
-  const currentTrip = app.trip || trip
-  const roundOpen = app.activeRounds?.some(round => round.status === 'open')
-  const proposalPending = app.activeProposals?.some(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
+  // Guests have no account or cross-trip dashboard; direct links send them back to their trip.
+  const currentTrip = app.trip || trip || null
+  const roundOpen = Boolean(currentTrip && app.activeRounds?.some(round => round.status === 'open'))
+  const proposalPending = Boolean(currentTrip && app.activeProposals?.some(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)))
+  const dashboardTrips = [...(app.tripSummaries || []), ...(app.trips || [])]
+    .filter((item, index, all) => item?.id && all.findIndex(candidate => candidate?.id === item.id) === index)
+    .filter(item => !currentTrip || item.id !== currentTrip.id)
+  const openDashboardTrip = tripSummary => {
+    if (!tripSummary?.id || !tripSummary?.membership_id) return
+    app.adoptTechnicalTripContext({
+      membershipId: tripSummary.membership_id,
+      tripId: tripSummary.id,
+      profile: {
+        id: app.currentUser?.id,
+        name: app.currentUser?.name,
+        initials: app.currentUser?.initials,
+        email: app.currentUser?.email,
+        role: tripSummary.my_role || 'participant',
+        tripId: tripSummary.id,
+        isGuest: false,
+      },
+    })
+  }
   return <main className="homePage">
     <header className="editorialNav"><Logo/><nav><Link className="active" to={workspaceHomeHref()}>MY TRIPS</Link><Link to={workspaceCreateHref()}>NEW TRIP</Link></nav><div className="editorialActions"><ActionBell/><ProfileMenu/></div></header>
     <section className="homeContent">
@@ -312,11 +334,11 @@ function Home() {
         <div><span className="eyebrow">My trips</span><h1>Your shared plans</h1><p>Continue the trip that needs you, or revisit another plan.</p></div>
         <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>New trip <span>＋</span></Link>
       </div>
-      <section className="dashboardSection dashboardContinue">
+      {currentTrip && <section className="dashboardSection dashboardContinue">
         <div className="dashboardSectionHead"><span>Continue planning</span><small>Current workspace</small></div>
-        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Aug 14–17'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
-      </section>
-      {(roundOpen || proposalPending) && <section className="dashboardSection dashboardAttention">
+        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Dates not set'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
+      </section>}
+      {currentTrip && (roundOpen || proposalPending) && <section className="dashboardSection dashboardAttention">
         <div className="dashboardSectionHead"><span>Needs your attention</span><small>Open decisions</small></div>
         <div className="dashboardAttentionList">
           {roundOpen && <Link className="dashboardAlert" to={tripHref(currentTrip.id, 'updates')}><span>01</span><div><strong>A group round is open</strong><p>One block is contested. Pick an option before the round closes.</p></div><b>Choose →</b></Link>}
@@ -324,11 +346,24 @@ function Home() {
         </div>
       </section>}
       <section className="dashboardSection dashboardOthers">
-        <div className="dashboardSectionHead"><span>Other trips</span><small>{app.trips.length + otherTrips.length} workspaces</small></div>
-        <div className="dashboardGrid">
-          {app.trips.map((created, index) => <DashboardCard key={created.id} title={created.name} location={created.destination} dates={created.dates} status="Planning" tone="orange" imageClass={cardPhotos[index % cardPhotos.length]} detail="Build the first plan" action="Continue setup" to={tripHref(created.id, 'plan')}/>)}
-          {otherTrips.map(other => <DashboardCard key={other.id} title={other.name} location={other.destination} dates={other.dates} status={other.status} tone={other.tone} imageClass={other.photo} detail={other.detail} action="View trip"/>)}
-        </div>
+        <div className="dashboardSectionHead"><span>Other trips</span><small>{dashboardTrips.length} workspaces</small></div>
+        {dashboardTrips.length > 0
+          ? <div className="dashboardGrid">
+            {dashboardTrips.map((created, index) => <DashboardCard
+              key={created.id}
+              title={created.name}
+              location={created.destination}
+              dates={created.dates || 'Dates not set'}
+              status={created.status || 'Planning'}
+              tone="orange"
+              imageClass={cardPhotos[index % cardPhotos.length]}
+              detail={created.next_item_title || 'Open workspace'}
+              action="View trip"
+              to={tripHref(created.id, 'plan')}
+              onOpen={() => openDashboardTrip(created)}
+            />)}
+          </div>
+          : <div className="emptyState quietEmptyState dashboardEmptyTrips"><span></span><h2>No other trips yet</h2><p>Only real trips from your account will appear here.</p></div>}
       </section>
     </section>
   </main>
@@ -339,6 +374,26 @@ function TripShell({ children }) {
   const app = useTripApp()
   const currentUser = app.currentUser
   const currentTrip = useCurrentTrip()
+  if (!currentTrip) {
+    return <MissingTripShell/>
+  }
+  return <LoadedTripShell app={app} currentUser={currentUser} currentTrip={currentTrip} location={location}>{children}</LoadedTripShell>
+}
+
+function MissingTripShell() {
+  return <div className="tripPage">
+    <header className="tripUnifiedHeader">
+      <div className="tripUnifiedBrand"><Link className="brandBack" to={workspaceHomeHref()}><span className="logoMark">T</span><span className="backArrow">â†</span><span>My Trips</span></Link></div>
+      <div className="tripUnifiedCenter"><div className="tripUnifiedTitleRow"><h1>Trip not found</h1></div></div>
+      <div className="tripUnifiedRight"><Account/></div>
+    </header>
+    <main className="workspaceContent">
+      <div className="emptyState quietEmptyState"><span></span><h2>No trip loaded</h2><p>This workspace needs a real trip from your account or an invite session.</p><Link className="btn btnSecondary" to={workspaceCreateHref()}>Create trip</Link></div>
+    </main>
+  </div>
+}
+
+function LoadedTripShell({ children, app, currentUser, currentTrip, location }) {
   const pending = (app.activeRounds || []).filter(round => round.status === 'open').length +
     (app.activeProposals || []).filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)).length
   const navigation = useMemo(() => buildWorkspaceNavigationModel({

@@ -36,7 +36,7 @@ TEST_DATABASE_URL = os.getenv(
 os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["DISABLE_SCHEDULER"] = "1"
-os.environ.setdefault("MOCK_AI", "1")
+os.environ["MOCK_AI"] = "1"
 
 
 def _postgres_connect_args() -> dict:

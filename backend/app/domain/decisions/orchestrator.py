@@ -134,6 +134,14 @@ def _deadline_for(trip: Trip) -> datetime:
     return _now() + window
 
 
+def _option_time_label(hour: float) -> str:
+    whole_hour = int(hour)
+    minute = int(round((hour - whole_hour) * 60))
+    display_hour = whole_hour % 12 or 12
+    suffix = "AM" if whole_hour < 12 else "PM"
+    return f"{display_hour}:{minute:02d} {suffix}"
+
+
 def _proposal_deadline_for(trip: Trip) -> datetime:
     """确认的截止时间。旅行一开始，等待时间减半 —— 和投票同一条规矩。"""
     window = (
@@ -148,15 +156,19 @@ def _options_for(item: PlanItem, request: str, patch: dict | None = None) -> lis
     """候选项**必须包含「分头行动」** —— 这是产品规定,不是可选项。"""
     requested = {
         "id": "requested",
-        "label": "New idea",
-        "title": request[:60] or "The newly suggested plan",
-        "body": "Switch this block to the option raised most recently.",
+        "label": "Suggested change",
+        "title": request[:60] or "Suggested change",
+        "body": "Apply the most recent suggestion to this block.",
     }
     if patch:
         requested["patch"] = _json_patch(_patch_with_poi_metadata(item, patch))
     return [
-        {"id": KEEP_CURRENT, "label": "Keep current", "title": item.title,
-         "body": f"Stay with {item.place} exactly as planned."},
+        {
+            "id": KEEP_CURRENT,
+            "label": "Keep current",
+            "title": item.title,
+            "body": f"Keep this card as it is: {item.place} at {_option_time_label(item.start_hour)}.",
+        },
         requested,
         {"id": SPLIT_UP, "label": "Split up", "title": "Split for this block",
          "body": "Both options run in parallel and the group regroups afterwards."},
@@ -169,7 +181,7 @@ def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None
             plan_id=item.plan_id,
             plan_item_id=item.id,
             origin=origin,
-            patch=patch,
+            patch=_json_patch(patch),
             **extra,
         )
     )
@@ -177,9 +189,33 @@ def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None
 
 def _apply(db: Session, item: PlanItem, patch: dict) -> dict:
     applied = _patch_with_poi_metadata(item, patch)
+    if "day_date" in applied:
+        applied["day_index"] = _day_index_for_date(db, item, applied["day_date"])
     for field, value in applied.items():
         setattr(item, field, value)
     return applied
+
+
+def _day_index_for_date(db: Session, item: PlanItem, day_date: date) -> int:
+    if isinstance(day_date, str):
+        day_date = date.fromisoformat(day_date)
+
+    trip = db.get(Trip, item.plan.trip_id)
+    if trip and trip.preferred_start_date:
+        return max(1, (day_date - trip.preferred_start_date).days + 1)
+
+    dates = list(
+        db.scalars(
+            select(PlanItem.day_date)
+            .where(PlanItem.plan_id == item.plan_id)
+            .distinct()
+            .order_by(PlanItem.day_date)
+        )
+    )
+    if day_date not in dates:
+        dates.append(day_date)
+        dates.sort()
+    return dates.index(day_date) + 1
 
 
 def _patch_with_poi_metadata(item: PlanItem, patch: dict) -> dict:
@@ -273,6 +309,48 @@ def _guard_not_pending(db: Session, item: PlanItem) -> None:
         )
 
 
+def _changed_item_window(item: PlanItem, patch: dict) -> tuple[date, float, float]:
+    day_date = patch.get("day_date", item.day_date)
+    if isinstance(day_date, str):
+        day_date = date.fromisoformat(day_date)
+    start_hour = float(patch.get("start_hour", item.start_hour))
+    duration_min = int(patch.get("duration_min", item.duration_min))
+    return day_date, start_hour, start_hour + duration_min / 60
+
+
+def _overlaps(left_start: float, left_end: float, right_start: float, right_end: float) -> bool:
+    return left_start < right_end and left_end > right_start
+
+
+def _schedule_conflict_item(db: Session, item: PlanItem, patch: dict) -> PlanItem | None:
+    day_date, start_hour, end_hour = _changed_item_window(item, patch)
+    peers = db.scalars(
+        select(PlanItem)
+        .where(
+            PlanItem.plan_id == item.plan_id,
+            PlanItem.id != item.id,
+            PlanItem.day_date == day_date,
+        )
+        .order_by(PlanItem.start_hour)
+    ).all()
+    for peer in peers:
+        peer_end = peer.start_hour + peer.duration_min / 60
+        if _overlaps(start_hour, end_hour, peer.start_hour, peer_end):
+            return peer
+    return None
+
+
+def _schedule_conflict_classification(conflict: PlanItem) -> Classification:
+    return Classification(
+        path=Path.ROUND,
+        headline="This time already has another plan",
+        detail=(
+            f"{conflict.title} is already scheduled at this time. The group should "
+            "choose how to handle the overlap instead of silently stacking two plans."
+        ),
+    )
+
+
 # ————————————————————— 入口 —————————————————————
 
 
@@ -304,6 +382,10 @@ def propose_change(
     )
     constraints = _load_constraints(db, trip.id)
     verdict = classify(change, constraints)
+    if verdict.path is Path.NOTICE:
+        conflict = _schedule_conflict_item(db, item, patch)
+        if conflict is not None:
+            verdict = _schedule_conflict_classification(conflict)
 
     if verdict.path is Path.NOTICE:
         return _do_notice(db, item, patch, actor_membership_id, verdict)
@@ -348,7 +430,12 @@ def classify_change(
         ),
         requested_by_membership_id=actor_membership_id,
     )
-    return classify(change, _load_constraints(db, trip.id))
+    verdict = classify(change, _load_constraints(db, trip.id))
+    if verdict.path is Path.NOTICE:
+        conflict = _schedule_conflict_item(db, item, patch)
+        if conflict is not None:
+            return _schedule_conflict_classification(conflict)
+    return verdict
 
 
 def set_booking_status(
@@ -629,6 +716,9 @@ def _do_confirm(
             )
         )
     db.flush()
+    if all(membership.id == actor_membership_id for membership in involved):
+        decide_proposal(db, proposal, actor_membership_id, "accepted")
+        return Outcome(classification=verdict, applied=True)
     return Outcome(classification=verdict, proposal_id=proposal.id)
 
 
