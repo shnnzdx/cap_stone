@@ -13,6 +13,8 @@ AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
+AWS/CLOUD_DEEPSEEK_CLI_RUNBOOK.md
+AWS/CLOUD_DUAL_AI_CLI_RUNBOOK.md
 ```
 
 Use `TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md` for the full architecture and deployment history.
@@ -31,6 +33,14 @@ accounts.
 Use `BACKEND_AI_RUNTIME_RUNBOOK.md` when the deployed backend should switch from
 `MOCK_AI=1` to a real provider and the AI runtime secret may need to be
 provisioned first.
+
+Use `CLOUD_DEEPSEEK_CLI_RUNBOOK.md` when you want the exact local PowerShell +
+AWS CLI operator steps for switching the current deployed backend to a
+DeepSeek-only runtime by hand.
+
+Use `CLOUD_DUAL_AI_CLI_RUNBOOK.md` when you want the exact local PowerShell +
+AWS CLI operator steps for switching the deployed backend to the newer dual-AI
+runtime with Ollama Cloud for chat and DeepSeek for planner/explainer.
 
 ## Current Manual AWS Workflows
 
@@ -97,6 +107,8 @@ PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 Cloud Fixed Accounts Runbook: CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 Cloud Demo Purge Runbook: CLOUD_DEMO_PURGE_RUNBOOK.md
 Backend AI Runtime Runbook: BACKEND_AI_RUNTIME_RUNBOOK.md
+Cloud DeepSeek CLI Runbook: CLOUD_DEEPSEEK_CLI_RUNBOOK.md
+Cloud Dual AI CLI Runbook: CLOUD_DUAL_AI_CLI_RUNBOOK.md
 PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
 

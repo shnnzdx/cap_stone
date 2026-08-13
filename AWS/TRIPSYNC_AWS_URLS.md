@@ -178,6 +178,8 @@ AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
+AWS/CLOUD_DEEPSEEK_CLI_RUNBOOK.md
+AWS/CLOUD_DUAL_AI_CLI_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
 
@@ -221,8 +223,25 @@ Current backend AI runtime:
 
 ```text
 MOCK_AI=0
-OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-v4-flash
+CHAT_AI_PROVIDER=ollama_cloud
+PLANNER_AI_PROVIDER=deepseek
+EXPLAINER_AI_PROVIDER=deepseek
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/
+OLLAMA_CLOUD_MODEL=qwen3.5:397b
+```
+
+Current manual DeepSeek CLI operator guide:
+
+```text
+AWS/CLOUD_DEEPSEEK_CLI_RUNBOOK.md
+```
+
+Current manual dual-AI CLI operator guide:
+
+```text
+AWS/CLOUD_DUAL_AI_CLI_RUNBOOK.md
 ```
 
 Cloud branch policy:
