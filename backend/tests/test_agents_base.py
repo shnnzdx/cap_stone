@@ -88,3 +88,25 @@ def test_a_missing_key_degrades_instead_of_crashing(monkeypatch):
             system="s", user="u", schema={"type": "object"},
             schema_name="t", mock={},
         )
+
+
+@pytest.mark.parametrize(
+    "provider_url",
+    [
+        "https://api.deepseek.com",
+        "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+        "https://workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+    ],
+)
+def test_json_object_mode_for_compatible_providers(monkeypatch, provider_url: str):
+    monkeypatch.setattr(base, "BASE_URL", provider_url)
+
+    assert base._response_format("agent", {"type": "object"}) == {
+        "type": "json_object"
+    }
+
+
+def test_ollama_keeps_strict_json_schema_mode(monkeypatch):
+    monkeypatch.setattr(base, "BASE_URL", "http://localhost:11434/v1")
+
+    assert base._response_format("agent", {"type": "object"})["type"] == "json_schema"

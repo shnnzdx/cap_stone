@@ -113,6 +113,17 @@ const normalizeCurrentUser = user => ({
   isGuest: Boolean(user.is_guest),
 })
 
+const normalizeAccountUser = user => ({
+  membershipId: null,
+  id: user.id,
+  name: user.name || 'Traveler',
+  initials: user.initials || initialsFor(user.name),
+  email: user.email || null,
+  role: 'account',
+  tripId: null,
+  isGuest: false,
+})
+
 const initialsFor = name => {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
@@ -391,6 +402,12 @@ export function TripAppProvider({ children }) {
     return sessionRequestJson('account', path, options)
   }, [sessionRequestJson])
 
+  const refreshAccountUser = useCallback(async () => {
+    const raw = await accountRequestJson('/api/account')
+    setCurrentUser(normalizeAccountUser(raw))
+    return raw
+  }, [accountRequestJson])
+
   const requestJson = useCallback(async (path, options = {}) => {
     return sessionRequestJson('trip', path, options)
   }, [sessionRequestJson])
@@ -458,12 +475,17 @@ export function TripAppProvider({ children }) {
   }, [accountRequestJson, hasAccountSession])
 
   const refreshAll = useCallback(async ({ background = false } = {}) => {
-    if ((!hasAccountSession && !membershipId) || !activeTripId) {
+    if (!hasAccountSession && (!membershipId || !activeTripId)) {
       if (!background) setLoading(current => ({ ...current, initial: false }))
       return false
     }
     if (!background) setLoading(current => ({ ...current, initial: true }))
     try {
+      if (hasAccountSession && !activeTripId) {
+        await Promise.all([refreshAccountUser(), refreshTripSummaries()])
+        setError('')
+        return true
+      }
       await Promise.all([
         refreshCurrentUser(),
         refreshTrip(),
@@ -490,7 +512,7 @@ export function TripAppProvider({ children }) {
       if (!hasAccountSession) setTripSummariesStatus('not-needed')
       if (!background) setLoading(current => ({ ...current, initial: false }))
     }
-  }, [activeTripId, hasAccountSession, membershipId, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates])
+  }, [activeTripId, hasAccountSession, membershipId, refreshAccountUser, refreshActions, refreshCurrentUser, refreshPlan, refreshTrip, refreshTripSummaries, refreshUpdates])
 
   useEffect(() => {
     if (!hasAccountSession) {
@@ -607,7 +629,19 @@ export function TripAppProvider({ children }) {
       // 你在新 trip 里是另一个 membership。不切过去的话，
       // 邀请、生成、偏好全都会因为"身份属于别的旅行"被拒。
       if (created.membership_id) {
-        adoptTechnicalTripContext({ membershipId: created.membership_id, tripId: created.id })
+        adoptTechnicalTripContext({
+          membershipId: created.membership_id,
+          tripId: created.id,
+          profile: created.member || {
+            id: currentUser?.id,
+            name: currentUser?.name,
+            initials: currentUser?.initials,
+            email: currentUser?.email,
+            role: 'organizer',
+            tripId: created.id,
+            isGuest: false,
+          },
+        })
       }
       return created
     } catch (err) {
@@ -616,7 +650,7 @@ export function TripAppProvider({ children }) {
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [accountRequestJson, adoptTechnicalTripContext])
+  }, [accountRequestJson, adoptTechnicalTripContext, currentUser])
 
   const createInvite = useCallback(async tripId => {
     return requestJson(`/api/trips/${tripId}/invite`, { method: 'POST' })

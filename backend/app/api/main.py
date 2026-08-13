@@ -121,6 +121,35 @@ def current_membership(
     raise HTTPException(401, "Login required")
 
 
+def current_account_user(
+    db: Session = Depends(get_session),
+    authorization: str | None = Header(default=None),
+    x_membership_id: str | None = Header(default=None),
+) -> User:
+    """Account identity for cross-trip reads and creating the first trip.
+
+    Unlike ``current_membership``, this dependency intentionally works before
+    an account belongs to any trip.
+    """
+    token = _bearer_token(authorization)
+    if token:
+        try:
+            return auth_service.user_for_token(db, token)
+        except auth_service.AuthRequired as exc:
+            raise HTTPException(401, str(exc)) from exc
+
+    if os.getenv("DEV_ALLOW_MEMBERSHIP_HEADER", "1") == "1" and x_membership_id:
+        membership = db.get(TripMembership, x_membership_id)
+        if membership is not None and membership.user_id:
+            user = db.get(User, membership.user_id)
+            if user is not None:
+                return user
+        if membership is not None:
+            raise HTTPException(403, "Guests do not have an account")
+
+    raise HTTPException(401, "Login required")
+
+
 def _bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -230,6 +259,12 @@ class InviteJoinRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=1, max_length=255)
+
+
+class RegisterRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=8, max_length=255)
 
 
 def _item_out(item: PlanItem) -> dict:
@@ -437,6 +472,33 @@ def login(body: LoginRequest, db: Session = Depends(get_session)) -> dict:
     }
 
 
+@app.post("/api/auth/register", status_code=201)
+def register(body: RegisterRequest, db: Session = Depends(get_session)) -> dict:
+    try:
+        result = auth_service.register(
+            db,
+            name=body.name,
+            email=body.email,
+            password=body.password,
+        )
+    except auth_service.InvalidRegistration as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except auth_service.EmailAlreadyRegistered as exc:
+        raise HTTPException(409, str(exc)) from exc
+    db.commit()
+    return {
+        "token": result.token,
+        "user": {
+            "id": result.user.id,
+            "name": result.user.name,
+            "email": result.user.email,
+            "initials": _initials(result.user.name),
+        },
+        "memberships": result.memberships,
+        "default_membership": result.memberships[0] if result.memberships else None,
+    }
+
+
 @app.post("/api/auth/logout")
 def logout(
     db: Session = Depends(get_session),
@@ -447,6 +509,16 @@ def logout(
         auth_service.revoke_token(db, token)
         db.commit()
     return {"ok": True}
+
+
+@app.get("/api/account")
+def get_account(user: User = Depends(current_account_user)) -> dict:
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "initials": _initials(user.name),
+    }
 
 
 @app.get("/api/me")
@@ -465,10 +537,10 @@ def get_me(
 @app.get("/api/trips")
 def list_trips(
     db: Session = Depends(get_session),
-    me: TripMembership = Depends(current_membership),
+    user: User = Depends(current_account_user),
 ) -> list[dict]:
     try:
-        return trip_service.list_user_trips(db, me)
+        return trip_service.list_user_trips(db, user)
     except trip_service.GuestTripAccessDenied as exc:
         raise HTTPException(403, str(exc)) from exc
 
@@ -750,12 +822,12 @@ def get_change_log(
 def create_trip(
     body: TripCreateRequest,
     db: Session = Depends(get_session),
-    me: TripMembership = Depends(current_membership),
+    user: User = Depends(current_account_user),
 ) -> dict:
     try:
         created = trip_service.create_trip(
             db,
-            me,
+            user,
             trip_service.TripCreateData(**body.model_dump()),
         )
     except trip_service.GuestTripAccessDenied as exc:
@@ -770,6 +842,7 @@ def create_trip(
         # 创建者在新 trip 里是另一个 membership。不返回它，前端就没法把身份切过去，
         # 之后调这趟旅行的任何接口都会因为"身份属于别的旅行"被拒。
         "membership_id": created.membership.id,
+        "member": trip_service.describe_me(db, created.membership),
     }
 
 

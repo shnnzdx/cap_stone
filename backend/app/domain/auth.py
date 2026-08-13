@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db.models import AuthSession, TripMembership, User
@@ -24,6 +25,14 @@ HASH_ROUNDS = 210_000
 
 
 class InvalidCredentials(Exception):
+    pass
+
+
+class InvalidRegistration(Exception):
+    pass
+
+
+class EmailAlreadyRegistered(Exception):
     pass
 
 
@@ -99,13 +108,7 @@ def _memberships(db: Session, user_id: str) -> list[dict]:
     ]
 
 
-def login(db: Session, *, email: str, password: str) -> LoginResult:
-    user = db.scalar(
-        select(User).where(func.lower(User.email) == normalize_email(email))
-    )
-    if user is None or not verify_password(password, user.password_hash):
-        raise InvalidCredentials("Invalid email or password")
-
+def _start_session(db: Session, user: User) -> LoginResult:
     token = secrets.token_urlsafe(32)
     session = AuthSession(
         user_id=user.id,
@@ -117,13 +120,57 @@ def login(db: Session, *, email: str, password: str) -> LoginResult:
     return LoginResult(user=user, token=token, memberships=_memberships(db, user.id))
 
 
+def register(db: Session, *, name: str, email: str, password: str) -> LoginResult:
+    normalized_name = name.strip()
+    normalized_email = normalize_email(email)
+    if not normalized_name:
+        raise InvalidRegistration("Name is required")
+    if (
+        "@" not in normalized_email
+        or normalized_email.startswith("@")
+        or normalized_email.endswith("@")
+        or any(character.isspace() for character in normalized_email)
+    ):
+        raise InvalidRegistration("Enter a valid email address")
+    if len(password) < 8:
+        raise InvalidRegistration("Password must be at least 8 characters")
+    if db.scalar(select(User.id).where(func.lower(User.email) == normalized_email)):
+        raise EmailAlreadyRegistered("An account with this email already exists")
+
+    user = User(
+        name=normalized_name,
+        email=normalized_email,
+        password_hash=hash_password(password),
+    )
+    db.add(user)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise EmailAlreadyRegistered("An account with this email already exists") from exc
+    return _start_session(db, user)
+
+
+def login(db: Session, *, email: str, password: str) -> LoginResult:
+    user = db.scalar(
+        select(User).where(func.lower(User.email) == normalize_email(email))
+    )
+    if user is None or not verify_password(password, user.password_hash):
+        raise InvalidCredentials("Invalid email or password")
+
+    return _start_session(db, user)
+
+
 def user_for_token(db: Session, token: str | None) -> User:
     if not token:
         raise AuthRequired("Missing bearer token")
     session = db.scalar(
         select(AuthSession).where(AuthSession.token_hash == token_hash(token))
     )
-    if session is None or session.revoked_at is not None or session.expires_at <= _now():
+    expires_at = session.expires_at if session is not None else None
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if session is None or session.revoked_at is not None or expires_at <= _now():
         raise AuthRequired("Invalid or expired session")
     user = db.get(User, session.user_id)
     if user is None:

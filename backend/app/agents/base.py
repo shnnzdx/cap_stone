@@ -37,8 +37,9 @@ def is_mocked() -> bool:
 
 
 def _uses_json_object_mode() -> bool:
-    """DeepSeek 暂不接受 json_schema strict,但接受 OpenAI 兼容的 JSON object."""
-    return "deepseek" in (BASE_URL or "").lower()
+    """Providers that accept JSON mode but not OpenAI strict json_schema."""
+    base_url = (BASE_URL or "").lower()
+    return any(marker in base_url for marker in ("deepseek", "dashscope", "aliyuncs.com"))
 
 
 def _extra_body() -> dict[str, Any] | None:

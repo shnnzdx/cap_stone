@@ -30,7 +30,7 @@ test("characterizes current login redirect and session persistence behavior", as
   assert.match(loginPage, /if \(next\?\.startsWith\("\/"\)\) setNextPath\(next\);/);
   assert.match(loginPage, /createSessionRuntime, SESSION_RUNTIME_CODES/);
   assert.match(loginPage, /const membership = result\.default_membership \|\| result\.memberships\?\.\[0\];/);
-  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*activeTripId: membership\.trip_id,\s*membershipId: membership\.membership_id,\s*\}\);/s);
+  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*\.\.\.\(membership \? \{/s);
   assert.match(loginPage, /window\.location\.href = nextPath;/);
 });
 

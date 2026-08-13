@@ -21,19 +21,20 @@ function createMemoryStorage() {
   };
 }
 
-test("phase 3 login source adopts account auth through shared session-runtime using default_membership compatibility facts", async () => {
+test("login source adopts account auth with optional default_membership compatibility facts", async () => {
   const loginPage = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 
   assert.match(loginPage, /import \{ createSessionRuntime, SESSION_RUNTIME_CODES \} from "\.\.\/\.\.\/\.\.\/shared\/session-runtime\/index\.js";/);
   assert.match(loginPage, /const membership = result\.default_membership \|\| result\.memberships\?\.\[0\];/);
-  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*activeTripId: membership\.trip_id,\s*membershipId: membership\.membership_id,\s*\}\);/s);
+  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*\.\.\.\(membership \? \{\s*activeTripId: membership\.trip_id,\s*membershipId: membership\.membership_id,\s*\} : \{\}\),\s*\}\);/s);
   assert.doesNotMatch(loginPage, /window\.localStorage\.setItem\("tripsync:(authToken|membershipId|tripId)"/);
 });
 
-test("phase 3 login source preserves no-membership product behavior and host redirect behavior", async () => {
+test("login source preserves token-only accounts and host redirect behavior", async () => {
   const loginPage = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 
-  assert.match(loginPage, /if \(!result\.token \|\| !membership\) \{\s*setError\("This account is not connected to a trip yet\."\);\s*return;\s*\}/s);
+  assert.match(loginPage, /if \(!result\.token\) \{/);
+  assert.doesNotMatch(loginPage, /This account is not connected to a trip yet/);
   assert.match(loginPage, /const \[nextPath, setNextPath\] = useState\("\/trip"\);/);
   assert.match(loginPage, /if \(next\?\.startsWith\("\/"\)\) setNextPath\(next\);/);
   assert.match(loginPage, /window\.location\.href = nextPath;/);

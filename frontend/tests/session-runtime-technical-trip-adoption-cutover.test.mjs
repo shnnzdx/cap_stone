@@ -23,7 +23,7 @@ test("phase 6 createTrip and invite flows use shared technical trip adoption wit
     readFile(finalAppUrl, "utf8"),
   ]);
 
-  assert.match(tripAppStateSource, /if \(created\.membership_id\) \{\s*adoptTechnicalTripContext\(\{ membershipId: created\.membership_id, tripId: created\.id \}\)/s);
+  assert.match(tripAppStateSource, /if \(created\.membership_id\) \{\s*adoptTechnicalTripContext\(\{\s*membershipId: created\.membership_id,\s*tripId: created\.id,\s*profile:/s);
   assert.match(finalAppSource, /const savedInviteSession = useMemo\(\(\) => app\.readInviteAdoption\(token\), \[app, token\]\)/);
   assert.match(finalAppSource, /app\.adoptTechnicalTripContext\(\{\s*membershipId: savedInviteSession\.membershipId,\s*tripId: savedInviteSession\.tripId,\s*inviteToken: token,/s);
   assert.match(finalAppSource, /app\.adoptTechnicalTripContext\(\{\s*membershipId: joined\.membership_id,\s*tripId: joined\.trip_id,\s*inviteToken: token,/s);

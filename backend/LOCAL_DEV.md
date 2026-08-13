@@ -161,6 +161,10 @@ Keep this terminal open while using the frontend. The login page calls:
 http://127.0.0.1:8000/api/auth/login
 ```
 
+The create-account page calls `POST /api/auth/register`. Successful registration
+returns a bearer token immediately. An account with no memberships can use that token
+to read `/api/account`, list an empty `/api/trips`, and create its first trip.
+
 The API should be available at:
 
 ```text

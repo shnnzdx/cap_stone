@@ -76,14 +76,16 @@ export default function LoginPage() {
       }
       const result = await response.json();
       const membership = result.default_membership || result.memberships?.[0];
-      if (!result.token || !membership) {
-        setError("This account is not connected to a trip yet.");
+      if (!result.token) {
+        setError("The backend returned an invalid session. Try again.");
         return;
       }
       const adoption = sessionRuntime.adoptAccountAuth({
         token: result.token,
-        activeTripId: membership.trip_id,
-        membershipId: membership.membership_id,
+        ...(membership ? {
+          activeTripId: membership.trip_id,
+          membershipId: membership.membership_id,
+        } : {}),
       });
       if (hasPersistenceWarning(adoption.warnings)) {
         setError("Could not reach the backend. Make sure the API is running.");

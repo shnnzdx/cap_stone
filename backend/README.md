@@ -264,7 +264,7 @@ Representative test areas:
 - `test_schema.py`: database invariants
 - `test_paths.py`: end-to-end decision flows
 - `test_jobs.py`: scheduler behavior
-- `test_auth.py`: login, logout, bearer session
+- `test_auth.py`: registration, login, logout, bearer session, first-trip account flow
 - `test_agent*.py`: chat and agent behavior
 - `test_plan_generation.py`: planner fallback behavior
 - `test_comments.py` / `test_booking.py`: comments, booking, organizer actions

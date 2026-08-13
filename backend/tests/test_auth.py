@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api import main as api
-from app.db.models import TripMembership, User
+from app.db.models import Trip, TripMembership, User
 from app.domain import auth
 
 
@@ -113,3 +113,78 @@ def test_bad_password_is_rejected(db: Session, full_trip: dict):
         )
 
     assert response.status_code == 401
+
+
+def test_register_creates_normalized_account_and_authenticated_session(db: Session):
+    with _client(db) as client:
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "name": "  Jiayi Chen  ",
+                "email": "  Jiayi@Example.COM ",
+                "password": "correct-horse",
+            },
+        )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["token"]
+    assert body["user"]["name"] == "Jiayi Chen"
+    assert body["user"]["email"] == "jiayi@example.com"
+    assert body["memberships"] == []
+    user = db.get(User, body["user"]["id"])
+    assert auth.verify_password("correct-horse", user.password_hash)
+
+
+def test_register_rejects_duplicate_email_case_insensitively(db: Session):
+    db.add(
+        User(
+            name="Existing",
+            email="traveler@example.com",
+            password_hash=auth.hash_password("12345678"),
+        )
+    )
+    db.flush()
+
+    with _client(db) as client:
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "name": "Another",
+                "email": "TRAVELER@example.com",
+                "password": "12345678",
+            },
+        )
+
+    assert response.status_code == 409
+
+
+def test_new_account_can_read_profile_and_create_first_trip(db: Session):
+    with _client(db) as client:
+        registered = client.post(
+            "/api/auth/register",
+            json={
+                "name": "First Timer",
+                "email": "first@example.com",
+                "password": "12345678",
+            },
+        ).json()
+        headers = {"Authorization": f"Bearer {registered['token']}"}
+
+        account = client.get("/api/account", headers=headers)
+        empty_trips = client.get("/api/trips", headers=headers)
+        created = client.post(
+            "/api/trips",
+            headers=headers,
+            json={"name": "First trip", "destination": "Chicago"},
+        )
+
+    assert account.status_code == 200
+    assert account.json()["name"] == "First Timer"
+    assert empty_trips.status_code == 200
+    assert empty_trips.json() == []
+    assert created.status_code == 200
+    body = created.json()
+    assert body["member"]["role"] == "organizer"
+    assert body["member"]["membership_id"] == body["membership_id"]
+    assert db.get(Trip, body["id"]).created_by_user_id == registered["user"]["id"]

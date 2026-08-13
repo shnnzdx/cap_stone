@@ -28,7 +28,7 @@ test("phase 1 current login persists auth token, membership id, and trip id befo
   const { loginPage } = await loadSources();
 
   assert.match(loginPage, /const membership = result\.default_membership \|\| result\.memberships\?\.\[0\];/);
-  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*activeTripId: membership\.trip_id,\s*membershipId: membership\.membership_id,\s*\}\);/s);
+  assert.match(loginPage, /const adoption = sessionRuntime\.adoptAccountAuth\(\{\s*token: result\.token,\s*\.\.\.\(membership \? \{/s);
   assert.match(loginPage, /window\.location\.href = nextPath;/);
 });
 
@@ -97,7 +97,7 @@ test("phase 1 current invite adoption cache is token-scoped, written during adop
 test("phase 1 current createTrip and invite join both adopt technical trip context through shared session-runtime adoption", async () => {
   const { finalApp, tripAppState } = await loadSources();
 
-  assert.match(tripAppState, /if \(created\.membership_id\) \{\s*adoptTechnicalTripContext\(\{ membershipId: created\.membership_id, tripId: created\.id \}\)/s);
+  assert.match(tripAppState, /if \(created\.membership_id\) \{\s*adoptTechnicalTripContext\(\{\s*membershipId: created\.membership_id,\s*tripId: created\.id,\s*profile:/s);
   assert.match(finalApp, /const joined = await app\.joinInvite\(token, \{/);
   assert.match(finalApp, /app\.adoptTechnicalTripContext\(\{\s*membershipId: joined\.membership_id,\s*tripId: joined\.trip_id,\s*inviteToken: token,/s);
 });

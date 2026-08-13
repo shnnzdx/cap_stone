@@ -1,19 +1,57 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { createSessionRuntime, SESSION_RUNTIME_CODES } from "../../../shared/session-runtime/index.js";
 import BrandLogo from "../BrandLogo";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const sessionRuntime = createSessionRuntime();
+
+function hasPersistenceWarning(warnings: string[]): boolean {
+  return warnings.includes(SESSION_RUNTIME_CODES.warnings.PERSISTENCE_UNAVAILABLE) ||
+    warnings.includes(SESSION_RUNTIME_CODES.warnings.PERSISTENCE_WRITE_FAILED);
+}
+
 export default function SignupPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting) return;
     const form = new FormData(event.currentTarget);
     if (form.get("password") !== form.get("confirmPassword")) { setError("The passwords do not match. Please try again."); return; }
-    router.push("/login?created=1");
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          name: String(form.get("name") || ""),
+          email: String(form.get("email") || ""),
+          password: String(form.get("password") || ""),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(response.status === 409
+          ? "An account with this email already exists. Try logging in instead."
+          : (typeof result.detail === "string" ? result.detail : "Could not create your account. Try again."));
+        return;
+      }
+      const adoption = sessionRuntime.adoptAccountAuth({ token: result.token });
+      if (hasPersistenceWarning(adoption.warnings)) {
+        setError("Your account was created, but this browser could not save the session. Please log in.");
+        return;
+      }
+      window.location.href = "/trip";
+    } catch {
+      setError("Could not reach the backend. Make sure the API is running.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return <main className="signup-page">
@@ -37,7 +75,7 @@ export default function SignupPage() {
             <label htmlFor="confirm-password">Confirm password</label><input id="confirm-password" name="confirmPassword" type={showPassword ? "text" : "password"} minLength={8} autoComplete="new-password" required />
             {error && <p className="signup-error" role="alert">{error}</p>}
             <label className="signup-consent"><input type="checkbox" required /><span>I agree to the <Link href="/privacy">Privacy Policy</Link> and understand how CADENSY uses planning data.</span></label>
-            <button className="signup-submit" type="submit">Create account <span>→</span></button>
+            <button className="signup-submit" type="submit" disabled={submitting}>{submitting ? "Creating account..." : "Create account"} <span>→</span></button>
           </form>
           <p className="signup-login">Already have an account? <Link href="/login">Log in</Link></p>
         </div>

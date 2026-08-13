@@ -480,13 +480,15 @@ function computeFallback(input, diagnostics) {
  */
 function validateRouteReachability(route, input) {
   if (route.kind === "home" || route.kind === "create-trip") {
-    return hasAccountBackedMembership(reachableMembershipEntries(input.relevantTripsById))
+    return input.accessState === "session-no-trip-access" ||
+      hasAccountBackedMembership(reachableMembershipEntries(input.relevantTripsById))
       ? { valid: true, code: "current-route-allowed" }
       : { valid: false, code: "trip-not-accessible" };
   }
 
   if (route.kind === "account") {
-    return hasAccountBackedMembership(reachableMembershipEntries(input.relevantTripsById))
+    return input.accessState === "session-no-trip-access" ||
+      hasAccountBackedMembership(reachableMembershipEntries(input.relevantTripsById))
       ? { valid: true, code: "current-route-allowed" }
       : { valid: false, code: "trip-not-accessible" };
   }

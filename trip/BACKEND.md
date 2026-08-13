@@ -291,10 +291,11 @@ Decision: `id` `proposal_id` `trip_membership_id` `status`(`accepted` | `decline
 
 ## 四、接口
 
-已实现 33 个,全部可在 http://localhost:8000/docs 直接点着试。
+已实现 40 个,全部可在 http://localhost:8000/docs 直接点着试。
 
 ```text
 GET    /api/health
+GET    /api/account                            token-only 账户资料,不要求已有 trip
 GET    /api/me
 GET    /api/trips                              My Trips
 GET    /api/trips/{trip_id}
@@ -309,6 +310,9 @@ GET    /api/trips/{trip_id}/preferences/me    ← 只读自己的偏好和原话
 GET    /api/trips/{trip_id}/members           ← 只看交没交,不看内容
 
 POST   /api/trips                              创建旅行 + organizer membership + 空 Plan
+POST   /api/auth/register                      注册 + 直接返回 bearer session
+POST   /api/auth/login                         登录 + 返回 bearer session
+POST   /api/auth/logout                        撤销当前 bearer session
 POST   /api/trips/{trip_id}/invite             organizer 生成不可猜 token,库里只存 sha256
 POST   /api/trips/{trip_id}/chat              自然语言理解 + 只读判定,不执行
 POST   /api/trips/{trip_id}/plans/generate    Planner 管道 + 规则兜底,失败写 blocked
@@ -333,7 +337,9 @@ POST   /api/proposals/{proposal_id}/deadlock
 **`/classify` 和 `/changes` 收同一个 body,走同一套判定。** 区别只是前者跑完回滚。
 所以"试算"和"真做"永远不会给出不一致的答案。
 
-身份目前靠请求头 `X-Membership-Id`。真做登录时**只改 `current_membership()` 一个函数**。
+账户级接口使用 `Authorization: Bearer <token>`；trip 内接口再用 `X-Trip-Id`
+选择该账户在当前旅行里的 membership。本地双角色调试仍可通过
+`DEV_ALLOW_MEMBERSHIP_HEADER=1` 使用 `X-Membership-Id`。
 
 ### 还没做的接口 ⬜
 

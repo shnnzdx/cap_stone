@@ -81,11 +81,21 @@ class CreatedTrip:
     membership: TripMembership
 
 
-def create_trip(
-    db: Session, creator: TripMembership, data: TripCreateData
-) -> CreatedTrip:
+def _account_user(db: Session, creator: User | TripMembership) -> User:
+    if isinstance(creator, User):
+        return creator
     if creator.user_id is None:
         raise GuestTripAccessDenied("Guests cannot create trips")
+    user = db.get(User, creator.user_id)
+    if user is None:
+        raise GuestTripAccessDenied("An account is required")
+    return user
+
+
+def create_trip(
+    db: Session, creator: User | TripMembership, data: TripCreateData
+) -> CreatedTrip:
+    user = _account_user(db, creator)
 
     trip = Trip(
         name=data.name,
@@ -95,14 +105,14 @@ def create_trip(
         expected_group_size=data.expected_group_size,
         currency=data.currency,
         status="planning",
-        created_by_user_id=creator.user_id,
+        created_by_user_id=user.id,
     )
     db.add(trip)
     db.flush()
 
     membership = TripMembership(
         trip_id=trip.id,
-        user_id=creator.user_id,
+        user_id=user.id,
         role="organizer",
         join_method="creator",
         status="joined",
@@ -118,13 +128,12 @@ def create_trip(
     return CreatedTrip(trip=trip, plan=plan, membership=membership)
 
 
-def list_user_trips(db: Session, membership: TripMembership) -> list[dict]:
-    if membership.user_id is None:
-        raise GuestTripAccessDenied("Guests do not have a trip dashboard")
+def list_user_trips(db: Session, account: User | TripMembership) -> list[dict]:
+    user = _account_user(db, account)
 
     memberships = db.scalars(
         select(TripMembership)
-        .where(TripMembership.user_id == membership.user_id)
+        .where(TripMembership.user_id == user.id)
         .order_by(TripMembership.created_at)
     ).all()
 

@@ -268,6 +268,10 @@ function WorkspaceRouteGuard() {
     }
   }, [app.hasAccountSession, app.currentUser, app.loading.initial, app.tripSummariesStatus, location.pathname])
 
+  if (app.loading.initial || (app.hasAccountSession && !app.currentUser)) {
+    return null
+  }
+
   if (restorationFactsPending) {
     return null
   }
@@ -285,6 +289,18 @@ function WorkspaceRouteGuard() {
 
 function Home() {
   const app = useTripApp()
+  const isEmptyAccount = app.hasAccountSession && !app.activeTripId && app.tripSummariesStatus === 'ready' && app.tripSummaries.length === 0
+  if (isEmptyAccount) {
+    return <main className="homePage">
+      <header className="editorialNav"><Logo/><nav><Link className="active" to={workspaceHomeHref()}>MY TRIPS</Link><Link to={workspaceCreateHref()}>NEW TRIP</Link></nav><div className="editorialActions"><ProfileMenu/></div></header>
+      <section className="homeContent">
+        <div className="dashboardMasthead">
+          <div><span className="eyebrow">My trips</span><h1>Start your first shared plan</h1><p>Your account is ready. Create a trip frame, then invite the people planning with you.</p></div>
+          <Link className="btn dashboardNewTrip" to={workspaceCreateHref()}>Create first trip <span>＋</span></Link>
+        </div>
+      </section>
+    </main>
+  }
   // Guest 没有账户,也就没有跨 trip 的仪表盘。直连过来就送回他所在的那趟旅行。
   const currentTrip = app.trip || trip
   const roundOpen = app.activeRounds?.some(round => round.status === 'open')

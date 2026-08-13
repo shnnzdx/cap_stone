@@ -116,17 +116,15 @@ export function normalizeWorkspaceSessionFacts(input = {}) {
   }
 
   if (input.currentUser) {
-    const tripId = requireString(
-      input.currentUser.trip_id || input.currentUser.tripId || input.activeTripId,
-      "current-user-trip-id-missing",
-      "Current user facts require a trip id.",
-    );
-    mergeTripFact(
-      relevantTripsById,
-      tripId,
-      "membership",
-      normalizeMembershipFromCurrentUser(input.currentUser),
-    );
+    const tripId = input.currentUser.trip_id || input.currentUser.tripId || input.activeTripId;
+    if (tripId) {
+      mergeTripFact(
+        relevantTripsById,
+        tripId,
+        "membership",
+        normalizeMembershipFromCurrentUser(input.currentUser),
+      );
+    }
   }
 
   const intent = {};
