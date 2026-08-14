@@ -5,12 +5,20 @@ import { serializeWorkspaceRoute } from '../../../../shared/trip-navigation-rout
 
 const tripHref = (tripId, section) => serializeWorkspaceRoute({ kind: 'trip', tripId, section })
 
+const ASSISTANT_LOADING_MESSAGES = [
+  'Reviewing the itinerary...',
+  'Checking the proposed change...',
+  'Looking for member impact...',
+  'Organizing the options...',
+]
+
 export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolvedOutcome }) {
   const app = useTripApp()
   const [pendingRedirect, setPendingRedirect] = useState('')
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState([])
   const [sending, setSending] = useState(false)
+  const [loadingStep, setLoadingStep] = useState(0)
   const threadRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -36,7 +44,23 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
     setMessages([])
     setPendingRedirect('')
     setSending(false)
+    setLoadingStep(0)
   }, [item.id, mode])
+
+  useEffect(() => {
+    if (!sending) return undefined
+    // Local placeholder rotation only. Real progress events need a later SSE/API stream.
+    const interval = window.setInterval(() => {
+      setLoadingStep(step => step + 1)
+    }, 2600)
+    return () => window.clearInterval(interval)
+  }, [sending])
+
+  useEffect(() => {
+    setMessages(current => current.map(message => message.loading
+      ? { ...message, text: ASSISTANT_LOADING_MESSAGES[loadingStep % ASSISTANT_LOADING_MESSAGES.length] }
+      : message))
+  }, [loadingStep])
 
   useEffect(() => {
     const thread = threadRef.current
@@ -56,7 +80,8 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
     if (!text || sending) return
     const loadingId = `ai-loading-${Date.now()}`
     const userMessage = { id: `user-${Date.now()}`, from: 'you', text }
-    setMessages(current => [...current, userMessage, { id: loadingId, from: 'tripSync', text: 'Thinking...', loading: true }])
+    setLoadingStep(0)
+    setMessages(current => [...current, userMessage, { id: loadingId, from: 'tripSync', text: ASSISTANT_LOADING_MESSAGES[0], loading: true }])
     setDraft('')
     setSending(true)
     try {
@@ -67,12 +92,15 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
           text: message.text,
         }))
       const result = await app.chatWithTrip({ message: text, itemId, history })
+      const candidateOptions = Array.isArray(result.candidate_options) ? result.candidate_options : []
       setMessages(current => current.map(message => message.id === loadingId ? {
         ...message,
         loading: false,
         from: 'tripSync',
         text: result.reply,
         proposedChange: result.proposed_change,
+        candidateOptions,
+        selectedCandidateId: candidateOptions[0]?.id || '',
         request: text,
       } : message))
     } catch (err) {
@@ -88,6 +116,22 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
   }
 
   const dismissProposal = id => updateMessage(id, { proposedChange: null })
+
+  const selectCandidateOption = (message, option) => {
+    const targetItem = itemById[option.item_id] || (item.id === option.item_id ? item : null)
+    updateMessage(message.id, {
+      selectedCandidateId: option.id,
+      proposedChange: {
+        ...(message.proposedChange || {}),
+        item_id: option.item_id,
+        item_title: targetItem?.title || message.proposedChange?.item_title || option.title,
+        patch: option.patch || {},
+        verdict: message.proposedChange?.verdict,
+      },
+      applied: false,
+      applyError: '',
+    })
+  }
 
   const applyProposal = async (message, proposedChange) => {
     const targetItem = itemById[proposedChange.item_id] || (item.id === proposedChange.item_id ? item : { id: proposedChange.item_id, title: proposedChange.item_title })
@@ -141,6 +185,7 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
       updateDraft: setDraft,
       sendMessage,
       dismissProposal,
+      selectCandidateOption,
       applyProposal,
     },
   }

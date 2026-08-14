@@ -66,6 +66,8 @@ class Understanding:
     intent: str
     item_hint: str | None
     patch: dict[str, Any]
+    resolution: Literal["single_change", "unresolved"] = "single_change"
+    unresolved_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,8 +112,14 @@ UNDERSTAND_SCHEMA = {
                 "title", "place", "start_hour", "day_date", "price_per_person", "lat", "lng"
             ],
         },
+        "resolution": {
+            "type": "string",
+            "enum": ["single_change", "unresolved"],
+            "default": "single_change",
+        },
+        "unresolved_reason": {"type": ["string", "null"], "default": None},
     },
-    "required": ["intent", "item_hint", "patch"],
+    "required": ["intent", "item_hint", "patch", "resolution", "unresolved_reason"],
 }
 
 REPLY_SCHEMA = {
@@ -134,6 +142,10 @@ def understand(request: UnderstandInput) -> Understanding:
             "never keep the old title while merely changing its area. Use candidate values "
             "exactly and never invent a venue. "
             "Return only JSON. Do not decide whether the change is allowed."
+            "If the message is fuzzy, asks to make the day easier, lacks enough "
+            "detail for one concrete item patch, or contains multiple possible "
+            "changes, keep the existing intent fields compatible and set "
+            "resolution='unresolved'."
         ),
         user=_understand_prompt(request),
         schema=UNDERSTAND_SCHEMA,
@@ -159,6 +171,8 @@ def understand(request: UnderstandInput) -> Understanding:
         intent=result["intent"],
         item_hint=result.get("item_hint"),
         patch=patch,
+        resolution=result.get("resolution") or "single_change",
+        unresolved_reason=result.get("unresolved_reason"),
     )
 
 
@@ -170,7 +184,10 @@ def explain(request: ReplyInput) -> Reply:
             "Reply in the same language as the traveler's latest message, in no more "
             "than two short sentences. Use only the supplied item, patch, and verdict. "
             "Do not invent a weekday, availability, opening hours, or other facts. "
-            "Do not pressure anyone or claim the change has been submitted."
+            "Never say or imply that the Current Plan has changed, been applied, "
+            "been submitted, been completed, or taken effect. The change is only a "
+            "prepared proposal/check result until the traveler clicks Apply. Always "
+            "make clear that the traveler must click Apply before anything is submitted."
         ),
         user=_reply_prompt(request, safe),
         schema=REPLY_SCHEMA,
@@ -179,7 +196,10 @@ def explain(request: ReplyInput) -> Reply:
         max_tokens=260,
         provider=base.CHAT_ROUTE,
     )
-    return Reply(text=result["reply"])
+    reply = str(result["reply"])
+    if _claims_change_completed(reply):
+        reply = _safe_pending_explanation(request)
+    return Reply(text=reply)
 
 
 def answer_question(request: QuestionInput) -> Reply:
@@ -222,6 +242,76 @@ def no_change_reply() -> str:
 
 def fallback_explanation(verdict: Classification) -> str:
     return f"{verdict.headline}. {verdict.detail}"
+
+
+def _claims_change_completed(text: str) -> bool:
+    lowered = text.lower()
+    unsafe_english = (
+        "has been submitted",
+        "was submitted",
+        "is submitted",
+        "has been applied",
+        "was applied",
+        "is applied",
+        "has been changed",
+        "was changed",
+        "is changed",
+        "has been updated",
+        "was updated",
+        "is updated",
+        "change is live",
+        "takes effect",
+        "took effect",
+        "completed",
+        "all set",
+    )
+    unsafe_chinese = (
+        "已生效",
+        "已经生效",
+        "生效了",
+        "已提交",
+        "已经提交",
+        "提交了",
+        "已完成",
+        "已经完成",
+        "完成了",
+        "已更改",
+        "已经更改",
+        "已修改",
+        "已经修改",
+        "已更新",
+        "已经更新",
+        "已经改",
+        "改好了",
+    )
+    return any(phrase in lowered for phrase in unsafe_english) or any(
+        phrase in text for phrase in unsafe_chinese
+    )
+
+
+def _safe_pending_explanation(request: ReplyInput) -> str:
+    chinese = bool(re.search(r"[\u4e00-\u9fff]", request.message))
+    path = request.verdict.path.value
+    if chinese:
+        if path == "notice":
+            return "我可以准备这个改动；检查通过。需要你点击 Apply 后才会提交，当前行程还没有改变。"
+        if path in {"round", "reopen_round"}:
+            return "我可以准备这个改动；它需要小组投票。需要你点击 Apply 后才会发起，当前行程还没有改变。"
+        return "我可以准备这个改动；相关成员需要确认。需要你点击 Apply 后才会提交，当前行程还没有改变。"
+    if path == "notice":
+        return (
+            "I can prepare this change. It passes the checks, and it will only be "
+            "submitted after you click Apply; the Current Plan has not changed yet."
+        )
+    if path in {"round", "reopen_round"}:
+        return (
+            "I can prepare this change. It needs a group round, which starts only "
+            "after you click Apply; the Current Plan has not changed yet."
+        )
+    return (
+        "I can prepare this change. Affected members need to confirm, and it will "
+        "only be submitted after you click Apply; the Current Plan has not changed yet."
+    )
 
 
 def replacement_explanation(request: ReplyInput) -> str:
@@ -323,6 +413,27 @@ def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
         "lat": None,
         "lng": None,
     }
+    fuzzy = any(
+        phrase in message
+        for phrase in (
+            "too packed",
+            "too busy",
+            "loosen",
+            "lighter",
+            "less packed",
+            "松一点",
+            "太满",
+            "太紧",
+        )
+    )
+    if fuzzy:
+        return {
+            "intent": "change",
+            "item_hint": None,
+            "patch": patch,
+            "resolution": "unresolved",
+            "unresolved_reason": "fuzzy_change_request",
+        }
     if "shopping" in message or "shop" in message:
         patch["title"] = "Magnificent Mile shopping"
         patch["place"] = "Magnificent Mile"
@@ -336,7 +447,13 @@ def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
         for word in ("move", "replace", "change", "switch", "go to", "换", "改", "替换")
     )
     if not has_change:
-        return {"intent": "question", "item_hint": None, "patch": patch}
+        return {
+            "intent": "question",
+            "item_hint": None,
+            "patch": patch,
+            "resolution": "single_change",
+            "unresolved_reason": None,
+        }
 
     item_hint = request.item.title if request.item else None
     if item_hint is None:
@@ -344,10 +461,32 @@ def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
             item_hint = "Art Institute"
         elif "birthday dinner" in message:
             item_hint = "Birthday dinner"
-    return {"intent": "change", "item_hint": item_hint, "patch": patch}
+    return {
+        "intent": "change",
+        "item_hint": item_hint,
+        "patch": patch,
+        "resolution": "single_change",
+        "unresolved_reason": None,
+    }
 
 
 def _hour_from_text(message: str) -> float | None:
+    message = message.lower()
+    chinese = re.search(
+        r"(凌晨|上午|早上|中午|下午|晚上)\s*(\d{1,2})(?:\s*点(?:半|:(\d{2}))?|:(\d{2}))",
+        message,
+    )
+    if chinese:
+        prefix = chinese.group(1) or ""
+        hour = int(chinese.group(2))
+        minute = 30 if "半" in chinese.group(0) else int(chinese.group(3) or chinese.group(4) or 0)
+        if prefix in {"下午", "晚上"} and hour < 12:
+            hour += 12
+        if prefix == "凌晨" and hour == 12:
+            hour = 0
+        if prefix in {"上午", "早上"} and hour == 12:
+            hour = 0
+        return hour + minute / 60
     match = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", message)
     if match:
         hour = int(match.group(1))
