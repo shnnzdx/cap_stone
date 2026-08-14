@@ -422,8 +422,29 @@ function PlanChatBubble({ from, children }) {
   </div>
 }
 
-function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss }) {
-  const verdict = proposedChange.verdict
+function CandidateOptionList({ options = [], selectedId, disabled = false, onSelect }) {
+  if (!options.length) return null
+  return <div className="candidateOptions">
+    <div className="candidateOptionsHead"><span>Options</span><p>Selecting one only prepares the change. Apply submits it.</p></div>
+    <div className="candidateOptionList">
+      {options.map(option => <button
+        key={option.id}
+        type="button"
+        className={cx('candidateOption', selectedId === option.id && 'selected')}
+        disabled={disabled}
+        onClick={() => onSelect(option)}
+      >
+        <span>{option.label || 'Option'}</span>
+        <strong>{option.title}</strong>
+        {option.body && <p>{option.body}</p>}
+        {option.tradeoff && <small>{option.tradeoff}</small>}
+      </button>)}
+    </div>
+  </div>
+}
+
+function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss, onSelectCandidate }) {
+  const verdict = proposedChange.verdict || { path: 'notice' }
   const patch = proposedChange.patch || {}
   const before = {
     title: currentItem?.title || proposedChange.item_title,
@@ -450,6 +471,12 @@ function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognize
 
   return <div className={cx('changeConfirmCard', message.applied && 'done')}>
     {showRecognizedItem && <div className="recognizedItem"><span>Cadensy matched this to</span><strong>{proposedChange.item_title}</strong></div>}
+    <CandidateOptionList
+      options={message.candidateOptions}
+      selectedId={message.selectedCandidateId}
+      disabled={message.applied || message.applying}
+      onSelect={onSelectCandidate}
+    />
     <div className="changeConfirmHead">
       <div><span>{changedField.label} change</span><h3>{proposedChange.item_title}</h3>{before.place && <p>{before.place}</p>}</div>
       {message.applied && <Badge tone="green">Done</Badge>}
@@ -502,6 +529,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
             showRecognizedItem={mode === 'global'}
             onApply={() => actions.applyProposal(message, message.proposedChange)}
             onDismiss={() => actions.dismissProposal(message.id)}
+            onSelectCandidate={option => actions.selectCandidateOption(message, option)}
           />}
         </div>)}
         {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}

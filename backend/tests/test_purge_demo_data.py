@@ -60,13 +60,6 @@ def test_purge_demo_data_removes_demo_trip_rows_and_preserves_fixed_accounts(db,
             expires_at=datetime.now(timezone.utc) + timedelta(days=7),
         )
     )
-    db.add(
-        User(
-            name="Elena Cruz",
-            email="elena@example.com",
-            password_hash=auth.hash_password("12345678"),
-        )
-    )
     db.commit()
 
     result = purge_module.purge_demo_data()

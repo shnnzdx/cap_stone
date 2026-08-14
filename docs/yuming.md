@@ -48,6 +48,109 @@ Request recorded on 2026-08-13:
 
 ## Latest Local Changes Summary
 
+### 2026-08-14 Agent And Chat Integration Summary
+
+Today focused on turning Cadensy's chat AI from manually chained calls into a guarded, read-only tool-calling agent path, then exposing its multi-option output in the Trip drawer.
+
+Current architecture after today's work:
+
+- `planner.py` remains a workflow for batch itinerary generation.
+- `base.call_model()` remains the existing single-call harness for legacy chat/planner paths.
+- `base.call_agent()` is the new tool-calling agent harness.
+- `tools.py` provides read-only business tools for the conversation agent.
+- `domain/chat/service.py` uses hybrid routing:
+  - clear single-change requests stay on the legacy fast path
+  - fuzzy, cross-day, or multi-option requests upgrade to the agent path
+- Human action is still required before any Current Plan change is submitted.
+
+Files changed today:
+
+- `backend/.env.example`
+- `backend/.gitignore`
+- `backend/app/agents/base.py`
+- `backend/app/agents/trace.py`
+- `backend/app/agents/tools.py`
+- `backend/app/agents/chat.py`
+- `backend/app/agents/agent-server/agent.py`
+- `backend/app/agents/agent-server/main.py`
+- `backend/app/agents/agent-server/test_ollama.py`
+- `backend/app/agents/agent-server/run_deepseek_tool_trace.py`
+- `backend/app/agents/agent-server/run_real_trip_tools_trace.py`
+- `backend/app/api/main.py`
+- `backend/app/domain/chat/service.py`
+- `backend/tests/conftest.py`
+- `backend/tests/test_agents_call_agent.py`
+- `backend/tests/test_agents_tools.py`
+- `backend/tests/test_chat_agent_branch.py`
+- `backend/tests/test_chat_safety_and_time.py`
+- `backend/tests/test_purge_demo_data.py`
+- Deleted `backend/app/agents/explainer.py`
+- Deleted `backend/tests/test_explainer.py`
+- `trip/src/final/plan-feature/useAssistantChangeRequestFlow.js`
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `trip/src/final/final.css`
+- `frontend/public/trip-app/index.html`
+- `frontend/public/trip-app/embed-manifest.json`
+- `frontend/public/trip-app/assets/*`
+- `docs/yuming.md`
+
+What changed today:
+
+- Added structured AI trace logging for model calls and agent rounds.
+- Added durable JSONL trace files under `backend/logs/trace-YYYYMMDD.jsonl`.
+- Added `backend/logs/` to `backend/.gitignore`.
+- Added clearer terminal failure output for provider fallback failures.
+- Added separate provider elapsed time and total elapsed time semantics.
+- Removed the unused duplicate `explainer.py` implementation while preserving explainer route constants.
+- Added `call_agent()` as the reusable agent harness:
+  - model/tool loop
+  - multiple tool calls per round
+  - guard rejection feedback
+  - guard rejection limit
+  - round limit
+  - token limit
+  - tool result cache
+  - per-round trace
+  - MOCK_AI support
+- Reworked `agent-server/` from local Ollama demo into a DeepSeek-backed sandbox and validation runner.
+- Added read-only trip tools:
+  - `get_current_plan`
+  - `get_trip_facts`
+  - `classify_change`
+  - `propose_options`
+- Removed `check_constraints` after verifying it was a strict subset/redundant with `classify_change`.
+- Improved tool descriptions so they state return shapes and decision-path semantics.
+- Added privacy tests proving model-visible tool output does not expose member names, membership ids, or raw preference wording.
+- Added hybrid chat routing so only unresolved/fuzzy/cross-day/multi-option requests upgrade to the agent path.
+- Added `candidate_options` to `ChatResult` and the chat API response while keeping `proposed_change` unchanged.
+- Added code-level safety fallback so `explain()` cannot return wording that claims a change has already taken effect.
+- Added Chinese/English time parsing boundary tests and fixes.
+- Added frontend candidate option selection in the Cadensy Plan drawer.
+- Kept candidate selection separate from Apply: selecting an option only chooses the pending patch.
+- Added local loading copy rotation for long agent responses, with a code comment noting it is placeholder progress until real streaming/SSE exists.
+- Synced the embedded `/trip` preview bundle after Trip source changes.
+- Tightened test database cleanup to avoid persistent duplicate fixed-account rows.
+
+Verification run today:
+
+- `cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest tests/test_agents_tools.py -q` passed with `11 passed`.
+- `cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q` passed with `314 passed`.
+- Real `MOCK_AI=0` DeepSeek validation after tool-description cleanup:
+  - `周三下午有什么安排`: 2 rounds, `get_current_plan`, `4203.94 ms`
+  - `把周三的 Art Institute 改到下午 3 点`: 3 rounds, `get_current_plan -> classify_change`, `6167.46 ms`
+  - `周三排得太满了，能不能松一点`: 4 rounds, `get_current_plan -> get_trip_facts -> get_current_plan -> propose_options`, `8916.09 ms`
+  - `周三的 Art Institute 能不能挪到周四`: 4 rounds, `get_current_plan -> get_current_plan -> classify_change -> propose_options`, `7581.15 ms`
+- `cd trip && npm run build` passed.
+- `cd frontend && npm run build:trip-preview` passed and synced `frontend/public/trip-app`.
+- `cd frontend && npm test` passed with `8` tests.
+- `git diff --check -- docs/yuming.md` passed.
+
+Open architecture note:
+
+- The implementation is currently `legacy chat fast path + agent branch`, not yet "all chat requests enter the single conversation agent first".
+- The next migration step would be agent-first routing with legacy `understand()` retained as a fallback.
+- `planner.py` should remain a workflow and should not be merged into the conversation agent.
+
 ### Plan Generation Variety Fix
 
 Fixed the backend generator so single-member trips do not repeat the same places every day.
@@ -91,6 +194,354 @@ Files changed:
 Verification:
 
 - `cd frontend && npm run build:trip-preview` passed.
+
+### Map Rail Day Marker Polish Reverted
+
+Tried a lighter right-side route map rail on the Plan page, then reverted it after review.
+
+- Restored all-day map pins back to `D1`, `D2`, `D3`.
+- Removed the extra map rail CSS override that changed the tab, pin, card, route line, and summary styling.
+- Kept the prior map rail appearance as the current behavior.
+
+Files changed:
+
+- `trip/src/final/TripMap.jsx`
+- `trip/src/final/final.css`
+- `frontend/public/trip-app/index.html`
+- `frontend/public/trip-app/embed-manifest.json`
+- `frontend/public/trip-app/assets/*`
+
+Verification:
+
+- `cd frontend && npm run build:trip-preview` passed after the revert.
+
+### Agent Harness, Read-Only Tools, Chat Routing, And Candidate Options
+
+Implemented the staged Cadensy agent work and the frontend surface that consumes the new multi-option chat response.
+
+#### Backend AI Trace Logging
+
+Problem:
+
+- Model calls were previously only printed on failure, and successful calls had no durable trace.
+- Debugging provider fallback, latency, and token use was hard after process restart.
+
+Files changed:
+
+- `backend/app/agents/trace.py`
+- `backend/app/agents/base.py`
+- `backend/.gitignore`
+
+What changed:
+
+- Added structured JSONL trace output under `backend/logs/trace-YYYYMMDD.jsonl`.
+- Added human-readable stdout summaries for model calls.
+- Added failure summaries that print each provider failure reason on `ok=False`.
+- Added separate elapsed fields for:
+  - single successful provider elapsed time
+  - total `call_model()` elapsed time including fallback attempts
+- Added `backend/logs/` to `backend/.gitignore`.
+- Kept `MOCK_AI=1` quiet so deterministic test flows do not produce real-call noise.
+
+Verification:
+
+- Backend pytest passed during the trace work.
+
+#### Removed The Duplicate Explainer Agent
+
+Problem:
+
+- `backend/app/agents/explainer.py` duplicated weaker explanation logic and was not used by product code.
+- The real product explanation path was already in `backend/app/agents/chat.py`.
+
+Files changed:
+
+- Deleted `backend/app/agents/explainer.py`
+- Deleted `backend/tests/test_explainer.py`
+
+What stayed intentionally:
+
+- `EXPLAINER_ROUTE` in `backend/app/agents/base.py`
+- `EXPLAINER_AI_PROVIDER` environment wiring
+- route-provider defaults and routing tests
+
+Why:
+
+- The route mechanism is still useful for future agents.
+- The dead duplicate implementation should not remain as misleading product code.
+
+Verification:
+
+- Backend pytest passed after removal.
+
+#### Added `call_agent()` Harness
+
+Problem:
+
+- `call_model()` supports single model calls, but not a real tool-calling loop.
+- The product needed a reusable harness for multi-round agent behavior without changing existing `chat.py` or `planner.py` callers.
+
+Files changed:
+
+- `backend/app/agents/base.py`
+- `backend/app/agents/trace.py`
+- `backend/.env.example`
+- `backend/tests/test_agents_call_agent.py`
+
+What changed:
+
+- Added `call_agent()` beside `call_model()` without changing `call_model()` signature, return value, or behavior.
+- Added `AGENT_ROUTE = "agent"` and `AGENT_AI_PROVIDER`, defaulting to DeepSeek.
+- Added tool loop behavior:
+  - model call
+  - inspect `tool_calls`
+  - execute one or multiple tool calls in a single round
+  - append tool results to messages
+  - repeat until no tool call or a guardrail trips
+- Added guard support so tools can declare prerequisites such as "must call get_current_plan first".
+- Guard rejection is returned to the model as normal tool output instead of raising.
+- Added guard rejection limit, round limit, token limit, timeout-style stop behavior, and same-tool/same-arguments cache.
+- Added per-round trace through `record_agent_round()`.
+- Added `MOCK_AI=1` support with mock rounds for deterministic tests.
+
+Verification:
+
+- Added unit coverage for:
+  - no-tool single round
+  - one tool then final
+  - multiple tool calls in one round
+  - guard rejection recovery
+  - guard rejection limit
+  - round limit
+  - tool result cache
+  - MOCK_AI flow
+- Backend pytest passed after the harness work.
+
+#### Added Read-Only Trip Tools
+
+Problem:
+
+- The harness initially knew how to call tools but had no real business tools.
+- Tool calls needed to preserve the privacy boundary: the model must not see `membership_id`, user names, or raw preference text.
+
+Files changed:
+
+- `backend/app/agents/tools.py`
+- `backend/tests/test_agents_tools.py`
+
+What changed:
+
+- Added `build_read_only_trip_tools(db, trip_id, actor_membership_id)`.
+- Bound `db`, `trip_id`, and `actor_membership_id` in Python closures so model-visible tool parameters only include business fields.
+- Added read-only tools:
+  - `get_current_plan(day)`
+  - `get_trip_facts()`
+  - `classify_change(...)`
+  - `propose_options(conflict_description, day)`
+- `get_current_plan` can query any day or the whole trip and returns deterministic derived times:
+  - `start_time_label`
+  - `end_hour`
+  - `end_time_label`
+  - `time_range_label`
+- `classify_change` wraps the existing read-only domain classification path and does not create proposals, votes, notices, or plan changes.
+- `propose_options` returns executable option patches using real `item_id` values from the Current Plan.
+- Added guard requirements:
+  - `classify_change` requires prior `get_current_plan`
+  - `propose_options` requires prior `get_current_plan`
+- Added privacy tests proving model-visible outputs do not include:
+  - member names
+  - membership ids
+  - raw private preference wording
+
+Latest description-quality cleanup:
+
+- Removed `check_constraints` because it returned the same `_classification_result()` shape as `classify_change` and provided no extra model-visible fields.
+- `classify_change` is strictly more complete because it uses `orchestrator.classify_change()`, which already invokes the constraint classifier and additionally checks schedule conflicts.
+- Updated tool descriptions to say what they return, not only what they do.
+- `classify_change` now explains `notice`, `round`, `reopen_round`, and `confirm` directly in the tool description.
+- Rewrote the cross-day instruction to remove the confusing `day/current day` wording.
+
+Verification:
+
+- `cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest tests/test_agents_tools.py -q` passed with `11 passed`.
+- `cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q` passed with `314 passed`.
+- Real DeepSeek validation after tool description cleanup:
+  - Scenario 1, `周三下午有什么安排`: 2 rounds, tools `get_current_plan`, `4203.94 ms`
+  - Scenario 2, `把周三的 Art Institute 改到下午 3 点`: 3 rounds, tools `get_current_plan -> classify_change`, `6167.46 ms`
+  - Scenario 3, `周三排得太满了，能不能松一点`: 4 rounds, tools `get_current_plan -> get_trip_facts -> get_current_plan -> propose_options`, `8916.09 ms`
+  - Scenario 4, `周三的 Art Institute 能不能挪到周四`: 4 rounds, tools `get_current_plan -> get_current_plan -> classify_change -> propose_options`, `7581.15 ms`
+
+#### Agent-Server Sandbox Validation
+
+Problem:
+
+- The old `agent-server/` demo depended on local Ollama and could not reliably validate tool-calling behavior.
+
+Files changed:
+
+- `backend/app/agents/agent-server/agent.py`
+- `backend/app/agents/agent-server/main.py`
+- `backend/app/agents/agent-server/test_ollama.py`
+- `backend/app/agents/agent-server/run_deepseek_tool_trace.py`
+- `backend/app/agents/agent-server/run_real_trip_tools_trace.py`
+
+What changed:
+
+- Reworked the sandbox to use the same DeepSeek provider routing helpers as the main backend.
+- Changed the demo port to `8001`.
+- Added configurable round limits and MOCK_AI support.
+- Added fake tool validation for:
+  - current plan lookup
+  - constraint checking
+  - classification
+  - option proposal generation
+- Validated relaxed prompt plus tool-level guards instead of hard-coded "use exactly this sequence" prompt rules.
+- Added real read-only trip tool validation scripts that seed a temporary transaction and roll it back.
+
+Verification:
+
+- Ran manual DeepSeek validation scripts during the staged agent work.
+- Observed that DeepSeek can do multi-round tool calls and can recover from guard feedback in tested paths.
+
+#### Hybrid Chat Routing
+
+Problem:
+
+- Clear single-change requests were already handled well by the legacy `understand()` path.
+- Fuzzy, multi-option, or cross-day requests needed the new agent branch without slowing down clear requests.
+
+Files changed:
+
+- `backend/app/agents/chat.py`
+- `backend/app/domain/chat/service.py`
+- `backend/app/agents/tools.py`
+- `backend/tests/test_chat_agent_branch.py`
+
+What changed:
+
+- Extended `Understanding` with an additive `resolution` state:
+  - `single_change`
+  - `unresolved`
+- Existing fields kept their meaning for old callers.
+- `respond_to_trip_chat()` now uses hybrid routing:
+  - clear single-change request stays on legacy `understand()` path
+  - fuzzy/cross-day/multi-option request upgrades to `call_agent()`
+- Agent branch uses `build_read_only_trip_tools()` and degrades gracefully to existing fallback copy on exception, timeout, or agent stop.
+- `ChatResult` now has optional `candidate_options` while keeping `proposed_change` for frontend compatibility.
+- When multiple candidates exist, the best candidate also fills `proposed_change` so old frontend behavior still works.
+
+Verification:
+
+- Existing chat tests were left unchanged.
+- Added tests for:
+  - clear request does not call agent
+  - fuzzy request calls agent
+  - agent exception degrades safely
+  - agent timeout degrades safely
+  - multi-option response keeps `proposed_change` plus `candidate_options`
+  - privacy red line
+- Backend pytest passed after the hybrid routing work.
+
+#### Chat Explanation Safety And Time Parsing
+
+Problem:
+
+- Real model output once said a proposed change had already taken effect, violating the product rule that AI must not claim the Current Plan changed.
+- `_hour_from_text()` had weak coverage around Chinese time expressions and could silently parse ambiguous text incorrectly.
+
+Files changed:
+
+- `backend/app/agents/chat.py`
+- `backend/app/api/main.py`
+- `backend/tests/test_chat_safety_and_time.py`
+
+What changed:
+
+- Strengthened the `explain()` prompt so it says the change is only prepared until the user clicks Apply.
+- Added code-level fallback detection for unsafe "already changed/submitted/applied/completed/took effect" wording in Chinese and English.
+- Unsafe model output is replaced with safe pending-copy that states the Current Plan has not changed yet.
+- `_hour_from_text()` now handles:
+  - `下午3点`
+  - `下午3点半`
+  - `上午9点`
+  - `早上8点`
+  - `晚上7点`
+  - `中午12点`
+  - `凌晨1点`
+  - `下午3:30`
+  - `3pm`
+  - `3:30 PM`
+- Ambiguous `3点` returns `None`.
+- Unsupported Chinese numeral `十五点` returns `None`.
+- `api/main.py` now serializes `candidate_options` in the chat response while leaving `proposed_change` unchanged.
+
+Verification:
+
+- Added tests for unsafe explanation fallback, time parsing boundaries, and API serialization.
+- `cd backend && DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q` passed with `313 passed` after this step.
+- Real validation for `把周三的 Art Institute 改到下午 3 点` returned:
+  - `好的，已检查，周三的 Art Institute 改到下午 3 点没有冲突，可以应用。请点击 Apply 后才会生效。`
+  - elapsed about `3494 ms`
+
+#### Frontend Multi-Candidate Option UI
+
+Problem:
+
+- The backend could return `candidate_options`, but the Trip drawer still only showed a single `proposed_change`.
+- Agent responses can take about 9-11 seconds, so the drawer needed a visible waiting state.
+
+Files changed:
+
+- `trip/src/final/plan-feature/useAssistantChangeRequestFlow.js`
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `trip/src/final/final.css`
+- `frontend/public/trip-app/index.html`
+- `frontend/public/trip-app/embed-manifest.json`
+- `frontend/public/trip-app/assets/*`
+
+What changed:
+
+- Stored candidate option state in `useAssistantChangeRequestFlow.js`, which owns drawer-local Cadensy conversation and change-request flow.
+- Did not move logic into `FinalApp.jsx`.
+- Did not duplicate conversation or change-request state in a second place.
+- When `candidate_options` is empty or missing, the UI behaves like before and only shows the single proposed-change card.
+- When options exist, the drawer shows a selectable list with title, explanation, and tradeoff.
+- Selecting an option only updates the pending proposed patch; it does not apply the change.
+- Apply still uses the existing `applyProposal()` / `submitChange()` path.
+- Added local loading copy rotation:
+  - `Reviewing the itinerary...`
+  - `Checking the proposed change...`
+  - `Looking for member impact...`
+  - `Organizing the options...`
+- Added code comment clarifying this is only a local placeholder rotation; real streaming progress would need a later SSE/API stream.
+- Synced the embedded `/trip` preview bundle after Trip source changes.
+
+Verification:
+
+- `cd trip && npm run build` passed.
+- `cd frontend && npm run build:trip-preview` passed.
+- `cd frontend && npm test` passed with `8` tests.
+
+#### Test Infrastructure Cleanup For Persistent Test Rows
+
+Problem:
+
+- Full pytest previously failed with duplicate key errors for `elena@example.com` because some test data could survive outside per-test rollback cleanup.
+
+Files changed:
+
+- `backend/tests/conftest.py`
+- `backend/tests/test_purge_demo_data.py`
+
+What changed:
+
+- Tightened test database cleanup so rows such as `user_account` do not survive across test runs.
+- Removed the extra direct `elena@example.com` insert from the purge demo data test setup so the fixed-account path owns that account consistently.
+- Preserved test assertions instead of skipping or weakening tests.
+
+Verification:
+
+- Full backend pytest passed after cleanup.
 
 ## Detailed Trip Workspace Change Log
 
@@ -1173,3 +1624,21 @@ The final checks passed:
 - `frontend/package-lock.json`, `trip/src/final/*`, `frontend/public/trip-app/*`, and generated app assets showed unrelated diffs in the working tree; treat them separately before committing.
 - If you need to audit only this cleanup, compare against the backup directories above rather than assuming every current `git status` entry came from this pass.
 - Chinese runtime strings still exist in places like UI labels, test values, chat keyword handling, and seed/demo content. That was intentional because the request was specifically about docs, filenames, and code comments.
+
+## 2026-08-14 Local Database Config Correction
+
+- Corrected local-only `backend/.env` back to the previously isolated latest workspace database:
+  - `DATABASE_URL=postgresql+psycopg://localhost/latest_20260813`
+  - `TEST_DATABASE_URL=postgresql+psycopg://localhost/tripsync_test`
+- The earlier temporary switch to `postgres:postgres@localhost:5432/tripsync` was not the intended local database for this workspace.
+- This is a local runtime config change only. `backend/.env` should stay uncommitted and should not be copied to cloud deployment secrets as-is.
+
+## 2026-08-14 Plan Visibility Fix
+
+- Symptom: the Plan page showed `No itinerary yet`, while clicking `Generate itinerary` returned `An itinerary already exists`.
+- Root cause: the local `latest_20260813` database already had generated `plan_item` rows, but its schema was missing the newer `plan_item.local_title` column required by the current SQLAlchemy model. Reading the plan failed before the frontend could display items.
+- Fix run locally:
+  - `cd backend`
+  - `.venv/bin/python -m app.db.init_schema`
+- Verification: the local database now reads existing plans successfully. The `summer` Chicago trip has `15` plan items; day 1 includes `Field Museum`, `Art Institute of Chicago`, and `Chinatown walk`.
+- Follow-up: restart the backend after schema/config changes so the browser uses the repaired runtime.

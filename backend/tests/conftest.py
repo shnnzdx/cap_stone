@@ -37,6 +37,9 @@ os.environ["TEST_DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["DISABLE_SCHEDULER"] = "1"
 os.environ["MOCK_AI"] = "1"
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+for key in ("OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OLLAMA_CLOUD_API_KEY"):
+    os.environ.pop(key, None)
 
 
 def _postgres_connect_args() -> dict:
@@ -98,6 +101,19 @@ def _ensure_postgres_test_database_utf8(database_url: str) -> None:
         admin_engine.dispose()
 
 
+def _clear_database(engine) -> None:
+    tables = list(Base.metadata.sorted_tables)
+    if not tables:
+        return
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            names = ", ".join(quote_ident(table.name) for table in tables)
+            conn.execute(text(f"truncate {names} restart identity cascade"))
+            return
+        for table in reversed(tables):
+            conn.execute(table.delete())
+
+
 @pytest.fixture(scope="session")
 def test_engine():
     url = make_url(TEST_DATABASE_URL)
@@ -119,7 +135,11 @@ def db(test_engine) -> Session:
     """每条测试自己一个事务,跑完回滚 —— 测试之间互不影响。"""
     connection = test_engine.connect()
     transaction = connection.begin()
-    session = sessionmaker(bind=connection, future=True)()
+    session = sessionmaker(
+        bind=connection,
+        future=True,
+        join_transaction_mode="create_savepoint",
+    )()
     try:
         yield session
     finally:
@@ -128,6 +148,7 @@ def db(test_engine) -> Session:
         if transaction.is_active:
             transaction.rollback()
         connection.close()
+        _clear_database(test_engine)
 
 
 @pytest.fixture

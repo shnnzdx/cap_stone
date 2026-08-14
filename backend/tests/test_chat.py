@@ -46,6 +46,32 @@ def _stable(value):
 
 def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Session, full_trip: dict):
     monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content="I can prepare the shopping replacement.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {
+                            "title": "Magnificent Mile shopping",
+                            "place": "Magnificent Mile",
+                        },
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
     with _client(db) as client:
         response = client.post(
             f"/api/trips/{full_trip['trip'].id}/chat",
@@ -86,6 +112,63 @@ def test_chat_resolves_delegated_downtown_cafe_replacement_from_history(
     db.add(lula)
     db.flush()
 
+    def fake_call_agent(**kwargs):
+        assert kwargs["history"] == (
+            {"role": "user", "content": "replace Lula Cafe with another place downtown"},
+            {"role": "assistant", "content": "Do you want a specific place?"},
+            {"role": "user", "content": "你选个在密歇根大道的咖啡店"},
+        )
+        assert "Lula Cafe" in kwargs["user"]
+        return base.AgentRunResult(
+            content=(
+                "I suggest replacing Lula Cafe with Starbucks Reserve Chicago "
+                "Roastery. It will only be submitted after you click Apply."
+            ),
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "find_replacement_place",
+                    "arguments": {"item_id": lula.id, "keywords": ["michigan", "cafe"]},
+                    "output": {
+                        "candidates": [
+                            {
+                                "title": "Starbucks Reserve Chicago Roastery",
+                                "place": "Michigan Avenue",
+                                "price_per_person": 15.0,
+                                "duration_min": 90,
+                                "opens": 7.0,
+                                "closes": 22.0,
+                                "lat": 41.8942,
+                                "lng": -87.6243,
+                                "tags": ["food", "coffee", "cafe", "evening"],
+                            }
+                        ]
+                    },
+                    "guard_rejected": False,
+                },
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": lula.id},
+                        "proposed_patch": {
+                            "title": "Starbucks Reserve Chicago Roastery",
+                            "place": "Michigan Avenue",
+                            "price_per_person": 15.0,
+                            "lat": 41.8942,
+                            "lng": -87.6243,
+                        },
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
     with _client(db) as client:
         response = client.post(
             f"/api/trips/{full_trip['trip'].id}/chat",
@@ -112,15 +195,26 @@ def test_chat_resolves_delegated_downtown_cafe_replacement_from_history(
         "lat": 41.8942,
         "lng": -87.6243,
     }
-    assert "我建议" in response.json()["reply"]
-    assert "点击 Apply 后才会提交" in response.json()["reply"]
-    assert "已更改" not in response.json()["reply"]
+    assert "click Apply" in response.json()["reply"]
+    assert "has changed" not in response.json()["reply"].lower()
 
 
 def test_chat_does_not_choose_random_place_without_a_preference(
     monkeypatch, db: Session, full_trip: dict
 ):
     monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content="What would you like to change about that item?",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
 
     with _client(db) as client:
         response = client.post(
@@ -139,6 +233,33 @@ def test_chat_does_not_choose_random_place_without_a_preference(
 
 def test_chat_is_read_only(monkeypatch, db: Session, full_trip: dict):
     monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content="I can prepare that change.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {
+                            "start_hour": 15.5,
+                            "title": "Magnificent Mile shopping",
+                            "place": "Magnificent Mile",
+                        },
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
     before = {
         PlanItem: _snapshot(db, PlanItem),
         DecisionRound: _snapshot(db, DecisionRound),
@@ -167,6 +288,18 @@ def test_chat_is_read_only(monkeypatch, db: Session, full_trip: dict):
 def test_chat_asks_when_it_cannot_identify_the_item(monkeypatch, db: Session, full_trip: dict):
     monkeypatch.setenv("MOCK_AI", "1")
 
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content="Which itinerary item should I check for that shopping change?",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
     with _client(db) as client:
         response = client.post(
             f"/api/trips/{full_trip['trip'].id}/chat",
@@ -186,13 +319,29 @@ def test_chat_prompt_does_not_include_identity_or_private_wording(
 ):
     monkeypatch.setenv("MOCK_AI", "1")
     prompts: list[str] = []
-    original = base.call_model
 
-    def capturing_call_model(**kwargs):
+    def capturing_call_agent(**kwargs):
         prompts.append(kwargs["user"])
-        return original(**kwargs)
+        return base.AgentRunResult(
+            content="I can prepare that change.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {"start_hour": 8.0},
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
 
-    monkeypatch.setattr(base, "call_model", capturing_call_model)
+    monkeypatch.setattr(base, "call_agent", capturing_call_agent)
 
     with _client(db) as client:
         response = client.post(
@@ -236,7 +385,7 @@ def test_chat_degrades_when_openai_is_unavailable_and_classify_still_works(
 
     assert chat_response.status_code == 200
     assert chat_response.json()["proposed_change"] is None
-    assert "could not read" in chat_response.json()["reply"].lower()
+    assert "specific trip change" in chat_response.json()["reply"].lower()
     assert not re.search(r"[\u4e00-\u9fff]", chat_response.json()["reply"])
     assert classify_response.status_code == 200
     assert classify_response.json()["path"] == "notice"

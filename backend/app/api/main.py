@@ -738,7 +738,23 @@ def chat_with_trip(
             "patch": result.proposed_change.patch,
             "verdict": _classification_out(result.proposed_change.verdict),
         }
-    return {"reply": result.reply, "proposed_change": proposed}
+    candidate_options = [
+        {
+            "id": option.id,
+            "label": option.label,
+            "title": option.title,
+            "body": option.body,
+            "tradeoff": option.tradeoff,
+            "item_id": option.item_id,
+            "patch": option.patch,
+        }
+        for option in result.candidate_options
+    ]
+    return {
+        "reply": result.reply,
+        "proposed_change": proposed,
+        "candidate_options": candidate_options,
+    }
 
 
 def _require_scoped_plan(
