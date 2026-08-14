@@ -403,6 +403,11 @@ export function TripAppProvider({ children }) {
     setActiveTripId(nextFacts.kind === 'none' ? '' : (nextFacts.activeTripId || ''))
     setCurrentUser(null)
     setError(message)
+
+    if (cause === SESSION_RUNTIME_CODES.invalidation.ACCOUNT_CREDENTIALS_INVALID) {
+      window.top.location.replace(loginUrl())
+    }
+
     return invalidated
   }, [sessionRuntime, technicalSessionFacts])
 

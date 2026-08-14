@@ -17,6 +17,24 @@ function hasPersistenceWarning(warnings: string[]): boolean {
     warnings.includes(SESSION_RUNTIME_CODES.warnings.PERSISTENCE_WRITE_FAILED);
 }
 
+async function restoredAccountSessionIsValid(facts: { kind: "account"; accountAuth: true; activeTripId: string | null; membershipId: string | null; }) {
+  const identity = sessionRuntime.requestIdentityFor("account", facts);
+  if (!identity.ok) return false;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/account`, {
+      headers: {
+        Accept: "application/json",
+        ...identity.headers,
+      },
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
@@ -33,10 +51,32 @@ export default function LoginPage() {
     setAccountCreated(params.get("created") === "1");
     setNextPath(resolvedNext);
 
-    const restored = sessionRuntime.restoreTechnicalSession();
-    if (restored.facts.kind === "account") {
-      window.location.replace(resolvedNext);
-    }
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      const restored = sessionRuntime.restoreTechnicalSession();
+      if (restored.facts.kind !== "account") return;
+
+      const stillValid = await restoredAccountSessionIsValid(restored.facts);
+      if (cancelled) return;
+
+      if (stillValid) {
+        window.location.replace(resolvedNext);
+        return;
+      }
+
+      sessionRuntime.invalidateTechnicalSession(
+        restored.facts,
+        SESSION_RUNTIME_CODES.invalidation.ACCOUNT_CREDENTIALS_INVALID,
+      );
+      setError("Your saved session expired. Sign in again.");
+    };
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -96,7 +136,7 @@ export default function LoginPage() {
         } : {}),
       });
       if (hasPersistenceWarning(adoption.warnings)) {
-        setError("Could not reach the backend. Make sure the API is running.");
+        setError("Could not save your session in this browser. Check storage/privacy settings and try again.");
         return;
       }
       window.location.href = nextPath;
