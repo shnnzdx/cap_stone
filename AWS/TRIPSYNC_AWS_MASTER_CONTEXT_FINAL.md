@@ -2336,7 +2336,6 @@ AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
-AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/PHASE6_RUNTIME_SECRETS_PLAN.md
 ```
@@ -2357,9 +2356,6 @@ The only current cloud data administration entry points are:
 ```text
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 .github/workflows/cloud-fixed-accounts-upsert.yml
-
-AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
-.github/workflows/cloud-demo-purge.yml
 ```
 
 For backend AI runtime activation, use:

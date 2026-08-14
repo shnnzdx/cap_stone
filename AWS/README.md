@@ -11,7 +11,6 @@ AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
-AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/CLOUD_DEEPSEEK_CLI_RUNBOOK.md
 AWS/CLOUD_DUAL_AI_CLI_RUNBOOK.md
@@ -25,10 +24,6 @@ Use `PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md` when continuing HTTPS/custom domain wo
 
 Use `CLOUD_FIXED_ACCOUNTS_RUNBOOK.md` when the private cloud RDS database
 should contain the two fixed backend accounts without creating any demo trip.
-
-Use `CLOUD_DEMO_PURGE_RUNBOOK.md` when the private cloud RDS database should
-delete the old demo trip and itinerary while preserving the fixed backend
-accounts.
 
 Use `BACKEND_AI_RUNTIME_RUNBOOK.md` when the deployed backend should switch from
 `MOCK_AI=1` to a real provider and the AI runtime secret may need to be
@@ -110,7 +105,6 @@ TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 TRIPSYNC_AWS_URLS.md
 PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 Cloud Fixed Accounts Runbook: CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
-Cloud Demo Purge Runbook: CLOUD_DEMO_PURGE_RUNBOOK.md
 Backend AI Runtime Runbook: BACKEND_AI_RUNTIME_RUNBOOK.md
 Cloud DeepSeek CLI Runbook: CLOUD_DEEPSEEK_CLI_RUNBOOK.md
 Cloud Dual AI CLI Runbook: CLOUD_DUAL_AI_CLI_RUNBOOK.md
@@ -128,6 +122,12 @@ AWS/archive/completed-phases/
 ```
 
 These are kept for audit history and rollback context. They are not the main entry point for new AWS work.
+
+The retired demo cleanup runbook now lives at:
+
+```text
+AWS/archive/CLOUD_DEMO_PURGE_RUNBOOK.md
+```
 
 ## Current Pause Point
 

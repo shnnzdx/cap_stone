@@ -176,7 +176,6 @@ AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
-AWS/CLOUD_DEMO_PURGE_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
 AWS/CLOUD_DEEPSEEK_CLI_RUNBOOK.md
 AWS/CLOUD_DUAL_AI_CLI_RUNBOOK.md
@@ -211,13 +210,15 @@ organizer@cadensy.local
 participant@cadensy.local
 ```
 
-Use `AWS/CLOUD_DEMO_PURGE_RUNBOOK.md` and the manual `Cloud Demo Purge`
-workflow if the old demo trip and itinerary should be removed while preserving
-those fixed accounts.
-
 Use `AWS/BACKEND_AI_RUNTIME_RUNBOOK.md` and the manual `Backend AI Runtime
 Config` workflow if the deployed backend should stop using `MOCK_AI=1` and start
 using a real OpenAI-compatible provider.
+
+Historical-only demo cleanup notes are archived at:
+
+```text
+AWS/archive/CLOUD_DEMO_PURGE_RUNBOOK.md
+```
 
 Current backend AI runtime:
 
