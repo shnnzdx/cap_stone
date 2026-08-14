@@ -232,6 +232,12 @@ OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/
 OLLAMA_CLOUD_MODEL=qwen3.5:397b
 ```
 
+Current backend non-AI provider secret expected in cloud runtime:
+
+```text
+GEOAPIFY_API_KEY -> /tripsync/backend/prod/geoapify-api-key
+```
+
 Current manual DeepSeek CLI operator guide:
 
 ```text

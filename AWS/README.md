@@ -42,6 +42,11 @@ Use `CLOUD_DUAL_AI_CLI_RUNBOOK.md` when you want the exact local PowerShell +
 AWS CLI operator steps for switching the deployed backend to the newer dual-AI
 runtime with Ollama Cloud for chat and DeepSeek for planner/explainer.
 
+If the backend starts using the Geoapify place provider in cloud runtime, the
+deployed ECS backend task also needs `GEOAPIFY_API_KEY` injected from AWS SSM.
+The current `backend-ai-secret-provision.yml` and
+`backend-ai-runtime-config.yml` workflows are the source of truth for that.
+
 ## Current Manual AWS Workflows
 
 Use only these current manual AWS operator entry points for cloud data and

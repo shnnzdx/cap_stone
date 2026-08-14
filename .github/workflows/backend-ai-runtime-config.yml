@@ -27,6 +27,10 @@ on:
         description: "SSM parameter name that stores the Ollama Cloud API key"
         required: true
         default: /tripsync/backend/prod/ollama-cloud-api-key
+      geoapify_api_key_parameter:
+        description: "SSM parameter name that stores the Geoapify API key"
+        required: true
+        default: /tripsync/backend/prod/geoapify-api-key
       ollama_cloud_base_url:
         description: "Ollama Cloud base URL used by backend agents"
         required: true
@@ -93,6 +97,7 @@ jobs:
           INPUT_MOCK_AI: ${{ inputs.mock_ai }}
           INPUT_DEEPSEEK_API_KEY_PARAMETER: ${{ inputs.deepseek_api_key_parameter }}
           INPUT_OLLAMA_CLOUD_API_KEY_PARAMETER: ${{ inputs.ollama_cloud_api_key_parameter }}
+          INPUT_GEOAPIFY_API_KEY_PARAMETER: ${{ inputs.geoapify_api_key_parameter }}
         run: |
           set -euo pipefail
 
@@ -125,6 +130,7 @@ jobs:
 
           DEEPSEEK_API_KEY_SECRET_ARN=""
           OLLAMA_CLOUD_API_KEY_SECRET_ARN=""
+          GEOAPIFY_API_KEY_SECRET_ARN=""
           if [ "${INPUT_MOCK_AI}" = "false" ]; then
             DEEPSEEK_API_KEY_SECRET_ARN="$(aws ssm describe-parameters \
               --parameter-filters "Key=Name,Option=Equals,Values=${INPUT_DEEPSEEK_API_KEY_PARAMETER}" \
@@ -145,6 +151,16 @@ jobs:
               echo "::error::SSM parameter ${INPUT_OLLAMA_CLOUD_API_KEY_PARAMETER} was not found."
               exit 1
             fi
+          fi
+
+          GEOAPIFY_API_KEY_SECRET_ARN="$(aws ssm describe-parameters \
+            --parameter-filters "Key=Name,Option=Equals,Values=${INPUT_GEOAPIFY_API_KEY_PARAMETER}" \
+            --query 'Parameters[0].ARN' \
+            --output text)"
+
+          if [ -z "${GEOAPIFY_API_KEY_SECRET_ARN}" ] || [ "${GEOAPIFY_API_KEY_SECRET_ARN}" = "None" ]; then
+            echo "::error::SSM parameter ${INPUT_GEOAPIFY_API_KEY_PARAMETER} was not found."
+            exit 1
           fi
 
           APP_ENV="$(jq -r '.environment[]? | select(.name == "APP_ENV") | .value' <<< "${BACKEND_CONTAINER}")"
@@ -170,6 +186,7 @@ jobs:
             echo "database_url_secret=${DATABASE_URL_SECRET}"
             echo "deepseek_api_key_secret_arn=${DEEPSEEK_API_KEY_SECRET_ARN}"
             echo "ollama_cloud_api_key_secret_arn=${OLLAMA_CLOUD_API_KEY_SECRET_ARN}"
+            echo "geoapify_api_key_secret_arn=${GEOAPIFY_API_KEY_SECRET_ARN}"
             echo "app_env=${APP_ENV}"
             echo "disable_scheduler=${DISABLE_SCHEDULER}"
             echo "dev_allow_membership_header=${DEV_ALLOW_MEMBERSHIP_HEADER}"
@@ -230,6 +247,7 @@ jobs:
               --arg database_url_secret "${{ steps.discover.outputs.database_url_secret }}" \
               --arg deepseek_api_key_secret_arn "${{ steps.discover.outputs.deepseek_api_key_secret_arn }}" \
               --arg ollama_cloud_api_key_secret_arn "${{ steps.discover.outputs.ollama_cloud_api_key_secret_arn }}" \
+              --arg geoapify_api_key_secret_arn "${{ steps.discover.outputs.geoapify_api_key_secret_arn }}" \
               '
               def upsert_env($name; $value):
                 .environment = ((.environment // []) | map(select(.name != $name)) + [{name: $name, value: $value}]);
@@ -270,6 +288,10 @@ jobs:
               | if ($ollama_cloud_api_key_secret_arn | length) > 0
                 then upsert_secret("OLLAMA_CLOUD_API_KEY"; $ollama_cloud_api_key_secret_arn)
                 else remove_secret("OLLAMA_CLOUD_API_KEY")
+                end
+              | if ($geoapify_api_key_secret_arn | length) > 0
+                then upsert_secret("GEOAPIFY_API_KEY"; $geoapify_api_key_secret_arn)
+                else remove_secret("GEOAPIFY_API_KEY")
                 end
               | remove_secret("OPENAI_API_KEY")
               ' <<< '{}'
