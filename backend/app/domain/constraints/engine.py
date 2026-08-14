@@ -116,11 +116,19 @@ def violates(constraint: Constraint, change: ProposedChange) -> bool:
         latest = params.get("latest_hour")
         if earliest is not None and after.start_hour < earliest:
             return True
-        return latest is not None and after.end_hour > latest
+        return (
+            latest is not None
+            and after.end_hour is not None
+            and after.end_hour > latest
+        )
 
     if constraint.kind is ConstraintKind.BUDGET_CEILING:
         ceiling = params.get("max_total_per_person")
-        return ceiling is not None and change.trip_total_after > ceiling
+        return (
+            ceiling is not None
+            and change.trip_total_after is not None
+            and change.trip_total_after > ceiling
+        )
 
     if constraint.kind is ConstraintKind.DATE_RANGE:
         start, end = params.get("start"), params.get("end")
@@ -130,7 +138,11 @@ def violates(constraint: Constraint, change: ProposedChange) -> bool:
 
     if constraint.kind is ConstraintKind.WALK_LIMIT:
         limit = params.get("max_km_per_day")
-        return limit is not None and change.day_walk_km_after > limit
+        return (
+            limit is not None
+            and change.day_walk_km_after is not None
+            and change.day_walk_km_after > limit
+        )
 
     if constraint.kind is ConstraintKind.DIETARY:
         if not after.is_meal:

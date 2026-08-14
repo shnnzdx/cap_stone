@@ -69,6 +69,15 @@ def test_plan_day_accepts_valid_ai_output_and_preserves_day_metadata(monkeypatch
     )
 
 
+def test_day_prompt_exposes_activity_count_as_a_soft_target():
+    payload = _day_payload()
+
+    prompt = planner._day_prompt(payload)
+
+    assert "Soft target for this day: 3 sightseeing activities" in prompt
+    assert "never fail the day merely to hit this target" in prompt
+
+
 def test_plan_day_retries_once_after_invalid_ai_output_and_accepts_repaired_result(
     monkeypatch,
 ):
@@ -149,6 +158,7 @@ def test_mocked_plan_day_accepted_output_never_sets_used_ai(monkeypatch):
             "note": "Mock planner day.",
             "picks": [
                 {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
+                {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
             ],
         },
     )
@@ -157,6 +167,44 @@ def test_mocked_plan_day_accepted_output_never_sets_used_ai(monkeypatch):
 
     assert result.used_ai is False
     assert result.planner_note == "Mock planner day."
+
+
+def test_plan_day_accepts_natural_lunch_time_for_food(monkeypatch):
+    monkeypatch.setenv("MOCK_AI", "0")
+    monkeypatch.setattr(
+        planner.base,
+        "call_model",
+        lambda **_kwargs: {
+            "note": "Morning landmark, lunch, and a later cultural stop.",
+            "picks": [
+                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 9.5},
+                {"poi_name": "Girl & the Goat", "start_hour": 12.25},
+                {"poi_name": "Chicago Cultural Center", "start_hour": 15.25},
+            ],
+        },
+    )
+
+    result = planner.plan_day(_day_payload())
+
+    assert [pick.start_hour for pick in result.picks] == [9.5, 12.25, 15.25]
+
+
+def test_plan_day_rejects_food_in_afternoon_attraction_window(monkeypatch):
+    monkeypatch.setenv("MOCK_AI", "0")
+    monkeypatch.setattr(
+        planner.base,
+        "call_model",
+        lambda **_kwargs: {
+            "note": "Invalid food placement.",
+            "picks": [
+                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 9.5},
+                {"poi_name": "Girl & the Goat", "start_hour": 15.0},
+            ],
+        },
+    )
+
+    with pytest.raises(planner.PlannerDayUnusable, match="not suitable for the afternoon"):
+        planner.plan_day(_day_payload())
 
 
 def test_plan_day_propagates_model_unavailable_without_retry(monkeypatch):

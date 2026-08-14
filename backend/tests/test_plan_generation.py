@@ -21,6 +21,7 @@ from app.domain.constraints.types import (
     Settledness,
 )
 from app.domain.plans import generator
+from app.domain.places.service import PlannerPlace
 from app.domain.preferences import service as pref
 
 
@@ -190,14 +191,14 @@ def _candidate_triplet(
         for option in payload.candidates
         if option.name != morning.name and option.opens <= 14.0 <= option.closes
     )
-    evening = next(
+    late_afternoon = next(
         option
         for option in payload.candidates
         if option.name not in {morning.name, afternoon.name}
-        and option.opens <= 19.0 <= option.closes
-        and ("food" in option.tags or "nightlife" in option.tags)
+        and option.opens <= 16.0 <= option.closes
+        and not planner.is_reliable_meal_candidate(option.tags)
     )
-    return morning, afternoon, evening
+    return morning, afternoon, late_afternoon
 
 
 def _planner_result(
@@ -207,11 +208,11 @@ def _planner_result(
     note: str,
     leading_invalid_name: str | None = None,
 ) -> planner.PlanDayResult:
-    morning, afternoon, evening = _candidate_triplet(payload)
+    morning, afternoon, late_afternoon = _candidate_triplet(payload)
     picks = [
         planner.Pick(poi_name=morning.name, start_hour=10.0),
         planner.Pick(poi_name=afternoon.name, start_hour=14.0),
-        planner.Pick(poi_name=evening.name, start_hour=19.0),
+        planner.Pick(poi_name=late_afternoon.name, start_hour=16.0),
     ]
     if leading_invalid_name is not None:
         picks.insert(0, planner.Pick(poi_name=leading_invalid_name, start_hour=10.0))
@@ -220,6 +221,41 @@ def _planner_result(
         used_ai=used_ai,
         planner_note=note,
     )
+
+
+def _paid_places() -> tuple[PlannerPlace, ...]:
+    rows = []
+    for index in range(8):
+        rows.append(
+            PlannerPlace(
+                name=f"Paid attraction {index}",
+                location="Chicago",
+                latitude=41.8 + index / 100,
+                longitude=-87.6 - index / 100,
+                category="tourism.attraction",
+                address="Chicago",
+                image_url=None,
+                opening_hours=None,
+                price=10.0,
+                tags=("tourism", "attraction"),
+            )
+        )
+    for index in range(4):
+        rows.append(
+            PlannerPlace(
+                name=f"Paid restaurant {index}",
+                location="Chicago",
+                latitude=41.9 + index / 100,
+                longitude=-87.7 - index / 100,
+                category="catering.restaurant",
+                address="Chicago",
+                image_url=None,
+                opening_hours=None,
+                price=10.0,
+                tags=("catering", "restaurant"),
+            )
+        )
+    return tuple(rows)
 
 
 def test_organizer_must_submit_preferences_before_generation(
@@ -284,7 +320,7 @@ def test_generated_items_pass_every_required_constraint(db: Session):
 
     assert result.status == "active"
     items = _generated_items(db, setup["plan"].id)
-    total = sum(item.price_per_person for item in items)
+    total = sum(item.price_per_person or 0.0 for item in items)
     constraints = [
         _domain_constraint(row)
         for row in db.scalars(select(MemberConstraint)).all()
@@ -309,8 +345,8 @@ def test_generated_total_stays_under_the_lowest_budget_ceiling(db: Session):
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 
     assert result.status == "active"
-    assert sum(item.price_per_person for item in result.items) <= 150.0
-    assert result.plan.estimated_total_per_person <= 150.0
+    assert sum(item.price_per_person or 0.0 for item in result.items) <= 150.0
+    assert result.plan.estimated_total_per_person is None or result.plan.estimated_total_per_person <= 150.0
 
 
 def test_generated_items_have_coordinates(db: Session):
@@ -319,7 +355,142 @@ def test_generated_items_have_coordinates(db: Session):
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 
     assert result.status == "active"
-    assert all(item.lat is not None and item.lng is not None for item in result.items)
+    assert all(
+        (item.lat is not None and item.lng is not None)
+        or "meal_break" in (item.tags or [])
+        for item in result.items
+    )
+
+
+def test_global_places_generate_without_fabricating_unknown_metadata(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=1)
+    setup["trip"].destination = "Tokyo, Japan"
+    places = tuple(
+        PlannerPlace(
+            name=name,
+            local_name="浅草寺" if name == "Senso-ji" else None,
+            location=f"{name}, Tokyo, Japan",
+            latitude=35.67 + index / 100,
+            longitude=139.65 + index / 100,
+            category="tourism.attraction",
+            address=f"{name}, Tokyo, Japan",
+            image_url=None,
+            opening_hours=None,
+            tags=("tourism", "attraction"),
+            source="geoapify",
+        )
+        for index, name in enumerate(("Senso-ji", "Tokyo National Museum", "Meiji Shrine"))
+    )
+    monkeypatch.setattr(generator.place_service, "places_for_planner", lambda *_args: places)
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    sightseeing = [item for item in result.items if not item.is_meal]
+    meal_breaks = [item for item in result.items if "meal_break" in (item.tags or [])]
+    assert 2 <= len(sightseeing) <= 4
+    assert len(meal_breaks) == 2
+    assert all(item.source == "geoapify" for item in sightseeing)
+    assert all(item.price_per_person is None for item in result.items)
+    assert all(item.duration_min is None for item in result.items)
+    assert all(item.photo_url is None for item in result.items)
+    assert all(item.tags == ["tourism", "attraction"] for item in sightseeing)
+    assert next(item for item in result.items if item.title == "Senso-ji").local_title == "浅草寺"
+    assert result.plan.estimated_total_per_person is None
+
+
+def test_rules_schedule_varies_by_day_and_places_food_at_lunch_or_dinner(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=2)
+    monkeypatch.setattr(
+        planner,
+        "plan_day",
+        lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    times_by_day = {
+        day_index: [item.start_hour for item in result.items if item.day_index == day_index]
+        for day_index in (1, 2)
+    }
+    assert times_by_day[1] != times_by_day[2]
+    assert all(4 <= len(times) <= 6 for times in times_by_day.values())
+    assert all(
+        {planner.time_window(item.start_hour) for item in result.items if item.day_index == day_index and item.is_meal}
+        == {"lunch", "dinner"}
+        for day_index in (1, 2)
+    )
+    for day_index in (1, 2):
+        day_items = sorted(
+            (item for item in result.items if item.day_index == day_index),
+            key=lambda item: item.start_hour,
+        )
+        sightseeing = [item for item in day_items if not item.is_meal]
+        assert any(item.start_hour >= 16.0 for item in sightseeing)
+        assert day_items[-1].start_hour >= 17.5
+        assert max(
+            right.start_hour - left.start_hour
+            for left, right in zip(day_items, day_items[1:])
+        ) <= 4.0
+    for item in result.items:
+        window = planner.time_window(item.start_hour)
+        if item.is_meal:
+            assert window in {"lunch", "dinner"}
+        else:
+            assert window in {"morning", "afternoon"}
+
+
+def test_rules_activity_counts_follow_soft_pattern_without_becoming_a_hard_gate(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=5, budget_ceiling=800.0)
+    monkeypatch.setattr(
+        planner,
+        "plan_day",
+        lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert [
+        sum(item.day_index == day_index and not item.is_meal for item in result.items)
+        for day_index in range(1, 6)
+    ] == [3, 2, 4, 3, 2]
+
+
+def test_saved_limited_availability_is_read_as_a_soft_lighter_day_signal(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=3, budget_ceiling=800.0)
+    pref.save_mine(
+        db,
+        setup["participant"],
+        pref.PreferenceData(
+            preferred_start_date=setup["trip"].preferred_start_date,
+            preferred_end_date=setup["trip"].preferred_end_date,
+            available_start_date=setup["trip"].preferred_start_date + timedelta(days=1),
+            available_end_date=setup["trip"].preferred_end_date,
+        ),
+    )
+    monkeypatch.setattr(
+        planner,
+        "plan_day",
+        lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert [
+        sum(item.day_index == day_index and not item.is_meal for item in result.items)
+        for day_index in range(1, 4)
+    ] == [2, 2, 4]
 
 
 def test_planner_exception_falls_back_to_rules(
@@ -343,7 +514,7 @@ def test_planner_exception_falls_back_to_rules(
     assert body["generated_by"] == "rules"
     assert body["used_ai"] is False
     assert body["planner_note"] is None
-    assert api_session.query(PlanItem).count() == 6
+    assert api_session.query(PlanItem).count() == 9
     origins = set(api_session.scalars(select(PlanChange.origin)).all())
     assert origins == {"rule_generate"}
 
@@ -365,7 +536,7 @@ def test_mocked_planner_path_still_uses_rules_generation_by_default(
     assert body["used_ai"] is False
     assert body["planner_note"] is None
     assert body["blocked_reason"] is None
-    assert api_session.query(PlanItem).count() == 6
+    assert api_session.query(PlanItem).count() == 9
     origins = set(api_session.scalars(select(PlanChange.origin)).all())
     assert origins == {"rule_generate"}
 
@@ -399,7 +570,7 @@ def test_invalid_second_ai_day_output_hands_control_back_to_rules_fallback(
     assert result.generated_by == "rules"
     assert result.used_ai is False
     assert result.planner_note is None
-    assert len(result.items) == 3
+    assert len(result.items) == 5
     origins = set(db.scalars(select(PlanChange.origin)).all())
     assert origins == {"rule_generate"}
 
@@ -420,7 +591,7 @@ def test_canonical_generation_retries_one_invalid_ai_day_and_persists_repaired_p
                 "picks": [
                     {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
                     {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
-                    {"poi_name": "Girl & the Goat", "start_hour": 19.0},
+                    {"poi_name": "Chicago Riverwalk", "start_hour": 16.0},
                 ],
             },
         ]
@@ -448,13 +619,13 @@ def test_canonical_generation_retries_one_invalid_ai_day_and_persists_repaired_p
     )
     assert len(calls) == 2
     assert "The previous day plan failed deterministic validation" in calls[1]["user"]
-    assert [item.title for item in result.items] == [
-        "Millennium Park & Cloud Gate",
-        "Chicago Cultural Center",
-        "Girl & the Goat",
+    sightseeing_titles = [item.title for item in result.items if not item.is_meal]
+    assert sightseeing_titles == [
+        "Millennium Park & Cloud Gate", "Chicago Cultural Center", "Chicago Riverwalk"
     ]
+    assert sum(item.is_meal for item in result.items) == 2
     origins = set(db.scalars(select(PlanChange.origin)).all())
-    assert origins == {"ai_generate"}
+    assert origins == {"ai_generate", "rule_generate"}
 
 
 def test_valid_ai_day_output_is_accepted_and_persisted(db: Session, monkeypatch):
@@ -483,9 +654,10 @@ def test_valid_ai_day_output_is_accepted_and_persisted(db: Session, monkeypatch)
         ),
     )
     titles = [item.title for item in result.items]
-    assert len(titles) == 3
+    assert len([item for item in result.items if not item.is_meal]) == 3
+    assert sum(item.is_meal for item in result.items) == 2
     origins = set(db.scalars(select(PlanChange.origin)).all())
-    assert origins == {"ai_generate"}
+    assert origins == {"ai_generate", "rule_generate"}
 
 
 def test_generator_defensively_rejects_picks_outside_candidates(db: Session, monkeypatch):
@@ -508,9 +680,10 @@ def test_generator_defensively_rejects_picks_outside_candidates(db: Session, mon
     assert result.used_ai is True
     titles = [item.title for item in result.items]
     assert "Imaginary Rooftop" not in titles
-    assert len(titles) == 3
+    assert len([item for item in result.items if not item.is_meal]) == 3
+    assert sum(item.is_meal for item in result.items) == 2
     origins = set(db.scalars(select(PlanChange.origin)).all())
-    assert origins == {"ai_generate"}
+    assert origins == {"ai_generate", "rule_generate"}
 
 
 def test_all_planner_api_response_reports_structured_notes_even_when_used_ai_is_false(
@@ -637,8 +810,11 @@ def test_mixed_generation_response_reports_used_ai_when_real_ai_day_persists(
     ]
 
 
-def test_unsolvable_budget_blocks_without_writing_items(db: Session):
+def test_unsolvable_budget_blocks_without_writing_items(db: Session, monkeypatch):
     setup = _make_trip(db, days=4, budget_ceiling=1.0)
+    monkeypatch.setattr(
+        generator.place_service, "places_for_planner", lambda *_args: _paid_places()
+    )
 
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 
@@ -674,7 +850,7 @@ def test_single_member_budget_ceiling_does_not_block_initial_generation(db: Sess
 
     assert result.status == "active"
     assert result.blocked_reason is None
-    assert len(result.items) == 12
+    assert len(result.items) == 20
 
 
 def test_long_single_member_trip_can_reuse_places_across_days(db: Session):
@@ -693,7 +869,7 @@ def test_long_single_member_trip_can_reuse_places_across_days(db: Session):
 
     assert result.status == "active"
     assert result.blocked_reason is None
-    assert len(result.items) == 15
+    assert len(result.items) == 24
     for day_index in range(1, 6):
         day_titles = [
             item.title for item in result.items if item.day_index == day_index
@@ -728,9 +904,12 @@ def test_single_member_trip_prefers_new_places_before_reusing_across_days(db: Se
 
 
 def test_blocked_api_response_currently_reports_rules_and_writes_no_items(
-    client: TestClient, api_session: Session
+    client: TestClient, api_session: Session, monkeypatch
 ):
     setup = _make_trip(api_session, days=4, budget_ceiling=1.0)
+    monkeypatch.setattr(
+        generator.place_service, "places_for_planner", lambda *_args: _paid_places()
+    )
 
     response = client.post(
         f"/api/trips/{setup['trip'].id}/plans/generate",
@@ -753,8 +932,11 @@ def test_blocked_api_response_currently_reports_rules_and_writes_no_items(
     assert api_session.query(PlanItem).count() == 0
 
 
-def test_blocked_reason_does_not_leak_identity(db: Session):
+def test_blocked_reason_does_not_leak_identity(db: Session, monkeypatch):
     setup = _make_trip(db, days=4, budget_ceiling=1.0)
+    monkeypatch.setattr(
+        generator.place_service, "places_for_planner", lambda *_args: _paid_places()
+    )
 
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 

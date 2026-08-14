@@ -69,15 +69,17 @@ class ItemView:
     id: str
     day_date: date
     start_hour: float          # 14.5 表示 2:30 PM
-    duration_min: int
-    price_per_person: float
+    duration_min: int | None
+    price_per_person: float | None
     tags: frozenset[str] = field(default_factory=frozenset)
     dietary_tags: frozenset[str] = field(default_factory=frozenset)
     is_meal: bool = False
     settledness: Settledness = Settledness.LOOSE
 
     @property
-    def end_hour(self) -> float:
+    def end_hour(self) -> float | None:
+        if self.duration_min is None:
+            return None
         return self.start_hour + self.duration_min / 60
 
 
@@ -91,8 +93,8 @@ class ProposedChange:
 
     before: ItemView
     after: ItemView
-    day_walk_km_after: float
-    trip_total_after: float
+    day_walk_km_after: float | None
+    trip_total_after: float | None
     requested_by_membership_id: str
 
 

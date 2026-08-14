@@ -11,18 +11,21 @@ import {
   resolveInviteJoinRoute,
   resolveRestoredWorkspaceDestination,
 } from './workspace-navigation-model.js'
+import { resolveTripCover } from './trip-cover.js'
 
-const calendarMonths = [
-  { label: 'August 2026', month: 7 },
-  { label: 'September 2026', month: 8 },
-]
 const dayKey = date => date ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : ''
 const sameDay = (a, b) => a && b && dayKey(a) === dayKey(b)
 const isBefore = (a, b) => a.getTime() < b.getTime()
 const isWithin = (day, range) => range.start && range.end && !isBefore(day, range.start) && !isBefore(range.end, day)
 const nightsBetween = range => range.start && range.end ? Math.max(0, Math.round((range.end - range.start) / 86400000)) : 0
 const formatShortDate = date => date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Select'
-const formatDateRange = range => range.start && range.end ? `${formatShortDate(range.start)} – ${formatShortDate(range.end)}, 2026` : 'Select dates'
+const formatDateRange = range => {
+  if (!range.start || !range.end) return 'Select dates'
+  const sameYear = range.start.getFullYear() === range.end.getFullYear()
+  const start = range.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' })
+  const end = range.end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${start} – ${end}`
+}
 const formatInviteDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
 // Date shown on change cards. Use "Sat, Aug 15" because time alone cannot distinguish date changes.
 // Date picker returns a Date object; the backend expects YYYY-MM-DD.
@@ -91,27 +94,59 @@ function useCurrentTrip() {
   return app.trips.find(item => item.id === tripId) || app.trip || trip || null
 }
 
-function DateRangePicker({ value, onChange, allowedRange = null, label = 'Trip dates' }) {
-  const isAllowed = day => {
-    if (!allowedRange?.start || !allowedRange?.end) return true
-    return !isBefore(day, allowedRange.start) && !isBefore(allowedRange.end, day)
-  }
+const todayAtMidnight = () => {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+}
+const calendarMonth = (anchor, offset) => {
+  const date = new Date(anchor.getFullYear(), anchor.getMonth() + offset, 1)
+  return { key: `${date.getFullYear()}-${date.getMonth()}`, label: date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), year: date.getFullYear(), month: date.getMonth() }
+}
+const eachDay = range => {
+  if (!range.start || !range.end) return []
+  const days = []
+  for (let day = new Date(range.start); !isBefore(range.end, day); day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)) days.push(day)
+  return days
+}
+
+function DateRangePicker({ value, onChange, allowedRange = null, minDate = todayAtMidnight(), maxDate = null, required = false, label = 'Trip dates' }) {
+  const [monthOffset, setMonthOffset] = useState(0)
+  const resolvedMinDate = allowedRange?.start || minDate
+  const resolvedMaxDate = allowedRange?.end || maxDate
+  const calendarMonths = [calendarMonth(resolvedMinDate, monthOffset), calendarMonth(resolvedMinDate, monthOffset + 1)]
+  const unavailable = day => isBefore(day, resolvedMinDate) || (resolvedMaxDate && isBefore(resolvedMaxDate, day))
   const chooseDay = day => {
-    if (!isAllowed(day)) return
+    if (unavailable(day)) return
     if (!value.start || value.end) return onChange({ start: day, end: null })
-    if (isBefore(day, value.start)) return onChange({ start: day, end: value.start })
+    if (isBefore(day, value.start)) return onChange({ start: day, end: null })
     onChange({ start: value.start, end: day })
   }
   return <div className="rangeCalendar">
     <div className="rangeCalendarSummary"><div><span>{label}</span><strong>{formatDateRange(value)}</strong></div><small>{value.start && value.end ? `${nightsBetween(value)} nights` : 'Choose a start and end date'}</small></div>
+    {required && <div className="requiredDateLabels"><span>Start date · Required</span><span>End date · Required</span></div>}
+    <div className="calendarNav"><button type="button" disabled={monthOffset === 0} onClick={() => setMonthOffset(current => Math.max(0, current - 1))}>← Previous</button><button type="button" onClick={() => setMonthOffset(current => current + 1)}>Next →</button></div>
     <div className="calendarMonths">{calendarMonths.map(month => {
-      const first = new Date(2026, month.month, 1).getDay()
-      const count = new Date(2026, month.month + 1, 0).getDate()
-      return <section className="calendarMonth" key={month.label}><h3>{month.label}</h3><div className="weekdayRow">{['S','M','T','W','T','F','S'].map((d,i) => <span key={`${d}-${i}`}>{d}</span>)}</div><div className="calendarGrid">
+      const first = new Date(month.year, month.month, 1).getDay()
+      const count = new Date(month.year, month.month + 1, 0).getDate()
+      return <section className="calendarMonth" key={month.key}><h3>{month.label}</h3><div className="weekdayRow">{['S','M','T','W','T','F','S'].map((d,i) => <span key={`${d}-${i}`}>{d}</span>)}</div><div className="calendarGrid">
         {Array.from({ length: first }, (_, i) => <span className="calendarBlank" key={`b-${i}`}/>) }
-        {Array.from({ length: count }, (_, i) => { const day = new Date(2026, month.month, i + 1); const allowed = isAllowed(day); return <button type="button" key={dayKey(day)} disabled={!allowed} className={cx(sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange', !allowed && 'disabledDay')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
+        {Array.from({ length: count }, (_, i) => { const day = new Date(month.year, month.month, i + 1); const disabled = unavailable(day); return <button type="button" key={dayKey(day)} disabled={disabled} className={cx(disabled && 'disabledDay', sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
       </div></section>
     })}</div>
+  </div>
+}
+
+function AvailabilityPicker({ tripRange, value, onChange }) {
+  const days = eachDay(tripRange)
+  const chooseDay = day => {
+    if (!value.start || value.end) return onChange({ start: day, end: null })
+    if (isBefore(day, value.start)) return onChange({ start: day, end: null })
+    onChange({ start: value.start, end: day })
+  }
+  return <div className="availabilityPicker">
+    <div><strong>My Availability</strong><small>Select one continuous window within the Trip Dates.</small></div>
+    <div className="availabilityDays">{days.map(day => <button type="button" key={dayKey(day)} className={cx(sameDay(day, value.start) && 'rangeStart', sameDay(day, value.end) && 'rangeEnd', isWithin(day, value) && 'inRange')} onClick={() => chooseDay(day)}><span>{day.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>{day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</strong></button>)}</div>
+    <small className="availabilitySummary">{value.start && value.end ? `Available ${formatDateRange(value)}` : 'Choose the first and last date you are available.'}</small>
   </div>
 }
 
@@ -205,13 +240,18 @@ function ProfileMenu() {
   </div>
 }
 
-const cardPhotos = ['photoLake', 'photoMountain', 'photoNight', 'photoChicago']
-
-function DashboardCard({ title, location, dates, status, tone, imageClass, detail, to, onOpen, variant = 'compact', action = 'Open trip' }) {
+function DashboardCard({ title, location, dates, status, tone, coverImageUrl, detail, to, onOpen, variant = 'compact', action = 'Open trip' }) {
   const app = useTripApp()
   const currentTrip = app.trip || trip || null
+  const cover = resolveTripCover({ destination: location, coverImageUrl })
+  const coverStyle = cover.imageUrl
+    ? { backgroundImage: `linear-gradient(rgba(10,25,45,.10),rgba(10,25,45,.20)),url(${JSON.stringify(cover.imageUrl)})` }
+    : undefined
   return <Link className={`dashboardTripCard dashboardTripCard--${variant}`} to={to || (currentTrip ? tripHref(currentTrip.id, 'plan') : workspaceHomeHref())} onClick={onOpen}>
-    <div className={`tripPhoto ${imageClass}`}><Badge tone={tone}>{status}</Badge></div>
+    <div className={cx('tripPhoto', `tripPhoto--${cover.kind}`)} style={coverStyle} aria-label={cover.label}>
+      <Badge tone={tone}>{status}</Badge>
+      {!cover.imageUrl && <span className="tripCoverPlaceholder" aria-hidden="true"><i>✦</i><small>Travel cover</small></span>}
+    </div>
     <div className="dashboardTripBody">
       <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
       <p>{location} · {dates}</p>
@@ -344,7 +384,7 @@ function Home() {
       </div>
       {currentTrip && <section className="dashboardSection dashboardContinue">
         <div className="dashboardSectionHead"><span>Continue planning</span><small>Current workspace</small></div>
-        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Dates not set'} status={currentTrip.status} tone="purple" imageClass="photoChicago" detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
+        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Dates not set'} status={currentTrip.status} tone="purple" coverImageUrl={currentTrip.coverImageUrl || currentTrip.cover_image_url} detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
       </section>}
       {currentTrip && (roundOpen || proposalPending) && <section className="dashboardSection dashboardAttention">
         <div className="dashboardSectionHead"><span>Needs your attention</span><small>Open decisions</small></div>
@@ -357,14 +397,14 @@ function Home() {
         <div className="dashboardSectionHead"><span>Other trips</span><small>{dashboardTrips.length} workspaces</small></div>
         {dashboardTrips.length > 0
           ? <div className="dashboardGrid">
-            {dashboardTrips.map((created, index) => <DashboardCard
+            {dashboardTrips.map(created => <DashboardCard
               key={created.id}
               title={created.name}
               location={created.destination}
               dates={created.dates || 'Dates not set'}
               status={created.status || 'Planning'}
               tone="orange"
-              imageClass={cardPhotos[index % cardPhotos.length]}
+              coverImageUrl={created.coverImageUrl || created.cover_image_url}
               detail={created.next_item_title || 'Open workspace'}
               action="View trip"
               to={tripHref(created.id, 'plan')}
@@ -919,15 +959,16 @@ function PreferencesPage() {
   const currentTrip = useCurrentTrip()
   const navigate = useNavigate()
   const [form, setForm] = useState(app.preferences)
+  const [availabilityMode, setAvailabilityMode] = useState('full')
   const [constraints, setConstraints] = useState([])
   const [conflicts, setConflicts] = useState([])
   const [picking, setPicking] = useState(false)
   const [draft, setDraft] = useState(null)
   const [loaded, setLoaded] = useState(false)
-  const tripDateWindow = useMemo(() => ({
-    start: fromISODate(currentTrip?.preferred_start_date),
-    end: fromISODate(currentTrip?.preferred_end_date),
-  }), [currentTrip?.preferred_start_date, currentTrip?.preferred_end_date])
+  const tripRange = useMemo(() => ({
+    start: fromISODate(currentTrip?.preferredStartDate),
+    end: fromISODate(currentTrip?.preferredEndDate),
+  }), [currentTrip?.preferredEndDate, currentTrip?.preferredStartDate])
 
   useEffect(() => {
     if (!currentTrip) {
@@ -940,27 +981,32 @@ function PreferencesPage() {
         if (cancelled) return
         setConstraints(data.constraints || [])
         const pref = data.preference
-        if (pref) setForm(current => ({
+        const savedAvailability = {
+          start: fromISODate(pref?.available_start_date) || tripRange.start,
+          end: fromISODate(pref?.available_end_date) || tripRange.end,
+        }
+        setAvailabilityMode(
+          savedAvailability.start && savedAvailability.end
+          && sameDay(savedAvailability.start, tripRange.start)
+          && sameDay(savedAvailability.end, tripRange.end)
+            ? 'full'
+            : 'limited'
+        )
+        setForm(current => ({
           ...current,
-          preferredRange: {
-            start: fromISODate(pref.preferred_start_date) || current.preferredRange.start,
-            end: fromISODate(pref.preferred_end_date) || current.preferredRange.end,
-          },
-          availableRange: {
-            start: fromISODate(pref.available_start_date) || current.availableRange.start,
-            end: fromISODate(pref.available_end_date) || current.availableRange.end,
-          },
-          idealBudget: pref.ideal_budget ?? current.idealBudget,
-          maxBudget: pref.maximum_budget ?? current.maxBudget,
-          budgetVisibility: pref.budget_visibility || current.budgetVisibility,
-          pace: pref.travel_style || current.pace,
-          interests: pref.top_interests?.length ? pref.top_interests : current.interests,
+          preferredRange: tripRange,
+          availableRange: savedAvailability,
+          idealBudget: pref?.ideal_budget ?? current.idealBudget,
+          maxBudget: pref?.maximum_budget ?? current.maxBudget,
+          budgetVisibility: pref?.budget_visibility || current.budgetVisibility,
+          pace: pref?.travel_style || current.pace,
+          interests: pref?.top_interests?.length ? pref.top_interests : current.interests,
         }))
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoaded(true) })
     return () => { cancelled = true }
-  }, [app.loadMyPreferences, currentTrip])
+  }, [app.loadMyPreferences, currentTrip, tripRange])
 
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const toggleStyle = style => setForm(current => {
@@ -995,12 +1041,17 @@ function PreferencesPage() {
   }
 
   const save = async () => {
+    const availability = availabilityMode === 'full' ? tripRange : form.availableRange
+    if (!tripRange.start || !tripRange.end || !availability.start || !availability.end) {
+      app.notify('Choose your availability within the Trip Dates')
+      return
+    }
     try {
       await app.saveMyPreferences({
-        preferred_start_date: toISODate(form.preferredRange?.start),
-        preferred_end_date: toISODate(form.preferredRange?.end),
-        available_start_date: toISODate(form.availableRange?.start),
-        available_end_date: toISODate(form.availableRange?.end),
+        preferred_start_date: toISODate(tripRange.start),
+        preferred_end_date: toISODate(tripRange.end),
+        available_start_date: toISODate(availability.start),
+        available_end_date: toISODate(availability.end),
         ideal_budget: Number(String(form.idealBudget).replace(/[^0-9.]/g, '')) || null,
         maximum_budget: Number(String(form.maxBudget).replace(/[^0-9.]/g, '')) || null,
         budget_visibility: form.budgetVisibility === 'planning' ? 'planning_only' : form.budgetVisibility,
@@ -1019,8 +1070,12 @@ function PreferencesPage() {
     <div className="preferenceWrap editorialForm">
       <div className="pageHeading"><div><span className="eyebrow">My preferences</span><h1>Share only what matters.</h1></div></div>
       <section className="preferenceCard preferenceFlow">
-        <div className="wide dateField"><label>Preferred dates — the trip you would ideally join</label><p className="fieldHint">Choose dates inside the organizer's trip window.</p><DateRangePicker value={form.preferredRange} onChange={range => set('preferredRange', range)} allowedRange={tripDateWindow} label="Organizer date window"/></div>
-        <details className="wide optionalPanel"><summary>Available date range — the widest window that still works for you</summary><div className="dateField" style={{ marginTop: 12 }}><p className="fieldHint">This also has to stay inside the organizer's trip window.</p><DateRangePicker value={form.availableRange} onChange={range => set('availableRange', range)} allowedRange={tripDateWindow} label="Organizer date window"/></div></details>
+        <div className="wide tripDatesCard"><span>Trip Dates</span><strong>{formatDateRange(tripRange)}</strong><small>Set by trip organizer</small></div>
+        <fieldset className="wide availabilityChoice"><legend>Are you available for the full trip?</legend>
+          <label><input type="radio" name="availability" checked={availabilityMode === 'full'} onChange={() => { setAvailabilityMode('full'); set('availableRange', tripRange) }}/><span><strong>Yes, all dates</strong><small>I am available for the full Trip Dates.</small></span></label>
+          <label><input type="radio" name="availability" checked={availabilityMode === 'limited'} onChange={() => { setAvailabilityMode('limited'); set('availableRange', { start: null, end: null }) }}/><span><strong>No, I have limited availability</strong><small>I will choose a window inside the Trip Dates.</small></span></label>
+        </fieldset>
+        {availabilityMode === 'limited' && <div className="wide"><AvailabilityPicker tripRange={tripRange} value={form.availableRange} onChange={range => set('availableRange', range)}/></div>}
         <div className="wide fieldPair">
           <label>Ideal total budget<input value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
           <label>Maximum acceptable budget<input value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
@@ -1042,7 +1097,7 @@ function PreferencesPage() {
 
           {draft && <div className="needDraft">
             <strong>{labelFor(draft.kind)}</strong>
-            <ConstraintParams kind={draft.kind} params={draft.params} allowedRange={tripDateWindow} onChange={params => setDraft(current => ({ ...current, params }))}/>
+            <ConstraintParams kind={draft.kind} params={draft.params} allowedRange={tripRange} onChange={params => setDraft(current => ({ ...current, params }))}/>
             <label>In your own words
               <input value={draft.original_text} placeholder="Optional" onChange={e => setDraft(current => ({ ...current, original_text: e.target.value }))}/>
             </label>
@@ -1185,10 +1240,10 @@ function CreateTrip() {
     <section className="createHero"><div><span className="roleChip">Organizer</span><h1>Create the trip frame.</h1><p>Set the destination, date window, group size, and shared assumptions. Guests add their preferences after joining.</p></div><div className="createHeroPhoto"><Badge tone="blue">New trip</Badge></div></section>
     <section className="preferenceCard createGrid createFlow">
       <div className="formChapter wide"><span>01</span><h2>Where and why</h2></div>
-      <label>Trip name<input value={form.name} placeholder="e.g. Summer city weekend" onChange={e => set('name', e.target.value)}/></label><label>Destination<input value={form.destination} placeholder="e.g. Chicago, Illinois" onChange={e => set('destination', e.target.value)}/></label>
+      <label>Trip name <span className="requiredMark">· Required</span><input required value={form.name} placeholder="e.g. Summer city weekend" onChange={e => set('name', e.target.value)}/></label><label>Destination <span className="requiredMark">· Required</span><input required value={form.destination} placeholder="e.g. Chicago, Illinois" onChange={e => set('destination', e.target.value)}/></label>
       <label>Trip theme<input value={form.theme} placeholder="e.g. Birthday weekend" onChange={e => set('theme', e.target.value)}/></label><label>Expected group size<input inputMode="numeric" pattern="[0-9]*" value={form.groupSize} placeholder="6" onChange={e => set('groupSize', e.target.value.replace(/[^0-9]/g, ''))}/></label>
       <div className="formChapter wide"><span>02</span><h2>Date window</h2></div>
-      <div className="wide dateField"><DateRangePicker value={dateRange} onChange={setDateRange}/></div>
+      <div className="wide dateField"><DateRangePicker required value={dateRange} onChange={setDateRange}/></div>
       <div className="formChapter wide"><span>03</span><h2>Budget and assumptions</h2></div>
       <label>Currency<select value={form.currency} onChange={e => set('currency', e.target.value)}><option>USD</option><option>CAD</option><option>CNY</option><option>EUR</option></select></label><label>Approximate budget<input value={form.budget} placeholder="e.g. $600 per person" onChange={e => set('budget', e.target.value)}/></label>
       <label className="wide">Shared trip assumptions<textarea rows="4" value={form.assumptions} placeholder="e.g. Relaxed pace, central stay, shared dinners." onChange={e => set('assumptions', e.target.value)}/></label>
@@ -1246,7 +1301,7 @@ function InvitePage() {
       <section className="linkPanel">
         <div><span className="roleChip">{app.inviteCopied ? 'Link copied' : 'Ready to share'}</span><h2>{currentTrip.name}</h2><p>{currentTrip.destination} · {currentTrip.dates}</p></div>
         <label>Invite link<input readOnly value={loadingInvite ? 'Creating link...' : inviteError || inviteUrl}/></label>
-        <div className="copyActions"><Button disabled={!inviteUrl} onClick={copyLink}>{app.inviteCopied ? 'Copied' : 'Copy link'}</Button><Button secondary onClick={() => navigate(tripHref(currentTrip.id, 'plan'))}>Start planning</Button>{invite && <Button ghost onClick={revokeLink}>Revoke link</Button>}</div>
+        <div className="copyActions"><Button disabled={!inviteUrl} onClick={copyLink}>{app.inviteCopied ? 'Copied' : 'Copy link'}</Button><Button secondary onClick={() => navigate(tripHref(currentTrip.id, 'preferences'))}>Start planning</Button>{invite && <Button ghost onClick={revokeLink}>Revoke link</Button>}</div>
         {app.inviteCopied && <div className="copiedState"><strong>Link ready to share</strong></div>}
         {inviteError && <div className="copiedState"><strong>{inviteError}</strong></div>}
       </section>

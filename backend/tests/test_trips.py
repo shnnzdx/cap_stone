@@ -193,6 +193,8 @@ def test_create_trip_makes_creator_organizer_and_empty_plan(
     assert body["name"] == "Paris birthday"
     assert body["destination"] == "Paris"
     assert body["status"] == "planning"
+    assert body["preferred_start_date"] == "2026-10-01"
+    assert body["preferred_end_date"] == "2026-10-05"
     assert body["plan_id"]
 
     membership = api_session.scalar(

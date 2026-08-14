@@ -16,6 +16,69 @@ const tripPlanHref = (tripId, focusItemId) => {
   return focusItemId ? `${href}?focus=${encodeURIComponent(focusItemId)}` : href
 }
 
+const placeDisplayName = value => ({
+  'charlemagne et ses leudes': 'Charlemagne Monument',
+}[value?.trim().toLowerCase()] || value)
+
+const usesOnlyLatinLetters = value => {
+  const letters = Array.from(value || '').filter(character => /\p{Letter}/u.test(character))
+  return letters.length > 0 && letters.every(character => /\p{Script=Latin}/u.test(character))
+}
+
+const usefulLocalName = item => {
+  const local = item.localTitle?.trim()
+  const english = placeDisplayName(item.title)?.trim()
+  if (!local || !english || local.toLocaleLowerCase() === english.toLocaleLowerCase()) return null
+  return usesOnlyLatinLetters(local) ? null : local
+}
+
+const landmarkAnchor = value => {
+  const displayed = placeDisplayName(value)
+  if (/notre[- ]dame/i.test(displayed)) return 'Notre-Dame'
+  return displayed
+}
+
+const compactAddress = (value, title, destination, localTitle) => {
+  if (!value) return 'Location unavailable'
+  const destinationParts = (destination || '').split(',').map(part => part.trim().toLowerCase()).filter(Boolean)
+  const city = destinationParts[0] || ''
+  const country = destinationParts[destinationParts.length - 1] || ''
+  const parts = value.split(',').map(part => part.trim()).filter(Boolean)
+  if ([title, localTitle].filter(Boolean).some(name => parts[0]?.toLowerCase() === name.toLowerCase())) parts.shift()
+  const inferredCountry = destinationParts.length === 1 && parts.length >= 3
+    ? parts[parts.length - 1].toLowerCase()
+    : ''
+  const conciseParts = parts.filter(part => {
+    const normalized = part.toLowerCase()
+    return normalized !== city
+      && normalized !== country
+      && normalized !== inferredCountry
+      && !/\b(?:\d{4,6}|\d{3}-\d{4})\b/.test(normalized)
+  })
+  return conciseParts.slice(0, 2).join(', ') || value
+}
+
+const dayDisplayTitle = (day, destination) => {
+  if (!day.items.length) return 'Open day'
+  const tags = new Set(day.items.flatMap(item => item.tags || []))
+  const city = (destination || '').split(',')[0].trim().replace(/\b\w/g, letter => letter.toUpperCase())
+  const englishItems = day.items.filter(item => usesOnlyLatinLetters(placeDisplayName(item.title)))
+  const titleText = englishItems.map(item => item.title).join(' ')
+  const historicItem = englishItems.find(item => /notre[- ]dame|charlemagne|crypt|cathedral|monument|temple|shrine|church|castle|palace|heritage/i.test(item.title))
+  const anchor = landmarkAnchor(historicItem?.title || englishItems.find(item => !item.tags?.includes('catering'))?.title)
+  const hasWaterfront = tags.has('aquarium') || tags.has('water') || tags.has('marina')
+  const hasArts = tags.has('museum') || tags.has('culture')
+  if (hasWaterfront && hasArts) return city ? `${city} Waterfront & Arts` : 'Waterfront & Arts'
+  if (hasWaterfront) return city ? `${city} Waterfront` : 'Waterfront'
+  let theme = city ? `${city} Highlights` : 'City Highlights'
+  if (tags.has('heritage') || tags.has('religion') || tags.has('sights') || /notre[- ]dame|charlemagne|crypt|cathedral|monument|temple|shrine|church|castle|palace|heritage/i.test(titleText)) theme = city ? `Historic ${city}` : 'Historic Quarter'
+  else if (tags.has('museum') || tags.has('culture')) theme = 'Arts & Culture'
+  else if (tags.has('park') || tags.has('garden') || tags.has('natural')) theme = 'Parks & Gardens'
+  else if (day.items.filter(item => item.tags?.includes('catering')).length >= 2) theme = city ? `${city} Local Flavors` : 'Local Flavors'
+  if (theme.endsWith('Local Flavors')) return theme
+  return anchor ? `${anchor} & ${theme}` : theme
+}
+
 const formatChangeDay = value => value
   ? new Date(`${value}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
   : null
@@ -483,19 +546,19 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
           const open = view.openDays.includes(day.id)
           return <section className={cx('accordionDay', open && 'open')} key={day.id}>
             <button className="accordionHead" onClick={() => actions.toggleDay(day.id)} aria-expanded={open}>
-              <span className="dayNumber">{day.label}</span><div><small>{day.date}</small><h2>{day.title}</h2></div><p>{day.summary}</p><i>{open ? '−' : '+'}</i>
+              <span className="dayNumber">{day.label}</span><div><small>{day.date}</small><h2>{dayDisplayTitle(day, currentTrip.destination)}</h2></div><p>{day.summary}</p><i>{open ? '−' : '+'}</i>
             </button>
             <div className="accordionBody"><div className="accordionInner">
               <div className="dayRouteLine">
                 <span>{day.items.length} stops</span>
-                <strong>{day.items.map(item => item.place).join(' → ')}</strong>
+                <strong>{day.items.map(item => placeDisplayName(item.title)).join(' → ')}</strong>
                 <button type="button" onClick={() => actions.showDayOnMap(day.id)}>Show on map</button>
               </div>
               <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
                 <article id={`trip-item-${item.id}`} className={cx('activityBlock', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
                   <button type="button" className={cx('activityIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{index + 1}</b></button>
                   <ActivityPhoto item={item}/>
-                  <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{item.title}</h3></div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div><p className="activityMeta">⌖ {item.place} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
+                  <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}</div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div><p className="activityMeta">⌖ {compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
                   <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => actions.openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
                   {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
                   {view.historyOpen === item.id && (view.changeHistory[item.id] || []).length > 0 && <div className="itemHistoryPanel">

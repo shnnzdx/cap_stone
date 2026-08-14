@@ -385,3 +385,43 @@ If planner or explainer calls fail, check `PLANNER_AI_PROVIDER` and
 If chat calls fail, check `CHAT_AI_PROVIDER`.
 For local Ollama testing, use the legacy fallback only:
 `OPENAI_API_KEY=ollama` and `OPENAI_BASE_URL=http://localhost:11434/v1/`.
+
+## 11. Verify Geoapify With a Real Tokyo Trip
+
+1. Put the real key in `backend/.env` as `GEOAPIFY_API_KEY=...`.
+2. Start PostgreSQL and confirm `DATABASE_URL` targets the intended development database.
+3. Create/upgrade the additive schema:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.db.init_schema
+```
+
+4. Start the backend, frontend, and Trip workspace using the commands above.
+5. Create a trip whose destination is `Tokyo, Japan`, submit organizer preferences,
+   and generate the itinerary.
+6. Verify the cached rows:
+
+```sql
+SELECT
+    name,
+    city,
+    country,
+    latitude,
+    longitude,
+    category,
+    address,
+    image_url,
+    opening_hours
+FROM place
+WHERE provider = 'geoapify'
+ORDER BY created_at DESC;
+```
+
+7. Create another new Tokyo trip and generate it. When at least 12 Tokyo rows are
+   cached, the Place Service reads PostgreSQL without another Geoapify fetch.
+
+Geoapify places commonly have null image, price, duration, and walking metadata.
+The Plan page shows its existing `PHOTO` placeholder for a null image. Null price is
+not free, null hours are not all-day availability, and null duration/walking values
+are not silently converted into planning facts.

@@ -1,224 +1,523 @@
-# Cadensy / TripSync Handoff
+# Cadensy 项目交接文档
 
-Last updated: 2026-08-13
+最后更新：2026-08-14
 
-This is the current root handoff for `C:\Users\zdxzh\Desktop\capstone\New`.
-Read this first, then move into the narrower docs.
+当前工作目录：`/Users/jiayichen/Desktop/cap_stone`
 
-## Read These First
+当前分支：`main`（跟踪 `origin/main`）
 
-Use this order:
+> 项目历史文档中可能仍出现 `TripSync`。在当前产品语境中，它指的就是 Cadensy，不要因此复制或新建第二套项目结构。
+
+## 1. 接手后的第一步
+
+开始修改前，按顺序阅读：
 
 1. `AGENTS.md`
 2. `README.md`
 3. `INTEGRATION-ROADMAP.md`
-4. `backend/README.md`
-5. `backend/LOCAL_DEV.md`
-6. `docs/PRODUCT.md`
-7. `docs/AGENTS.md`
-8. `docs/navigation-known-wrong-behavior.md`
-9. `trip/README.md`
+4. 本文档 `HANDOFF.md`
+5. `docs/navigation-known-wrong-behavior.md`
+6. 涉及后端时再读 `backend/README.md`、`backend/LOCAL_DEV.md`
 
-## Repo Shape
+所有操作保持在：
 
-This is a mixed repository, not a single frontend:
+```text
+/Users/jiayichen/Desktop/cap_stone
+```
 
-- `frontend/`: the main site, marketing pages, and `/trip` host shell
-- `trip/`: the standalone Trip workspace frontend source
-- `backend/`: the FastAPI + PostgreSQL backend
-- `shared/`: shared navigation, session, product-copy, and compatibility contracts
-- `docs/`: product, AI, handoff, and proposal docs
-- `AWS/`: cloud deployment and demo-environment docs
+不要修改这个目录之外的文件。
 
-## Frozen Boundaries
+## 2. 当前工作区非常重要
 
-Do not casually break these three seams.
+当前工作树有大量尚未提交的修改，包含近期功能实现和生成后的 Trip preview assets。它们属于当前开发成果，不要执行：
 
-### 1. Navigation
+```bash
+git reset --hard
+git checkout -- .
+git clean -fd
+```
 
-- `shared/trip-navigation-policy/` owns workspace destination policy
-- it also owns route reachability, restoration fallback, and invite/join destination decisions
-- do not reintroduce role-based destination logic inside UI components
+也不要为了“清理工作区”覆盖或删除不属于当前任务的改动。开始工作前先运行：
 
-### 2. Technical Session
+```bash
+cd /Users/jiayichen/Desktop/cap_stone
+git status --short --branch
+git diff --check
+```
 
-- `shared/session-runtime/` owns `tripsync:*`
-- it owns bearer-token handling, request identity headers, and invite adoption cache persistence
-- it owns invalid-session clear and logout sequencing
-- do not manually assemble `Authorization`, `X-Trip-Id`, or `X-Membership-Id` in random components
+当前修改横跨 `backend/`、`trip/`、`frontend/` 和本文档。提交前应按功能审查 diff，不要把所有文件盲目打包成一个无法解释的提交。
 
-### 3. Plan Workspace
+## 3. Repository 结构
 
-- `trip/src/final/plan-feature/PlanFeature.jsx` is the single public Plan feature boundary
-- `usePlanInteractionRuntime` owns selection, comments, map/list, menu, booking, and drawer behavior
-- `useAssistantChangeRequestFlow` owns the Cadensy drawer conversation and change-request flow
-- `trip/src/final/FinalApp.jsx` should stay limited to route mount, workspace composition, and command execution
+这是一个混合仓库，不是单一前端：
 
-## What The Product Is
+- `frontend/`：主站、登录/注册页以及 `/trip` host shell
+- `trip/`：Trip workspace 的源代码
+- `frontend/public/trip-app/`：由 `trip/` 构建并同步的嵌入产物，不是源代码
+- `backend/`：FastAPI、SQLAlchemy、PostgreSQL、Planner、Place Service
+- `shared/`：跨前端的 navigation、session、copy 和 compatibility contracts
+- `docs/`：产品、架构和历史交接资料
+- `AWS/`：AWS 部署上下文和规划资料
 
-This is not a generic itinerary generator.
+主要依赖方向：
 
-It is a group-travel decision engine that:
+```text
+frontend host shell
+        ↓ embeds
+trip workspace
+        ↓ HTTP API
+FastAPI → domain services → PostgreSQL / AI providers / Geoapify
+```
 
-- maintains one living Current Plan
-- routes each change through a backend-owned decision path
-- protects private member constraints
-- keeps a decision history
+## 4. 不可随意破坏的架构边界
 
-Current backend path outcomes are:
+### Navigation
+
+`shared/trip-navigation-policy/` 负责 workspace destination policy、route reachability、restoration fallback 和 invite/join destination decision。
+
+不要在 UI component 中重新 hardcode role-based navigation。
+
+### Technical Session
+
+`shared/session-runtime/` 负责：
+
+- `tripsync:*` storage keys
+- bearer token mechanics
+- `Authorization`、`X-Trip-Id`、`X-Membership-Id` identity headers
+- invite adoption cache
+- invalid-session clearing
+- logout sequencing
+
+不要在随机组件中重复实现这些逻辑。
+
+### Plan Workspace
+
+`trip/src/final/plan-feature/PlanFeature.jsx` 是 Plan feature 的唯一 public boundary。
+
+- `usePlanInteractionRuntime`：selection、comments、map/list、menu、booking、drawer state
+- `useAssistantChangeRequestFlow`：Cadensy drawer conversation、proposal apply、change-request flow
+- `FinalApp.jsx`：只负责 route mount、workspace composition 和 command execution
+
+不要把 Plan interaction state 搬回 `FinalApp.jsx`，也不要绕过这个边界另建第二套 PlanFeature。
+
+## 5. 当前产品核心
+
+Cadensy 不是普通 itinerary generator，而是 group-travel decision engine：
+
+- 维护一个持续更新的 Current Plan
+- 所有 change request 经过后端规则分类
+- 保护成员的 private constraint wording
+- 通过 ledger 保留 plan changes
+
+当前后端 decision path：
 
 - `notice`
 - `round`
 - `reopen_round`
 - `confirm`
 
-Path classification is owned by backend rules, not by AI and not by frontend UI.
+AI 可以解释或辅助生成，但不能选择 change path，不能读取其他成员的 private raw wording，也不能绕过后端规则直接修改 Current Plan。
 
-## Important Capabilities Already Landed
+## 6. Place Library / Geoapify 当前实现
 
-The current `New` workspace already includes these real behaviors:
+主要文件：
 
-- email/password login with bearer session
-- `/trip` embedding through `frontend/public/trip-app/`
-- `My Trips` based on real trip summaries instead of fake cards
-- account-backed users staying on `My Trips` when they land on workspace home
-- guest-backed sessions returning into their trip
-- per-activity history coming from real `PlanChange` rows
-- initial generation rows filtered out of user-facing activity history
-- vote rounds auto-settling when every member has voted
-- self-only confirms auto-applying when appropriate
-- preference date validation against the trip date window
-- single-member generation no longer treating budget ceiling as a group blocker
-- date moves updating both `day_date` and `day_index`
-- same-day occupied-time overlap routing into the correct decision path
+- `backend/app/domain/places/service.py`
+- `backend/app/domain/places/geoapify.py`
+- `backend/app/db/models.py`
+- `backend/app/db/init_schema.py`
+- `backend/tests/test_places.py`
 
-## Still Not Fully Done
+当前策略：
 
-These are still reasonable follow-up areas:
+1. Chicago 继续使用 `backend/data/poi_chicago.py` 的原有 curated 数据。
+2. 其他 destination 先查询 PostgreSQL `place` cache。
+3. cache 数量或类别覆盖不足时才调用 Geoapify。
+4. Geoapify 先 geocode city，再调用官方 endpoint：
 
-- planner AI quality is still limited
-- chat history is not persisted yet
-- magic-link and guest-to-account binding remain incomplete
-- automatic trip state transitions are not fully finished
-- Alembic migrations are not set up yet
-- deeper `frontend` / `trip` absorption is still paused
+   ```text
+   https://api.geoapify.com/v2/places
+   ```
 
-## Everyday Local Commands
+5. retrieval 按类别组分别请求，不再依赖单次 union query 的前 N 条：
+   - major attractions
+   - museums
+   - historic places
+   - parks
+   - food
+   - leisure
+6. 请求使用 city `place:` filter，并通过城市范围内的多个 bias 点改善地理覆盖。
+7. 返回结果 merge、deduplicate、normalize、upsert 后写入 PostgreSQL。
+8. Planner candidate pool 再按类别 round-robin，并在每类内部进行 geographic spread。
 
-### Start backend
+重要数据规则：
 
-On Windows, use the venv interpreter directly:
+- `price = unknown` 保持 `null`
+- `duration = unknown` 保持 `null`
+- `opening_hours = unknown` 保持 `null`
+- `walking = unknown` 保持 `null`
+- unknown 不等于 free、90 minutes、all-day 或 low walking
+- 不要恢复任何假默认值
 
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
+英文名称规则：
+
+- 优先读取 Geoapify 的 English/international name
+- 原始名称只含 Latin 字母时可作为英文主名
+- 有可靠 local name 时，作为次级名称保留
+- 没有可靠英文名且原名不是 Latin script 时，当前不会要求 Planner 猜测翻译
+- display alias 只能是小范围展示层优化，不能变成复杂 planning tags
+
+## 7. Planner 与 AI Provider 当前状态
+
+Planner 入口：
+
+```text
+POST /api/trips/{trip_id}/plans/generate
+→ backend/app/domain/plans/generator.py
+→ backend/app/agents/planner.py
+→ backend/app/agents/base.py
 ```
 
-### Reset demo data
+provider routing 当前由以下环境变量控制：
 
-This preserves the stable IDs the frontend expects:
-
-```powershell
-cd backend
-.\.venv\Scripts\python.exe -m app.db.reset_demo
+```env
+CHAT_AI_PROVIDER=ollama_cloud
+PLANNER_AI_PROVIDER=deepseek
+EXPLAINER_AI_PROVIDER=deepseek
 ```
 
-### Run backend tests
+`.env.example` 中的推荐模型：
 
-```powershell
-cd backend
-$env:DISABLE_SCHEDULER="1"
-$env:MOCK_AI="1"
-.\.venv\Scripts\python.exe -m pytest -q
+```text
+Planner Agent
+Provider = DeepSeek
+Model = deepseek-v4-flash
+Local or Cloud = Cloud
 ```
 
-### Run the main frontend
+Chat 默认走 Ollama Cloud 的 `qwen3.5:cloud`。本地 Ollama 只通过 legacy OpenAI-compatible 配置兼容，例如 `OPENAI_BASE_URL=http://localhost:11434/v1/`；它不是当前 Planner 的默认路径。
 
-```powershell
-cd frontend
+特别注意：
+
+- `MOCK_AI=1` 时不会真实调用 DeepSeek；Planner 会进入 deterministic fallback
+- 真实运行时最终 provider 仍以 `backend/.env` 为准
+- 不要输出或提交任何真实 API Key
+- provider 失败时，核心 deterministic rules 和 decision flow 必须保持可运行
+
+## 8. Planner 最新 scheduling 行为
+
+主要文件：
+
+- `backend/app/domain/plans/generator.py`
+- `backend/app/agents/planner.py`
+- `backend/tests/test_plan_generation.py`
+- `backend/tests/test_planner.py`
+
+当前日程生成把 sightseeing 与 meals 分开处理：
+
+### Sightseeing
+
+- 每天约 2–4 个 sightseeing activities
+- 使用 `(3, 2, 4, 3, 2)` 的 soft variation pattern 循环，但不会为了凑数量而让 itinerary blocked
+- morning / afternoon / late-afternoon 时间会按日期自然变化
+- 尽量在 16:00 后安排至少一个 meaningful sightseeing item
+- 避免固定使用每天同一组 `10:00 / 14:00 / 19:00`
+
+### Meal anchors
+
+- Lunch 约 11:30–13:30
+- Dinner 约 17:30–20:00
+- meal slots 不计入 2–4 个 sightseeing 数量
+- 只有可靠 restaurant/cafe/catering candidate 才能作为 meal venue
+- food-themed walk、museum 或 attraction 不能仅凭 `food` tag 被当作餐厅
+- 没有可靠 restaurant 时使用：
+  - `Flexible lunch break`
+  - `Flexible dinner break`
+- flexible break 不伪造 place、coordinates、price、duration、opening hours 或 walking data
+
+这些都是 soft scheduling rules。Meal anchor 缺失或无法安全验证时，不应单独导致 complete-plan validation blocked。
+
+当前模型没有 arrival/departure time，因此生成范围内的每一天暂时都被当作 full travel day。将来若增加抵达/离开时间，首尾日需要再单独适配。
+
+## 9. Plan UI 最新展示规则
+
+主要文件：
+
+- `trip/src/final/plan-feature/PlanFeature.jsx`
+- `trip/src/final/TripAppState.jsx`
+- `trip/src/final/final.css`
+
+当前展示目标：
+
+- UI 主语言为英文
+- Day title 使用英文区域/主题，不直接拼接多个 POI 名称
+- route summary 只显示简洁英文景点名称
+- activity card 以英文名称为主标题
+- 有必要且可靠的 local name 时，在英文标题下方以更小、更浅文字显示
+- local name 已是相同英文/Latin 名称时不重复显示
+- 地址会去掉重复的景点名、城市、国家等尾部信息
+
+不要把英文和当地语言直接拼成类似：
+
+```text
+南京海底世界 & Arts & Culture
+```
+
+## 10. Trip Cover 与 Place Image
+
+这两个概念必须保持分离：
+
+- Trip Cover：用于 My Trips、Trip overview、Trip card
+- Place Image：用于 Plan 内具体 activity
+
+当前 resolver：
+
+```text
+trip/src/final/trip-cover.js
+```
+
+逻辑：
+
+```text
+trip.coverImageUrl / trip.cover_image_url
+→ 安全 URL 校验
+→ 有值则显示 trip cover
+→ 没有则显示 neutral travel cover
+```
+
+Trip cover 绝对不能 fallback 到某个 activity/place image，否则 Paris 可能再次显示 Chicago Theatre。当前没有接入新的 city-cover provider，也没有 hardcode Paris/Tokyo 城市图片。
+
+## 11. Create Trip 与 Preferences 最新行为
+
+主要文件：
+
+- `trip/src/final/FinalApp.jsx`
+- `trip/src/final/TripAppState.jsx`
+- `backend/app/api/main.py`
+- `backend/app/db/models.py`
+
+Create Trip 真正必填项：
+
+- Trip name · Required
+- Destination · Required
+- Start date · Required
+- End date · Required
+
+日期选择规则：
+
+- past dates disabled
+- start date >= 当前本地日期
+- end date >= start date
+- calendar 默认从当前月份附近开始
+- 不写死月份或年份
+
+Preferences 概念分离：
+
+```text
+Trip Dates
+= organizer 在 Create Trip 设置的公共旅行范围
+
+My Availability
+= 当前成员在 Trip Dates 内的个人可用范围
+```
+
+Preferences 直接展示继承的 Trip Dates，不再让成员重新定义整个旅行日期。成员选择：
+
+- `Yes, all dates`：availability 保存为完整 Trip Dates
+- `No, I have limited availability`：只在 Trip Dates 内选择个人 start/end
+
+当前保存字段为：
+
+- `preferred_start_date`
+- `preferred_end_date`
+- `available_start_date`
+- `available_end_date`
+
+Planner/constraint conversion 已能读取成员 availability。不要另外创建第二套日期系统。
+
+## 12. Database 与 schema
+
+后端使用 FastAPI + SQLAlchemy + PostgreSQL。运行时数据库由 `backend/.env` 的 `DATABASE_URL` 决定；测试数据库由 `TEST_DATABASE_URL` 决定。
+
+Place Library 使用真实 `place` 表，不要只检查 SQLAlchemy metadata。对现有 runtime database 应运行 additive schema setup：
+
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/backend
+.venv/bin/python -m app.db.init_schema
+```
+
+不要未经确认对共享或 production-like 数据库运行 destructive seed。
+
+常见安全规则：
+
+- `DATABASE_URL` 与 `TEST_DATABASE_URL` 必须不同
+- pytest 数据库名必须明显是 test-only
+- `backend/.env` 不可提交
+- 修改 `.env` 后应重启 backend；已运行进程不会自动可靠地重新加载所有配置
+
+## 13. macOS 本地运行命令
+
+### Backend
+
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/backend
+.venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Health check：
+
+```text
+http://127.0.0.1:8000/api/health
+```
+
+### Main frontend
+
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/frontend
 npm run dev
 ```
 
-### Rebuild and sync the embedded Trip preview
+默认地址通常为：
 
-Changing `trip/` alone is not enough:
+```text
+http://localhost:3000
+```
 
-```powershell
-cd frontend
+### Standalone Trip workspace
+
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/trip
+npm run dev
+```
+
+### 修改 trip 后同步 embedded preview
+
+只修改 `trip/` 不会自动更新主站 `/trip` 中的静态嵌入内容。必须运行：
+
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/frontend
 npm run build:trip-preview
 ```
 
-## Local Verification Facts
+这会更新 `frontend/public/trip-app/` 中带 hash 的 assets、`index.html` 和 `embed-manifest.json`。旧 hash 文件删除、新 hash 文件新增属于正常 build output。
 
-- PostgreSQL must be available on `localhost:5432`
-- seeing FastAPI `/docs` does not mean login is working
-- real login also depends on valid account, membership, and trip rows in the database
-- `MOCK_AI=1` remains the default-safe local mode
+## 14. 验证命令
 
-## Common Pitfalls
+### 最近 Planner / Place 定向测试
 
-### 1. You changed `trip/` but `/trip` did not change
+2026-08-14 最后一次结果：
 
-Usually the code is fine and the preview bundle is stale. Run:
-
-```powershell
-cd frontend
-npm run build:trip-preview
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/backend
+.venv/bin/pytest -q -p no:cacheprovider \
+  tests/test_plan_generation.py \
+  tests/test_planner.py \
+  tests/test_places.py
 ```
 
-### 2. You see “Could not reach the backend”
+结果：
 
-Frontend often uses that text for backend `500`s too.
-Check the backend traceback before assuming a network problem.
+```text
+46 passed in 0.96s
+```
 
-### 3. Backend behavior looks stale after code changes
+### 完整 backend tests
 
-Make sure you started it with `--reload`.
-Without that, old behavior can look like route or logic breakage.
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/backend
+DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q
+```
 
-### 4. You reset data with the wrong script
+### Frontend / embedded Trip
 
-- `app.db.seed` can rotate IDs
-- `app.db.reset_demo` is the safer everyday choice
+```bash
+cd /Users/jiayichen/Desktop/cap_stone/frontend
+npm run build:trip-preview
+npm test
+```
 
-### 5. You rewrite session or navigation logic inside UI
+### Diff hygiene
 
-That is the fastest way to make the architecture drift again.
-If the change touches destination policy or technical session behavior, start in `shared/`.
+```bash
+cd /Users/jiayichen/Desktop/cap_stone
+git diff --check
+```
 
-## AI Integration Status
+注意：unit tests 通过不等于真实 provider/runtime 流程通过。涉及 Geoapify、PostgreSQL 或 DeepSeek 的任务，完成标准应包含真实 runtime database、真实 endpoint response 和 backend traceback 检查，但绝不输出 secret。
 
-The backend AI framework exists, but not every capability is fully intelligent yet.
+## 15. 常见问题
 
-Important entry points:
+### `/trip` 没显示刚修改的 Trip UI
 
-- `POST /api/trips/{id}/chat`
-- `POST /api/trips/{id}/plans/generate`
-- `POST /api/trips/{id}/constraints`
-- `POST /api/plans/items/{id}/classify`
-- `POST /api/plans/items/{id}/changes`
+通常是 embedded preview 过期。运行 `frontend/npm run build:trip-preview` 对应的命令，不要直接编辑生成的 bundle。
 
-Important files:
+### 前端显示 `Could not reach the backend`
 
-- `backend/app/agents/base.py`
-- `backend/app/agents/chat.py`
-- `backend/app/agents/explainer.py`
-- `backend/app/agents/planner.py`
-- `backend/app/domain/plans/generator.py`
+这个文案有时也会掩盖 backend `500`。先检查 uvicorn terminal traceback 和实际 response body，不要直接假设是网络错误。
 
-Hard rules:
+### Plan 页面显示通用 blocked 文案
 
-- AI must not choose the change path
-- AI must not read another member's private raw wording
-- AI must not bypass backend rules to mutate the Current Plan
-- `MOCK_AI=1` must remain runnable
+检查 `POST /api/trips/{id}/plans/generate` 返回的真实 `blocked_reason`。UI 中的 date-range 建议可能只是 fallback，不一定是真实根因。
 
-## Practical Rule
+### Geoapify 返回数据但 Planner 没 candidates
 
-When you continue work:
+依次检查：
 
-- visual changes belong in UI
-- destination changes start with `shared/trip-navigation-policy/`
-- session, header, and storage changes start with `shared/session-runtime/`
-- Plan interaction changes must stay inside the `plan-feature/` boundary
-- after changing `trip/`, always resync the embedded preview
+```text
+Geoapify response
+→ normalization
+→ place upsert / transaction commit
+→ cached city query
+→ English-name eligibility
+→ PlannerPlace conversion
+→ deterministic constraint validation
+```
+
+unknown metadata 不能仅因为未知就被判 invalid；只有 hard constraint 无法安全验证时才可以拒绝该 candidate。
+
+### Backend 修改后行为仍旧
+
+确认 uvicorn 使用 `--reload`，并在 `.env` 修改后主动重启 backend。
+
+## 16. 尚未完成或仍有风险
+
+- 当前工作区尚未整理成清晰 commits
+- 需要在提交前跑一次更完整的 backend/frontend test suite
+- 最新 meal-anchor scheduling 已通过定向测试，但尚未在本次交接中重新生成一个真实 Geoapify trip 做浏览器端验收
+- Planner AI quality 仍依赖 provider response；deterministic validation/fallback 必须继续保留
+- Geoapify 的 English/local name 覆盖不完整，不能靠硬编码翻译任意地点
+- Trip cover 目前只有显式 URL 或 neutral fallback，尚未接 city cover provider
+- Preferences 当前表达的是一个连续 availability range，不支持多个离散可用日期区间
+- arrival/departure time 尚未建模，首尾日仍按 full day 处理
+- Alembic migrations 尚未建立，当前依赖 additive `init_schema`
+- chat history 尚未持久化
+- magic-link 和 guest-to-account binding 仍未完全完成
+- automatic trip state transitions 尚未完全完成
+- deeper `frontend` / `trip` runtime merge 仍暂停
+
+## 17. 推荐下一步
+
+优先级建议：
+
+1. 保护当前 dirty worktree，按功能审查并拆分 commits。
+2. 跑完整 backend tests、frontend tests 和 `build:trip-preview`。
+3. 使用真实 runtime 配置重新生成至少一个非 Chicago trip，记录：
+   - Geoapify candidate count
+   - PostgreSQL cached count
+   - Planner final candidate count
+   - 每日 sightseeing / meal anchors
+   - generate HTTP status 与 blocked reason
+   - GET plan activities
+4. 浏览器检查 My Trips、Create Trip、Preferences 和 Plan 页面。
+5. 在真实验收通过前，不进行 Planner、Session、Navigation 或 PlanFeature 的大规模重构。
+
+## 18. 最后原则
+
+- 视觉问题改 UI
+- destination policy 从 `shared/trip-navigation-policy/` 开始
+- session/header/storage 从 `shared/session-runtime/` 开始
+- Plan interaction 保持在 `plan-feature/` 边界内
+- Planner 只做最小、可验证的 scheduling 修改
+- unknown 永远不等于 fake default
+- 修改 `trip/` 后同步 embedded preview
+- 真实 runtime 问题必须看真实 response、database 和 traceback，不能只依赖 mocks

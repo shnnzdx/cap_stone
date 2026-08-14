@@ -274,10 +274,12 @@ def _item_out(item: PlanItem) -> dict:
         "start_hour": item.start_hour,
         "duration_min": item.duration_min,
         "title": item.title,
+        "local_title": item.local_title,
         "place": item.place,
         "price_per_person": item.price_per_person,
         "source": item.source,
         "settledness": item.settledness,
+        "tags": item.tags or [],
         # The map draws directly from these two numbers; they change when the place changes.
         "coords": [item.lat, item.lng] if item.lat is not None else None,
         # Use null when no image exists; the frontend has a placeholder. Do not invent one here.
@@ -865,6 +867,16 @@ def create_trip(
         "name": created.trip.name,
         "destination": created.trip.destination,
         "status": created.trip.status,
+        "preferred_start_date": (
+            created.trip.preferred_start_date.isoformat()
+            if created.trip.preferred_start_date
+            else None
+        ),
+        "preferred_end_date": (
+            created.trip.preferred_end_date.isoformat()
+            if created.trip.preferred_end_date
+            else None
+        ),
         "plan_id": created.plan.id,
         # The creator has a different membership in the new trip. Return it so the frontend can switch identity.
         # Otherwise every later call for this trip is rejected because the identity belongs to another trip.

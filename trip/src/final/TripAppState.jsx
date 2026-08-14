@@ -71,8 +71,11 @@ const normalizeTrip = raw => ({
   name: raw.name || 'Untitled trip',
   destination: raw.destination || 'Destination not set',
   dates: raw.dates || formatTripDateRange(raw),
+  preferredStartDate: raw.preferred_start_date || raw.preferredStartDate || null,
+  preferredEndDate: raw.preferred_end_date || raw.preferredEndDate || null,
   status: raw.status?.replace(/^\w/, c => c.toUpperCase()) || 'Planning',
   people: raw.member_count || 1,
+  coverImageUrl: raw.cover_image_url || raw.coverImageUrl || null,
   onboarding: raw.onboarding || {},
   organizerPreference: raw.organizerPreference || raw.organizer_preference || null,
 })
@@ -82,6 +85,7 @@ const normalizeItem = item => ({
   kind: item.source || 'plan',
   time: formatHour(item.start_hour),
   title: item.title,
+  localTitle: item.local_title || null,
   place: item.place,
   status: item.settledness === 'booked' ? 'Booked' : '',
   locked: item.settledness === 'booked',
@@ -95,6 +99,7 @@ const normalizeItem = item => ({
   pricePerPerson: item.price_per_person,
   settledness: item.settledness,
   photoUrl: item.photoUrl,
+  tags: item.tags || [],
 })
 
 const normalizePlan = raw => {

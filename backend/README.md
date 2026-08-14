@@ -305,3 +305,34 @@ Representative test areas:
 - `test_agent*.py`: chat and agent behavior
 - `test_plan_generation.py`: planner fallback behavior
 - `test_comments.py` / `test_booking.py`: comments, booking, organizer actions
+
+---
+
+## Global Place Library
+
+Planner gets candidate locations through `app/domain/places/service.py`; it does not
+call a third-party provider directly.
+
+- Chicago continues to use `data/poi_chicago.py`, including its curated/estimated
+  price, duration, opening-window, walking, accessibility, dietary, and interest data.
+- Other destinations first query the PostgreSQL `place` table.
+- Fewer than 12 cached city places triggers a Geoapify city geocode followed by a
+  Geoapify Places request.
+- Results are normalized and upserted using the unique provider identity
+  `(provider, provider_place_id)`.
+- Missing image, opening hours, price, duration, or walking metadata remains null.
+- A missing key, timeout, rate limit, provider 5xx, or invalid response falls back to
+  the existing cache. With no candidates, normal blocked-plan behavior remains active.
+
+Geoapify configuration belongs only in `backend/.env`:
+
+```env
+GEOAPIFY_API_KEY=
+```
+
+Before using an existing database, apply the additive schema setup:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m app.db.init_schema
+```

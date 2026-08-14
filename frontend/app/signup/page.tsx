@@ -5,7 +5,10 @@ import { FormEvent, useState } from "react";
 import { createSessionRuntime, SESSION_RUNTIME_CODES } from "../../../shared/session-runtime/index.js";
 import BrandLogo from "../BrandLogo";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE_URL =
+  import.meta.env.NEXT_PUBLIC_API_BASE_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://127.0.0.1:8000";
 const sessionRuntime = createSessionRuntime();
 
 function hasPersistenceWarning(warnings: string[]): boolean {

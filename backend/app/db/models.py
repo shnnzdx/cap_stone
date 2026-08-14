@@ -203,7 +203,9 @@ class Plan(Base, TimestampMixin):
     trip_id: Mapped[str] = mapped_column(ForeignKey("trip.id"))
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | blocked
     blocked_reason: Mapped[str | None] = mapped_column(Text)
-    estimated_total_per_person: Mapped[float] = mapped_column(Float, default=0)
+    # Null means one or more itinerary prices are unknown. It must not be
+    # presented as a free itinerary.
+    estimated_total_per_person: Mapped[float | None] = mapped_column(Float, nullable=True)
     currency: Mapped[str] = mapped_column(String(8), default="USD")
 
     items: Mapped[list["PlanItem"]] = relationship(back_populates="plan")
@@ -219,10 +221,11 @@ class PlanItem(Base, TimestampMixin):
     day_index: Mapped[int] = mapped_column(Integer)
     day_date: Mapped[date] = mapped_column(Date)
     start_hour: Mapped[float] = mapped_column(Float)  # 14.5 == 2:30 PM
-    duration_min: Mapped[int] = mapped_column(Integer, default=60)
-    title: Mapped[str] = mapped_column(String(200))
-    place: Mapped[str] = mapped_column(String(200))
-    price_per_person: Mapped[float] = mapped_column(Float, default=0)
+    duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    title: Mapped[str] = mapped_column(String(300))
+    local_title: Mapped[str | None] = mapped_column(String(300))
+    place: Mapped[str] = mapped_column(String(500))
+    price_per_person: Mapped[float | None] = mapped_column(Float, nullable=True)
     tags: Mapped[list] = mapped_column(JSON, default=list)
     dietary_tags: Mapped[list] = mapped_column(JSON, default=list)
     is_meal: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -231,7 +234,7 @@ class PlanItem(Base, TimestampMixin):
     lng: Mapped[float | None] = mapped_column(Float)
     # 条目配图。AI 从景点库生成时,直接抄景点自带的那张;
     # 手动加的条目可以是空的,前端有占位框兜着。
-    photo_url: Mapped[str | None] = mapped_column(String(500))
+    photo_url: Mapped[str | None] = mapped_column(String(1000))
     # 数据可信度:verified | ai_estimate | mock | not_verified —— 由代码打,不由 AI 自称
     source: Mapped[str] = mapped_column(String(20), default="mock")
 
@@ -241,6 +244,37 @@ class PlanItem(Base, TimestampMixin):
     settled_by_round_id: Mapped[str | None] = mapped_column(String(32))
 
     plan: Mapped[Plan] = relationship(back_populates="items")
+
+
+class Place(Base, TimestampMixin):
+    """Provider-backed place library shared by planner runs.
+
+    Planner-specific facts such as duration, price, and walking effort do not
+    belong here unless a reliable source provides them. Chicago keeps those
+    curated facts in ``data/poi_chicago.py``.
+    """
+
+    __tablename__ = "place"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_place_id", name="uq_place_provider_id"),
+        Index("ix_place_city_country", "city", "country"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    provider: Mapped[str] = mapped_column(String(40))
+    provider_place_id: Mapped[str] = mapped_column(String(255))
+    # Keep the provider's raw name, plus optional language-specific display facts.
+    name: Mapped[str] = mapped_column(String(300))
+    english_name: Mapped[str | None] = mapped_column(String(300))
+    local_name: Mapped[str | None] = mapped_column(String(300))
+    city: Mapped[str | None] = mapped_column(String(200))
+    country: Mapped[str | None] = mapped_column(String(200))
+    latitude: Mapped[float] = mapped_column(Float)
+    longitude: Mapped[float] = mapped_column(Float)
+    category: Mapped[str | None] = mapped_column(String(255))
+    address: Mapped[str | None] = mapped_column(String(500))
+    image_url: Mapped[str | None] = mapped_column(String(1000))
+    opening_hours: Mapped[str | None] = mapped_column(String(500))
 
 
 class PlanItemComment(Base, TimestampMixin):

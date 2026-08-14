@@ -304,10 +304,13 @@ def _guard_not_pending(db: Session, item: PlanItem) -> None:
         )
 
 
-def _changed_item_window(item: PlanItem, patch: dict) -> tuple[date, float, float]:
+def _changed_item_window(item: PlanItem, patch: dict) -> tuple[date, float, float | None]:
     day_date = patch.get("day_date", item.day_date)
     start_hour = float(patch.get("start_hour", item.start_hour))
-    duration_min = int(patch.get("duration_min", item.duration_min))
+    duration_value = patch.get("duration_min", item.duration_min)
+    duration_min = int(duration_value) if duration_value is not None else None
+    if duration_min is None:
+        return day_date, start_hour, None
     return day_date, start_hour, start_hour + duration_min / 60
 
 
@@ -317,6 +320,8 @@ def _overlaps(left_start: float, left_end: float, right_start: float, right_end:
 
 def _schedule_conflict_item(db: Session, item: PlanItem, patch: dict) -> PlanItem | None:
     day_date, start_hour, end_hour = _changed_item_window(item, patch)
+    if end_hour is None:
+        return None
     peers = db.scalars(
         select(PlanItem)
         .where(
@@ -327,6 +332,8 @@ def _schedule_conflict_item(db: Session, item: PlanItem, patch: dict) -> PlanIte
         .order_by(PlanItem.start_hour)
     ).all()
     for peer in peers:
+        if peer.duration_min is None:
+            continue
         peer_end = peer.start_hour + peer.duration_min / 60
         if _overlaps(start_hour, end_hour, peer.start_hour, peer_end):
             return peer

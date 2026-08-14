@@ -21,6 +21,7 @@ import {
   planningFlowSteps,
   productPrinciples,
 } from "../../shared/tripsync-product-content.js";
+import { resolveTripCover } from "../../trip/src/final/trip-cover.js";
 
 test("shares one preview routing contract across frontend and trip", async () => {
   const [previewConfig, tripViteConfig, tripFinalApp] = await Promise.all([
@@ -89,6 +90,23 @@ test("shares product content and demo trip data across app boundaries", async ()
   assert.match(featureStory, /tripsync-product-content\.js/);
   assert.match(productPrinciplesPage, /tripsync-product-content\.js/);
   assert.match(tripContent, /tripsync-demo-data\.js/);
+});
+
+test("resolves trip covers independently from place photos", () => {
+  assert.deepEqual(resolveTripCover({ destination: "Paris" }), {
+    imageUrl: null,
+    kind: "neutral",
+    label: "Travel cover",
+  });
+  assert.deepEqual(resolveTripCover({
+    destination: "Paris",
+    cover_image_url: "https://cdn.example.com/cities/paris.jpg",
+  }), {
+    imageUrl: "https://cdn.example.com/cities/paris.jpg",
+    kind: "image",
+    label: "Paris cover",
+  });
+  assert.equal(resolveTripCover({ cover_image_url: "javascript:alert(1)" }).kind, "neutral");
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {
