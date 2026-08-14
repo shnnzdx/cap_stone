@@ -2,9 +2,13 @@
 
 最后更新：2026-08-14
 
-当前工作目录：`/Users/jiayichen/Desktop/cap_stone`
+当前工作目录：`C:\Users\zdxzh\Desktop\capstone\New`
 
 当前分支：`main`（跟踪 `origin/main`）
+
+给其他 AI 的最新可复用交接 prompt 在：
+
+`docs/HANDOFF_PROMPT_2026-08-14.md`
 
 > 项目历史文档中可能仍出现 `TripSync`。在当前产品语境中，它指的就是 Cadensy，不要因此复制或新建第二套项目结构。
 
@@ -22,7 +26,7 @@
 所有操作保持在：
 
 ```text
-/Users/jiayichen/Desktop/cap_stone
+C:\Users\zdxzh\Desktop\capstone\New
 ```
 
 不要修改这个目录之外的文件。
