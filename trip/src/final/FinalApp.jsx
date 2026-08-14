@@ -91,20 +91,25 @@ function useCurrentTrip() {
   return app.trips.find(item => item.id === tripId) || app.trip || trip || null
 }
 
-function DateRangePicker({ value, onChange }) {
+function DateRangePicker({ value, onChange, allowedRange = null, label = 'Trip dates' }) {
+  const isAllowed = day => {
+    if (!allowedRange?.start || !allowedRange?.end) return true
+    return !isBefore(day, allowedRange.start) && !isBefore(allowedRange.end, day)
+  }
   const chooseDay = day => {
+    if (!isAllowed(day)) return
     if (!value.start || value.end) return onChange({ start: day, end: null })
     if (isBefore(day, value.start)) return onChange({ start: day, end: value.start })
     onChange({ start: value.start, end: day })
   }
   return <div className="rangeCalendar">
-    <div className="rangeCalendarSummary"><div><span>Trip dates</span><strong>{formatDateRange(value)}</strong></div><small>{value.start && value.end ? `${nightsBetween(value)} nights` : 'Choose a start and end date'}</small></div>
+    <div className="rangeCalendarSummary"><div><span>{label}</span><strong>{formatDateRange(value)}</strong></div><small>{value.start && value.end ? `${nightsBetween(value)} nights` : 'Choose a start and end date'}</small></div>
     <div className="calendarMonths">{calendarMonths.map(month => {
       const first = new Date(2026, month.month, 1).getDay()
       const count = new Date(2026, month.month + 1, 0).getDate()
       return <section className="calendarMonth" key={month.label}><h3>{month.label}</h3><div className="weekdayRow">{['S','M','T','W','T','F','S'].map((d,i) => <span key={`${d}-${i}`}>{d}</span>)}</div><div className="calendarGrid">
         {Array.from({ length: first }, (_, i) => <span className="calendarBlank" key={`b-${i}`}/>) }
-        {Array.from({ length: count }, (_, i) => { const day = new Date(2026, month.month, i + 1); return <button type="button" key={dayKey(day)} className={cx(sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
+        {Array.from({ length: count }, (_, i) => { const day = new Date(2026, month.month, i + 1); const allowed = isAllowed(day); return <button type="button" key={dayKey(day)} disabled={!allowed} className={cx(sameDay(day,value.start) && 'rangeStart', sameDay(day,value.end) && 'rangeEnd', isWithin(day,value) && 'inRange', !allowed && 'disabledDay')} onClick={() => chooseDay(day)}>{i + 1}</button> })}
       </div></section>
     })}</div>
   </div>
@@ -879,8 +884,10 @@ const constraintSummary = entry => {
   return 'Requirement set'
 }
 
-function ConstraintParams({ kind, params, onChange }) {
+function ConstraintParams({ kind, params, onChange, allowedRange = null }) {
   const set = (key, value) => onChange({ ...params, [key]: value })
+  const minDate = toISODate(allowedRange?.start)
+  const maxDate = toISODate(allowedRange?.end)
   const toggle = (key, tag) => {
     const list = params[key] || []
     set(key, list.includes(tag) ? list.filter(item => item !== tag) : [...list, tag])
@@ -902,8 +909,8 @@ function ConstraintParams({ kind, params, onChange }) {
     {AVOID_TAGS.map(tag => <button type="button" key={tag} className={cx('tagChip', (params.tags || []).includes(tag) && 'on')} onClick={() => toggle('tags', tag)}>{tag}</button>)}
   </div>
   return <div className="constraintParams">
-    <label>From<input type="date" value={params.start || ''} onChange={e => set('start', e.target.value || null)}/></label>
-    <label>Until<input type="date" value={params.end || ''} onChange={e => set('end', e.target.value || null)}/></label>
+    <label>From<input type="date" min={minDate || undefined} max={maxDate || undefined} value={params.start || ''} onChange={e => set('start', e.target.value || null)}/></label>
+    <label>Until<input type="date" min={minDate || undefined} max={maxDate || undefined} value={params.end || ''} onChange={e => set('end', e.target.value || null)}/></label>
   </div>
 }
 
@@ -917,6 +924,10 @@ function PreferencesPage() {
   const [picking, setPicking] = useState(false)
   const [draft, setDraft] = useState(null)
   const [loaded, setLoaded] = useState(false)
+  const tripDateWindow = useMemo(() => ({
+    start: fromISODate(currentTrip?.preferred_start_date),
+    end: fromISODate(currentTrip?.preferred_end_date),
+  }), [currentTrip?.preferred_start_date, currentTrip?.preferred_end_date])
 
   useEffect(() => {
     if (!currentTrip) {
@@ -1008,8 +1019,8 @@ function PreferencesPage() {
     <div className="preferenceWrap editorialForm">
       <div className="pageHeading"><div><span className="eyebrow">My preferences</span><h1>Share only what matters.</h1></div></div>
       <section className="preferenceCard preferenceFlow">
-        <div className="wide dateField"><label>Preferred dates — the trip you would ideally join</label><DateRangePicker value={form.preferredRange} onChange={range => set('preferredRange', range)}/></div>
-        <details className="wide optionalPanel"><summary>Available date range — the widest window that still works for you</summary><div className="dateField" style={{ marginTop: 12 }}><DateRangePicker value={form.availableRange} onChange={range => set('availableRange', range)}/></div></details>
+        <div className="wide dateField"><label>Preferred dates — the trip you would ideally join</label><p className="fieldHint">Choose dates inside the organizer's trip window.</p><DateRangePicker value={form.preferredRange} onChange={range => set('preferredRange', range)} allowedRange={tripDateWindow} label="Organizer date window"/></div>
+        <details className="wide optionalPanel"><summary>Available date range — the widest window that still works for you</summary><div className="dateField" style={{ marginTop: 12 }}><p className="fieldHint">This also has to stay inside the organizer's trip window.</p><DateRangePicker value={form.availableRange} onChange={range => set('availableRange', range)} allowedRange={tripDateWindow} label="Organizer date window"/></div></details>
         <div className="wide fieldPair">
           <label>Ideal total budget<input value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
           <label>Maximum acceptable budget<input value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
@@ -1031,7 +1042,7 @@ function PreferencesPage() {
 
           {draft && <div className="needDraft">
             <strong>{labelFor(draft.kind)}</strong>
-            <ConstraintParams kind={draft.kind} params={draft.params} onChange={params => setDraft(current => ({ ...current, params }))}/>
+            <ConstraintParams kind={draft.kind} params={draft.params} allowedRange={tripDateWindow} onChange={params => setDraft(current => ({ ...current, params }))}/>
             <label>In your own words
               <input value={draft.original_text} placeholder="Optional" onChange={e => setDraft(current => ({ ...current, original_text: e.target.value }))}/>
             </label>
@@ -1175,7 +1186,7 @@ function CreateTrip() {
     <section className="preferenceCard createGrid createFlow">
       <div className="formChapter wide"><span>01</span><h2>Where and why</h2></div>
       <label>Trip name<input value={form.name} placeholder="e.g. Summer city weekend" onChange={e => set('name', e.target.value)}/></label><label>Destination<input value={form.destination} placeholder="e.g. Chicago, Illinois" onChange={e => set('destination', e.target.value)}/></label>
-      <label>Trip theme<input value={form.theme} placeholder="e.g. Birthday weekend" onChange={e => set('theme', e.target.value)}/></label><label>Expected group size<input type="number" min="1" value={form.groupSize} placeholder="6" onChange={e => set('groupSize', e.target.value)}/></label>
+      <label>Trip theme<input value={form.theme} placeholder="e.g. Birthday weekend" onChange={e => set('theme', e.target.value)}/></label><label>Expected group size<input inputMode="numeric" pattern="[0-9]*" value={form.groupSize} placeholder="6" onChange={e => set('groupSize', e.target.value.replace(/[^0-9]/g, ''))}/></label>
       <div className="formChapter wide"><span>02</span><h2>Date window</h2></div>
       <div className="wide dateField"><DateRangePicker value={dateRange} onChange={setDateRange}/></div>
       <div className="formChapter wide"><span>03</span><h2>Budget and assumptions</h2></div>
