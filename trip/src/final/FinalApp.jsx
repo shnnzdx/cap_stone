@@ -153,6 +153,16 @@ function AvailabilityPicker({ tripRange, value, onChange }) {
 const cx = (...classes) => classes.filter(Boolean).join(' ')
 
 function Logo() {
+  const location = useLocation()
+  const isWorkspaceHome = location.pathname === workspaceHomeHref()
+
+  if (isWorkspaceHome) {
+    return <a href="/" target="_top" className="logo brandLogoLink" aria-label="CADENSY home">
+      <img className="brandLogoMark" src="/images/cadensy-mark.png" alt="" />
+      <img className="brandLogoWordmark" src="/images/cadensy-wordmark.png" alt="CADENSY" />
+    </a>
+  }
+
   return <Link to="/" className="logo brandLogoLink" aria-label="CADENSY home">
     <img className="brandLogoMark" src="/images/cadensy-mark.png" alt="" />
     <img className="brandLogoWordmark" src="/images/cadensy-wordmark.png" alt="CADENSY" />

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import BrandLogo from "./BrandLogo";
+import SessionAwareLink from "./SessionAwareLink";
 
 const navLinks = [
   { href: "/", label: "Product" },
@@ -33,8 +34,8 @@ export default function Header() {
         </div>
 
         <div className="nav-actions desktop-actions">
-          <Link href="/login">Log in</Link>
-          <Link className="button dark compact" href="/signup?next=/trips/new">Create a trip</Link>
+          <SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" />
+          <SessionAwareLink className="button dark compact" fallbackHref="/signup?next=/trips/new" fallbackLabel="Create a trip" signedInLabel="Open trip" />
         </div>
 
         <button
@@ -75,8 +76,8 @@ export default function Header() {
           </div>
 
           <div className="mobile-nav-actions">
-            <Link href="/login" onClick={() => setOpen(false)}>Log in</Link>
-            <Link className="button dark" href="/signup?next=/trips/new" onClick={() => setOpen(false)}>Create a trip</Link>
+            <SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" onClick={() => setOpen(false)} />
+            <SessionAwareLink className="button dark" fallbackHref="/signup?next=/trips/new" fallbackLabel="Create a trip" signedInLabel="Open trip" onClick={() => setOpen(false)} />
           </div>
         </div>
       </div>

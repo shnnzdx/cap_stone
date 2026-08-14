@@ -6,6 +6,7 @@ import HomeIntroSequence from "./HomeIntroSequence";
 import PeopleProblem from "./PeopleProblem";
 import ProductScrollFlow from "./ProductScrollFlow";
 import ProductSectionTransitions from "./ProductSectionTransitions";
+import SessionAwareLink from "./SessionAwareLink";
 import SiteHeader from "./SiteHeader";
 
 export default function Home() {
@@ -43,7 +44,7 @@ export function Header() {
 }
 
 export function Footer() {
-  return <footer className="footer"><div className="shell footer-grid"><div><Link className="brand" href="/"><BrandLogo /></Link><p>Personal needs. Shared decisions.</p></div><div><strong>Product</strong><Link href="/#product-overview">Overview</Link><Link href="/how-it-works">How It Works</Link><Link href="/privacy">Privacy</Link><Link href="/faq">FAQ</Link></div><div><strong>Account</strong><Link href="/login">Log in</Link><Link href="/signup?next=/trips/new">Create a trip</Link></div></div><div className="shell copyright"><span>© 2026 CADENSY</span><span className="brand-story">旅有谋 · 择道行 · 程皆宜</span></div></footer>;
+  return <footer className="footer"><div className="shell footer-grid"><div><Link className="brand" href="/"><BrandLogo /></Link><p>Personal needs. Shared decisions.</p></div><div><strong>Product</strong><Link href="/#product-overview">Overview</Link><Link href="/how-it-works">How It Works</Link><Link href="/privacy">Privacy</Link><Link href="/faq">FAQ</Link></div><div><strong>Account</strong><SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" /><SessionAwareLink fallbackHref="/signup?next=/trips/new" fallbackLabel="Create a trip" signedInLabel="Open trip" /></div></div><div className="shell copyright"><span>© 2026 CADENSY</span><span className="brand-story">旅有谋 · 择道行 · 程皆宜</span></div></footer>;
 }
 
 function SectionIntro({marker, title}:{marker:string;title:string}) {

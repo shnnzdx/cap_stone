@@ -1,6 +1,7 @@
 import Link from "next/link";
 import BrandLogo from "./BrandLogo";
 import Header from "./Header";
+import SessionAwareLink from "./SessionAwareLink";
 
 export { Header };
 
@@ -23,8 +24,8 @@ export function Footer() {
         </div>
         <div>
           <strong>Account</strong>
-          <Link href="/login">Log in</Link>
-          <Link href="/signup?next=/trip">Create a trip</Link>
+          <SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" />
+          <SessionAwareLink fallbackHref="/signup?next=/trip" fallbackLabel="Create a trip" signedInLabel="Open trip" />
         </div>
       </div>
       <div className="shell copyright"><span>© 2026 CADENSY</span><span className="brand-story">旅有谋 · 择道行 · 程皆宜</span></div>

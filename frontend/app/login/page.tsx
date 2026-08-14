@@ -29,9 +29,14 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const resolvedNext = params.get("next")?.startsWith("/") ? String(params.get("next")) : "/trip";
     setAccountCreated(params.get("created") === "1");
-    const next = params.get("next");
-    if (next?.startsWith("/")) setNextPath(next);
+    setNextPath(resolvedNext);
+
+    const restored = sessionRuntime.restoreTechnicalSession();
+    if (restored.facts.kind === "account") {
+      window.location.replace(resolvedNext);
+    }
   }, []);
 
   useEffect(() => {
