@@ -330,6 +330,9 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
   const voteCount = round.responded || 0
   const closed = round.status === 'closed'
   const winner = closed ? round.options.find(option => option.id === round.winningOptionId) : null
+  // A tie, or an outright vote to keep, settles the block without touching the
+  // plan. Saying "Applied" there tells members something happened when nothing did.
+  const keptCurrent = closed && round.winningOptionId === 'keep'
   const tally = round.tally || {}
   const leading = Math.max(1, ...Object.values(tally))
   const isReopen = round.kind === 'reopen'
@@ -350,11 +353,13 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
         <Badge tone={closed ? 'green' : 'blue'}>{closed ? 'Round closed' : isReopen ? 'Reopen round' : 'Group round'}</Badge>
         <h3>{closed ? `Settled: ${winner?.title}` : `This block is contested: ${round.itemTitle}`}</h3>
         <p>{closed
-          ? 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
+          ? keptCurrent
+            ? 'No change was applied. The group kept this block as it was, either by choosing to or because the vote was tied.'
+            : 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
           : isReopen ? 'No response counts as keeping the current decision, so a change needs a clear majority.' : 'Vote on the option, not the person. Ideas stay anonymous while the group chooses what happens to this block.'}</p>
         {isReopen && round.reason && <p><strong>Reason:</strong> {round.reason}</p>}
       </div>
-      <DeadlineRing round={round} closed={closed}/>
+      <DeadlineRing round={round} closed={closed} keptCurrent={keptCurrent}/>
     </div>
     <div className="roundTally">
       <div className="voterDots" aria-label={`${voteCount} of ${round.totalMembers} responded`}>
@@ -388,7 +393,7 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
   </article>
 }
 
-function DeadlineRing({ round, closed }) {
+function DeadlineRing({ round, closed, keptCurrent }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (closed) return
@@ -399,7 +404,7 @@ function DeadlineRing({ round, closed }) {
   const fraction = closed ? 0 : Math.max(0, Math.min(1, remaining / round.windowMs))
   const hours = Math.floor(remaining / 3600000)
   const minutes = Math.floor((remaining % 3600000) / 60000)
-  const label = closed ? 'Applied' : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+  const label = closed ? (keptCurrent ? 'Kept' : 'Applied') : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
   const radius = 15
   const circumference = 2 * Math.PI * radius
   return <div className={cx('deadlineRing', closed && 'done')}>

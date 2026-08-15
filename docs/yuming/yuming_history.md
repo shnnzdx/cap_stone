@@ -1642,3 +1642,45 @@ The final checks passed:
   - `.venv/bin/python -m app.db.init_schema`
 - Verification: the local database now reads existing plans successfully. The `summer` Chicago trip has `15` plan items; day 1 includes `Field Museum`, `Art Institute of Chicago`, and `Chinatown walk`.
 - Follow-up: restart the backend after schema/config changes so the browser uses the repaired runtime.
+
+## 2026-08-14 Backend Candidate Options Apply Path
+
+- Scope: backend-only path for preserving chat `candidate_options` when the user clicks Apply.
+- Files changed:
+  - `backend/app/api/main.py`
+  - `backend/app/domain/decisions/orchestrator.py`
+  - `backend/tests/test_trips.py`
+- API change:
+  - Added `ChangeOptionIn`.
+  - Added `ChangeRequest.options` with `default_factory=list`.
+  - Kept `ChangeRequest.patch()` excluding `options` so the selected requested patch remains separate from alternative options.
+- Security validation:
+  - Browser-provided options are revalidated in `_validated_change_options()`.
+  - Candidate `item_id` is accepted only when `PlanItem` joins through `Plan` to the same `trip_id` as the current item.
+  - Candidate patches are rebuilt from an explicit whitelist only: `start_hour`, `day_date`, `duration_min`.
+  - `title`, `place`, `price_per_person`, `lat`, and `lng` cannot enter an alternative patch through `options`.
+  - Display text is truncated only: title 60 characters, body/tradeoff 200 characters.
+  - Candidate count is capped at 5.
+  - Each candidate classification is isolated with `db.begin_nested()` so a failed validation cannot poison later DB work in the same request.
+- Orchestrator change:
+  - `propose_change()` now accepts `alternatives=None`.
+  - Alternatives are passed only to `round` and `reopen_round`.
+  - `notice` and `confirm` ignore alternatives.
+  - `_options_for()` compares JSON-safe sorted patch signatures so an alternative identical to the requested patch is skipped.
+- Tests added in `backend/tests/test_trips.py`:
+  - `test_submit_change_options_become_round_alternatives`
+  - `test_submit_change_options_reject_foreign_trip_item`
+  - `test_submit_change_options_only_allow_schedule_patch_fields`
+  - `test_submit_change_options_reject_empty_patch`
+  - `test_submit_change_options_reject_start_hour_outside_day_window`
+  - `test_submit_change_options_accept_at_most_five`
+  - `test_submit_change_options_savepoint_isolates_failed_validation`
+  - `test_submit_change_options_deduplicate_requested_patch`
+  - `test_submit_change_without_options_keeps_existing_round_template`
+  - `test_submit_change_notice_path_ignores_options`
+- Verification:
+  - Focused route test: `DISABLE_SCHEDULER=1 MOCK_AI=1 backend/.venv/bin/python -m pytest backend/tests/test_trips.py -q -p no:cacheprovider`
+  - Result: `55 passed in 1.60s`
+  - Full backend test command: `DISABLE_SCHEDULER=1 MOCK_AI=1 backend/.venv/bin/python -m pytest -q -p no:cacheprovider`
+  - Result: `359 passed in 10.91s`
+- Real AI validation was not run because this change did not modify tool descriptions, tool signatures, tool return fields, or the system prompt.

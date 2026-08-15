@@ -151,6 +151,42 @@
 - 自己改自己动过的条目也不算争抢
 - **成员数查不到时按有别人处理**，宁可多要一次投票
 
+### AI 写的方案怎么进到投票卡片
+
+这是 AI 唯一参与投票环节的方式：**它在聊天里写一次，验证通过后固化下来，投票时只展示，不再生成。**
+
+```
+① 聊天里 agent 调 propose_options，自己写折中方案
+   后端逐条验证 → 通过的进 candidate_options 返回前端
+        ↓
+② 用户点某个方案的 Apply
+   前端把【其余方案】一起放进 options 字段提交
+   trip/src/final/plan-feature/useAssistantChangeRequestFlow.js
+        ↓
+③ 后端重新验证一遍（前端来的一律不可信）
+   api/main.py · _validated_change_options
+        ↓
+④ 判定要投票 → 验证过的方案作为 alternative-N 进入 round
+        ↓
+⑤ 投票卡片：Keep current / Suggested change / AI 的方案们 / Split up
+```
+
+**第 ③ 步的五道关卡，一关不过就丢弃：**
+
+1. `item_id` 必须**就是被改动的那个条目**（不是「属于同一个 trip」就行——一个 round 只结算一个条目，指向别处的选项会被写到错的对象上）
+2. 只允许 `start_hour` / `day_date` / `duration_min` 三个字段（`title`、`place`、价格、坐标进不来）
+3. 至少要有一个可执行字段
+4. `start_hour` 必须在 9:00–21:00 之间，`duration_min` 必须为正
+5. 能通过 `classify_change`（用 savepoint 隔离，失败不污染事务）
+
+最多接收 5 条，和已选方案 patch 相同的会去重。
+
+**为什么不在投票环节实时叫 AI：**
+
+- 提交改动是事务性请求，塞进 AI 调用会变成 8–10 秒，超时就整个提交失败
+- 那时候上下文更少（只有一个条目和一个 patch），方案质量反而更差
+- **一场投票开 24 小时，全组必须看到同一组选项**——实时生成会让每个人看到的不一样
+
 ### ⚠️ 选项没有 patch 就等于不改
 
 投票结算时，只有 `Split up` 允许用选项标题当改动内容（它本来就靠改标题实现并行展示）。**其它没带 patch 的选项一律视为不改**——否则会把 UI 文案写成行程条目的名字（比如把景点改名成 "Suggested change"）。
@@ -253,15 +289,7 @@ cd frontend && npm run build:trip-preview
 
 **位置：** `orchestrator.py · object_to_notice`
 
-### 7.3 AI 写的方案到不了投票卡片
-
-agent 生成的 `candidate_options` 只出现在聊天抽屉里。提交改动的接口只接收**一个 patch 和一句话**，选项没有往下传，所以投票卡片上永远是后端算出来的那几个。
-
-`_do_round` 已经留了 `alternatives` 参数，接上即可。
-
-**位置：** `api/main.py · POST /api/plan-items/{id}/change` → `orchestrator._do_round`
-
-### 7.4 一个选项只能改一个条目
+### 7.3 一个选项只能改一个条目
 
 `ProposedChatChange` 和每个选项都只有一个 `item_id` + 一个 `patch`。所以「把每天都简化」「把散步和午餐互换」这类需求**在数据结构层面表达不出来**。
 
@@ -269,7 +297,7 @@ agent 生成的 `candidate_options` 只出现在聊天抽屉里。提交改动�
 
 **位置：** `domain/chat/service.py · ProposedChatChange`
 
-### 7.5 generator 的兜底路径可能让每天行程一模一样
+### 7.4 generator 的兜底路径可能让每天行程一模一样
 
 候选排序只按重试次数轮转，**不看是第几天**；唯一让各天不同的是「已用过」去重表，而兜底路径会把它清空。单人行程（无预算上限）永远走得进这条路。
 
@@ -277,7 +305,7 @@ agent 生成的 `candidate_options` 只出现在聊天抽屉里。提交改动�
 
 **位置：** `generator.py · _build_day` / `_candidate_order`
 
-### 7.6 planner 提示词要求了模型做不到的事
+### 7.5 planner 提示词要求了模型做不到的事
 
 提示词写着「不要每天都重复 10:00 / 14:00 / 19:00」，但模型是**按天单独调用**的，它看不到别的天排了什么时间。实际生成的行程确实每天都是这三个整点。
 
@@ -285,7 +313,7 @@ agent 生成的 `candidate_options` 只出现在聊天抽屉里。提交改动�
 
 **位置：** `agents/planner.py · _day_prompt`
 
-### 7.7 chat.py 的 explain 是死代码
+### 7.6 chat.py 的 explain 是死代码
 
 生产已无调用方，只剩一个测试在用。它里面的安全短语检测 `_claims_change_completed` 已经被接到 agent 回复上了，所以那条保障没丢，清理时连同测试一起处理即可。
 

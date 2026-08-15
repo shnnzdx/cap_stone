@@ -646,22 +646,18 @@ def call_agent(
                 tokens=reply.tokens,
             )
             rounds.append(event)
-            stopped_reason = None
-            if max_total_tokens is not None and total_tokens > max_total_tokens:
-                stopped_reason = "token_limit_exceeded"
-                content = (
-                    "ERROR: Agent stopped because the token cost limit was exceeded."
-                )
-            else:
-                content = reply.content
+            # The model answered, so the tokens are already spent. Discarding a
+            # finished answer for going over budget wastes what was paid for and
+            # leaves the caller with nothing. The budget still stops the loop from
+            # starting another round further down.
             return AgentRunResult(
-                content=content,
+                content=reply.content,
                 trace_id=trace_id,
                 rounds=tuple(rounds),
                 tool_results=tuple(tool_results),
                 total_tokens=total_tokens,
                 total_elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
-                stopped_reason=stopped_reason,
+                stopped_reason=None,
             )
 
         messages.append(

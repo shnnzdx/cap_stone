@@ -77,13 +77,15 @@ def test_a_contested_slot_opens_a_round_instead_of_applying(db, full_trip):
     assert item.title == "Art Institute of Chicago"   # 行程还没变
 
 
-def test_round_options_always_include_splitting_up(db, full_trip):
+def test_round_options_always_offer_keeping_the_current_plan(db, full_trip):
+    """无论有没有别的选项,永远要有一条「什么都不改」。"""
     full_trip["art"].settledness = Settledness.TOUCHED.value
     db.flush()
     outcome = orch.propose_change(db, full_trip["art"], {"title": "购物"}, full_trip["me"].id)
 
     round_ = db.get(DecisionRound, outcome.round_id)
-    assert "split" in {o["id"] for o in round_.options}
+    assert round_.options[0]["id"] == "keep"
+    assert "split" not in {o["id"] for o in round_.options}
 
 
 def test_silence_is_never_counted_as_agreement(db, full_trip):
@@ -109,7 +111,7 @@ def test_a_tie_keeps_the_current_plan(db, full_trip):
     round_ = db.get(DecisionRound, outcome.round_id)
 
     orch.cast_vote(db, round_, full_trip["members"][0].id, "requested")
-    orch.cast_vote(db, round_, full_trip["members"][1].id, "split")
+    orch.cast_vote(db, round_, full_trip["members"][1].id, "keep")
 
     assert orch.settle_round(db, round_) == "keep"
 
@@ -300,7 +302,8 @@ def test_moving_into_an_occupied_time_opens_a_round(db, full_trip):
     assert item.start_hour == 14.0
     round_ = db.get(DecisionRound, outcome.round_id)
     assert "Birthday dinner" in outcome.classification.detail
-    assert "split" in {option["id"] for option in round_.options}
+    assert round_.options[0]["id"] == "keep"
+    assert any(option.get("patch") for option in round_.options)
 
 
 def test_classifying_an_occupied_time_reports_a_round_without_writing(db, full_trip):
@@ -499,3 +502,61 @@ def test_who_was_affected_never_reaches_the_verdict(db, full_trip):
     blob = repr(outcome.classification)
     for member in full_trip["members"]:
         assert member.id not in blob
+
+
+# ————————————————————— 空选项不许改坏行程 —————————————————————
+
+
+def test_an_option_without_a_patch_never_renames_the_item(db, full_trip):
+    """选项标题是给人看的 UI 文案,不是行程内容。
+
+    以前没有 patch 的选项赢了会走 fallback,把标题写进 item.title,
+    于是行程里会出现一张叫 "Suggested change" 的卡片。
+    """
+    item = full_trip["art"]
+    item.settledness = Settledness.TOUCHED.value
+    db.flush()
+    outcome = orch.propose_change(db, item, {"start_hour": 15.5}, full_trip["me"].id)
+    round_ = db.get(DecisionRound, outcome.round_id)
+    round_.options = [
+        *round_.options,
+        {"id": "empty", "label": "Suggested change", "title": "Suggested change",
+         "body": "No patch attached."},
+    ]
+    db.flush()
+
+    assert orch._winning_patch("empty", round_.options[-1]) == {}
+    assert item.title == "Art Institute of Chicago"
+
+
+def test_no_option_can_rename_an_item_through_its_title(db, full_trip):
+    """选项标题是 UI 文案。任何没带 patch 的选项赢了都不该改动行程。"""
+    for option_id in ("split", "requested", "alternative-1", "anything"):
+        option = {"id": option_id, "label": "L", "title": "Split for this block", "body": ""}
+        assert orch._winning_patch(option_id, option) == {}
+
+
+def test_objecting_to_a_notice_offers_real_alternatives_to_vote_between(db, full_trip):
+    orch.propose_change(db, full_trip["art"], {"start_hour": 15.5}, full_trip["me"].id)
+    notice = db.query(UpdateNotice).filter_by(plan_item_id=full_trip["art"].id).one()
+
+    outcome = orch.object_to_notice(db, notice, request="想去河边")
+
+    round_ = db.get(DecisionRound, outcome.round_id)
+    votable = [o for o in round_.options if o.get("patch")]
+    assert votable, "异议开出来的 round 必须给出可投的具体方案"
+    assert all(o["id"] != "requested" for o in round_.options), "没有 patch 就不该有 requested 选项"
+    assert "split" not in {o["id"] for o in round_.options}
+
+
+def test_alternatives_do_not_collide_with_a_booked_block(db, full_trip):
+    alternatives = orch.schedule_alternatives(db, full_trip["art"])
+    dinner = full_trip["dinner"]
+    dinner_end = dinner.start_hour + dinner.duration_min / 60
+
+    for alternative in alternatives:
+        start = alternative["patch"].get("start_hour")
+        if start is None:
+            continue
+        end = start + full_trip["art"].duration_min / 60
+        assert not (start < dinner_end and end > dinner.start_hour)

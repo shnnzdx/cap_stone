@@ -15,8 +15,13 @@ from ...db.models import Plan, PlanItem, Trip, TripMembership
 from ..constraints.types import Classification
 from ..decisions import orchestrator as orch
 
-CHAT_AGENT_TIMEOUT_SECONDS = 20.0
+CHAT_AGENT_TIMEOUT_SECONDS = 30.0
 CHAT_AGENT_MAX_ROUNDS = 8
+# Counted across rounds, and every round re-sends the whole conversation, so this
+# grows quadratically with trip size. A four-round exchange on a one-week trip
+# measured ~32k. The real ceiling on cost is CHAT_AGENT_MAX_ROUNDS; this is only a
+# backstop against a runaway loop.
+CHAT_AGENT_MAX_TOTAL_TOKENS = 120000
 
 
 class ChatAccessDenied(Exception):
@@ -215,7 +220,7 @@ def _run_chat_agent_with_timeout(
             {"role": turn.role, "content": turn.text} for turn in history
         ),
         max_rounds=CHAT_AGENT_MAX_ROUNDS,
-        max_total_tokens=20000,
+        max_total_tokens=CHAT_AGENT_MAX_TOTAL_TOKENS,
     )
     try:
         return future.result(timeout=CHAT_AGENT_TIMEOUT_SECONDS)

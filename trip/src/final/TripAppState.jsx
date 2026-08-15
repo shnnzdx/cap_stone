@@ -1003,7 +1003,7 @@ export function TripAppProvider({ children }) {
     return outcome
   }, [fetchProposal, fetchRound, refreshPlan, refreshUpdates])
 
-  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch }) => {
+  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch, options }) => {
     let reason = null
     if (verdict?.needs_reason) {
       reason = window.prompt('Please write a reason for reopening this settled block:')
@@ -1015,7 +1015,11 @@ export function TripAppProvider({ children }) {
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
+      // `options` carries the assistant's other compromise ideas so a vote can be
+      // held between them instead of a single generic "Suggested change". The
+      // backend revalidates every one of them and drops whatever it cannot execute.
       const body = { ...(patch || requestPatch(actionType, item, request)), request, reason }
+      if (options?.length) body.options = options
       const outcome = await requestJson(`/api/plans/items/${item.id}/changes`, {
         method: 'POST',
         body: JSON.stringify(body),

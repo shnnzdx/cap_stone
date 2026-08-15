@@ -347,7 +347,7 @@ def test_propose_options_returns_real_item_ids_and_structured_patches(db, full_t
     )
 
     assert [option["id"] for option in result["options"]][0] == "keep"
-    assert result["options"][-1]["id"] == "split"
+    assert "split" not in {option["id"] for option in result["options"]}
     # These options are built by deterministic backend rules, not by a model, so
     # they are labelled "computed". Nothing here is AI-generated.
     generated = [option for option in result["options"] if option["kind"] == "computed"]
@@ -486,3 +486,171 @@ def test_propose_options_offers_a_free_time_on_the_same_day(db, full_trip):
     assert new_hour != full_trip["art"].start_hour
     # The proposed slot must not collide with the booked dinner at 19:00-21:30.
     assert new_hour + (full_trip["art"].duration_min / 60) <= 19.0
+
+
+def test_propose_options_accepts_assistant_written_options_after_validating_them(db, full_trip):
+    tools = _tools_by_name(db, full_trip)
+
+    result = tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        conflict_item_ids=[full_trip["art"].id],
+        suggestions=[
+            {
+                "item_id": full_trip["art"].id,
+                "start_hour": 10.0,
+                "label": "Go early",
+                "title": "Start the Art Institute at 10:00 AM",
+                "body": "Take the museum first thing so the afternoon opens up.",
+                "tradeoff": "It means an earlier start for everyone.",
+            }
+        ],
+    )
+
+    suggested = [o for o in result["options"] if o["kind"] == "assistant"]
+    assert len(suggested) == 1
+    assert suggested[0]["patch"] == {"start_hour": 10.0}
+    assert suggested[0]["title"] == "Start the Art Institute at 10:00 AM"
+    # Assistant options come before the generic computed ones, after "keep".
+    assert result["options"][1]["kind"] == "assistant"
+    assert result["rejected_suggestions"] == []
+
+
+def test_propose_options_drops_a_suggestion_naming_an_item_that_is_not_there(db, full_trip):
+    tools = _tools_by_name(db, full_trip)
+
+    result = tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        conflict_item_ids=[full_trip["art"].id],
+        suggestions=[
+            {
+                "item_id": "does-not-exist",
+                "start_hour": 10.0,
+                "title": "Move the imaginary stop",
+            }
+        ],
+    )
+
+    assert [o for o in result["options"] if o["kind"] == "assistant"] == []
+    assert result["rejected_suggestions"][0]["reason"] == "item_id is not an item on this day"
+
+
+def test_propose_options_drops_a_suggestion_with_no_executable_change(db, full_trip):
+    tools = _tools_by_name(db, full_trip)
+
+    result = tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        suggestions=[
+            {
+                "item_id": full_trip["art"].id,
+                "title": "Everyone should relax more",
+                "body": "No concrete change.",
+            }
+        ],
+    )
+
+    assert [o for o in result["options"] if o["kind"] == "assistant"] == []
+    assert "no executable change" in result["rejected_suggestions"][0]["reason"]
+
+
+def test_propose_options_drops_a_suggestion_outside_the_allowed_day_window(db, full_trip):
+    tools = _tools_by_name(db, full_trip)
+
+    result = tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        suggestions=[
+            {
+                "item_id": full_trip["art"].id,
+                "start_hour": 3.0,
+                "title": "Visit the museum at 3 in the morning",
+            }
+        ],
+    )
+
+    assert [o for o in result["options"] if o["kind"] == "assistant"] == []
+    assert "start_hour must be between" in result["rejected_suggestions"][0]["reason"]
+
+
+def test_assistant_suggestions_never_write_to_the_plan(db, full_trip):
+    tools = _tools_by_name(db, full_trip)
+    before = _write_counts(db)
+
+    tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        suggestions=[
+            {
+                "item_id": full_trip["art"].id,
+                "start_hour": 10.0,
+                "title": "Start earlier",
+            }
+        ],
+    )
+
+    assert _write_counts(db) == before
+
+
+def test_a_cross_day_suggestion_survives_validation(db, full_trip):
+    """day_date crosses the JSON/date boundary; a string here used to abort the
+    transaction and take every later tool call in the same run down with it."""
+    tools = _tools_by_name(db, full_trip)
+
+    result = tools["propose_options"].handler(
+        conflict_description="Saturday is crowded.",
+        day="2026-08-15",
+        suggestions=[
+            {
+                "item_id": full_trip["art"].id,
+                "day_date": "2026-08-16",
+                "title": "Move the Art Institute to Sunday",
+            }
+        ],
+    )
+
+    suggested = [o for o in result["options"] if o["kind"] == "assistant"]
+    assert suggested, result["rejected_suggestions"]
+    assert suggested[0]["patch"] == {"day_date": "2026-08-16"}
+
+
+def test_a_failed_suggestion_leaves_the_session_usable(db, full_trip):
+    tools = _tools_by_name(db, full_trip)
+
+    tools["propose_options"].handler(
+        conflict_description="Saturday is crowded.",
+        day="2026-08-15",
+        suggestions=[{"item_id": full_trip["art"].id, "day_date": "not-a-date"}],
+    )
+
+    # The next tool call must still work against the same session.
+    assert tools["get_current_plan"].handler(day="all")["days"]
+
+
+def test_computed_options_are_a_fallback_not_a_supplement(db, full_trip):
+    """写了自己的方案时就不再补通用选项——六个选项的选票没人会读完。"""
+    tools = _tools_by_name(db, full_trip)
+
+    with_suggestion = tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        conflict_item_ids=[full_trip["art"].id],
+        suggestions=[
+            {
+                "item_id": full_trip["art"].id,
+                "start_hour": 10.0,
+                "title": "Start the Art Institute at 10:00 AM",
+            }
+        ],
+    )
+    without = tools["propose_options"].handler(
+        conflict_description="The museum runs long.",
+        day="2026-08-15",
+        conflict_item_ids=[full_trip["art"].id],
+    )
+
+    assert [o["id"] for o in with_suggestion["options"]] == ["keep", "suggested-1"]
+    assert all(o["kind"] != "computed" for o in with_suggestion["options"])
+    # 没有自己的方案时,通用选项照常兜底,否则这张票没得投。
+    assert any(o["kind"] == "computed" for o in without["options"])

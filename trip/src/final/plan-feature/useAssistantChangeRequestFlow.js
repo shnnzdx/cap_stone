@@ -5,6 +5,25 @@ import { serializeWorkspaceRoute } from '../../../../shared/trip-navigation-rout
 
 const tripHref = (tripId, section) => serializeWorkspaceRoute({ kind: 'trip', tripId, section })
 
+// Only these three fields can move a block, and a round settles exactly one
+// item, so anything aimed elsewhere is dropped here as well as on the server.
+const roundAlternativesFrom = (candidateOptions, targetItemId) =>
+  (candidateOptions || [])
+    .filter(option => option.item_id === targetItemId && option.patch)
+    .map(option => ({
+      item_id: option.item_id,
+      label: option.label || '',
+      title: option.title || '',
+      body: option.body || '',
+      tradeoff: option.tradeoff || '',
+      start_hour: option.patch.start_hour ?? null,
+      day_date: option.patch.day_date ?? null,
+      duration_min: option.patch.duration_min ?? null,
+    }))
+    .filter(option =>
+      option.start_hour !== null || option.day_date !== null || option.duration_min !== null,
+    )
+
 const ASSISTANT_LOADING_MESSAGES = [
   'Reviewing the itinerary...',
   'Checking the proposed change...',
@@ -143,6 +162,7 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
         request: message.request,
         verdict: proposedChange.verdict,
         patch: proposedChange.patch,
+        options: roundAlternativesFrom(message.candidateOptions, targetItem.id),
       })
       if (!outcome) {
         updateMessage(message.id, { applying: false })

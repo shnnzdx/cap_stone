@@ -102,9 +102,16 @@ def build_read_only_trip_tools(
         conflict_description: str,
         day: str = "all",
         conflict_item_ids: list[str] | None = None,
+        suggestions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         return _propose_options(
-            db, trip_id, conflict_description, day, conflict_item_ids or []
+            db,
+            trip_id,
+            conflict_description,
+            day,
+            conflict_item_ids or [],
+            suggestions or [],
+            actor_membership_id,
         )
 
     def find_replacement_place(
@@ -210,15 +217,18 @@ def build_read_only_trip_tools(
             name="propose_options",
             description=(
                 "Generate safe, executable compromise options for a scheduling conflict. "
-                "Call get_current_plan first. Pass conflict_item_ids with the ids of the "
+                "Call get_current_plan first. Write your own options for this specific "
+                "conflict in suggestions; they are validated against the real plan and "
+                "shown to the group first, and generic fallback options are added after "
+                "them. Pass conflict_item_ids with the ids of the "
                 "items actually involved, otherwise the options will be built around the "
                 "day's longest item, which is only correct when the request is that the "
                 "whole day is too full. For an overlap between two items, pass both ids. "
                 "Returns an options array where each option has id, kind, label, title, "
                 "body, tradeoff, item_id, and patch, plus focus_item_id naming the item "
-                "the options act on. Options can include moving the item to a free time "
-                "on the same day, moving it to another day, shortening it, splitting up, "
-                "and keeping the plan unchanged. It never writes a real voting round."
+                "the options act on. Your suggestions are returned as the options; "
+                "generic computed ones are only added when you supply none. Keeping "
+                "the plan unchanged is always offered. It never writes a real voting round."
             ),
             parameters={
                 "type": "object",
@@ -240,6 +250,62 @@ def build_read_only_trip_tools(
                             "conflict. Pass both sides of an overlap. Omit only when the "
                             "request is about the whole day being too full."
                         ),
+                    },
+                    "suggestions": {
+                        "type": "array",
+                        "description": (
+                            "Your own options for this specific conflict, which are "
+                            "shown to the group ahead of the generic ones. Each is "
+                            "validated against the real plan and silently dropped if it "
+                            "names an unknown item, carries no executable change, or "
+                            "cannot be classified; check rejected_suggestions in the "
+                            "response. Write title, body, and tradeoff in English."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "item_id": {
+                                    "type": "string",
+                                    "description": "Item this option changes, from get_current_plan.",
+                                },
+                                "start_hour": {
+                                    "type": "number",
+                                    "description": "New start hour in 24-hour time, e.g. 9.5.",
+                                },
+                                "day_date": {
+                                    "type": "string",
+                                    "description": "New ISO date when moving to another day.",
+                                },
+                                "duration_min": {
+                                    "type": "integer",
+                                    "description": "New duration in minutes.",
+                                },
+                                "label": {
+                                    "type": "string",
+                                    "description": "Two or three word button label, English.",
+                                },
+                                "title": {
+                                    "type": "string",
+                                    "description": "One line naming the change, English.",
+                                },
+                                "body": {
+                                    "type": "string",
+                                    "description": (
+                                        "One or two sentences on what happens, English. "
+                                        "Describe ONLY the change this option's own "
+                                        "fields make to this one item. An option applies "
+                                        "exactly one patch to one item, so never promise "
+                                        "that a second item also moves."
+                                    ),
+                                },
+                                "tradeoff": {
+                                    "type": "string",
+                                    "description": "One sentence on what the group gives up, English.",
+                                },
+                            },
+                            "required": ["item_id", "title"],
+                        },
                     },
                 },
                 "required": ["conflict_description"],
@@ -552,6 +618,8 @@ def _propose_options(
     conflict_description: str,
     day: str,
     conflict_item_ids: list[str],
+    suggestions: list[dict[str, Any]],
+    actor_membership_id: str,
 ) -> dict[str, Any]:
     plan = _active_plan(db, trip_id)
     trip = db.get(Trip, trip_id)
@@ -584,6 +652,27 @@ def _propose_options(
             "patch": {},
         }
     ]
+
+    # Caller-authored options come first: they are the ones written for this
+    # specific conflict. Each one is validated against the real plan before it
+    # can appear, because whatever ends up here can be applied by a group vote.
+    accepted, rejected = _validated_suggestions(
+        db, day_items, suggestions, actor_membership_id
+    )
+    options.extend(accepted)
+
+    # The computed options below are a fallback, not a supplement. When the caller
+    # wrote its own options for this specific conflict, adding three generic ones
+    # underneath just buries them: a ballot people actually read is a short one.
+    if accepted:
+        return {
+            "conflict_description": conflict_description,
+            "source_day_query": day,
+            "focus_item_id": focus.id,
+            "source_items": [_safe_item(item) for item in day_items],
+            "options": options,
+            "rejected_suggestions": rejected,
+        }
 
     # A time overlap is usually solved by moving the item within its own day, not
     # by pushing it to another day. Offer the free slot first when one exists.
@@ -637,25 +726,154 @@ def _propose_options(
             }
         )
 
-    options.append(
-        {
-            "id": "split",
-            "kind": "fixed",
-            "label": "Split up",
-            "title": "Split for this block",
-            "body": "Let part of the group keep the activity while others take a break, then regroup afterwards.",
-            "tradeoff": "This protects different energy levels but the group separates briefly.",
-            "item_id": focus.id,
-            "patch": {"split": True},
-        }
-    )
     return {
         "conflict_description": conflict_description,
         "source_day_query": day,
         "focus_item_id": focus.id,
         "source_items": [_safe_item(item) for item in day_items],
         "options": options,
+        "rejected_suggestions": rejected,
     }
+
+
+_SUGGESTION_PATCH_FIELDS = ("start_hour", "day_date", "duration_min")
+
+
+def _validated_suggestions(
+    db: Session,
+    day_items: list[PlanItem],
+    suggestions: list[dict[str, Any]],
+    actor_membership_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Turn caller-written suggestions into options, dropping anything unusable.
+
+    Whatever survives here can be applied to the real itinerary once the group
+    votes for it, so a suggestion has to name a real item, carry a patch this
+    backend knows how to execute, and survive classification. Rejections are
+    reported back rather than swallowed, so the caller can see what was dropped.
+    """
+    by_id = {item.id: item for item in day_items}
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, str]] = []
+
+    for index, raw in enumerate(suggestions):
+        if not isinstance(raw, dict):
+            rejected.append({"suggestion": str(index), "reason": "not an object"})
+            continue
+
+        item = by_id.get(str(raw.get("item_id") or ""))
+        if item is None:
+            rejected.append(
+                {
+                    "suggestion": str(raw.get("title") or index),
+                    "reason": "item_id is not an item on this day",
+                }
+            )
+            continue
+
+        patch, problem = _suggestion_patch(raw, item)
+        if problem is not None:
+            rejected.append(
+                {"suggestion": str(raw.get("title") or index), "reason": problem}
+            )
+            continue
+
+        # Classification reads and compares real rows, so a bad value can abort the
+        # transaction. The savepoint keeps one unusable suggestion from poisoning
+        # the session for every later tool call in this same agent run.
+        savepoint = db.begin_nested()
+        try:
+            orchestrator.classify_change(
+                db, item, _classifiable_patch(patch), actor_membership_id
+            )
+            savepoint.rollback()
+        except Exception:
+            savepoint.rollback()
+            rejected.append(
+                {
+                    "suggestion": str(raw.get("title") or index),
+                    "reason": "the backend could not classify this change",
+                }
+            )
+            continue
+
+        accepted.append(
+            {
+                "id": f"suggested-{len(accepted) + 1}",
+                "kind": "assistant",
+                "label": str(raw.get("label") or "Suggested"),
+                "title": str(raw.get("title") or "").strip() or "Suggested change",
+                "body": str(raw.get("body") or "").strip(),
+                "tradeoff": str(raw.get("tradeoff") or "").strip(),
+                "item_id": item.id,
+                "patch": patch,
+            }
+        )
+
+    return accepted, rejected
+
+
+def _suggestion_patch(
+    raw: dict[str, Any], item: PlanItem
+) -> tuple[dict[str, Any], str | None]:
+    """Build an executable patch, or explain why the suggestion cannot become one."""
+    patch: dict[str, Any] = {}
+
+    start_hour = raw.get("start_hour")
+    if start_hour is not None:
+        try:
+            start_hour = float(start_hour)
+        except (TypeError, ValueError):
+            return {}, "start_hour is not a number"
+        if not DAY_START_HOUR <= start_hour <= DAY_END_HOUR:
+            return {}, f"start_hour must be between {DAY_START_HOUR} and {DAY_END_HOUR}"
+        patch["start_hour"] = start_hour
+
+    day_date = raw.get("day_date")
+    if day_date is not None:
+        try:
+            patch["day_date"] = date.fromisoformat(str(day_date)).isoformat()
+        except ValueError:
+            return {}, "day_date is not an ISO date"
+
+    duration_min = raw.get("duration_min")
+    if duration_min is not None:
+        try:
+            duration_min = int(duration_min)
+        except (TypeError, ValueError):
+            return {}, "duration_min is not a whole number"
+        if duration_min <= 0:
+            return {}, "duration_min must be positive"
+        patch["duration_min"] = duration_min
+
+    if not patch:
+        return {}, "no executable change: give start_hour, day_date, or duration_min"
+    if all(
+        _unchanged(patch.get(field), getattr(item, field, None))
+        for field in _SUGGESTION_PATCH_FIELDS
+    ):
+        return {}, "this suggestion does not change anything"
+    return patch, None
+
+
+def _classifiable_patch(patch: dict[str, Any]) -> dict[str, Any]:
+    """Options travel as JSON, but classification compares against real columns.
+
+    day_date is an ISO string in the tool output because that is what the caller
+    and the frontend read; the decision engine needs a real date.
+    """
+    ready = dict(patch)
+    if isinstance(ready.get("day_date"), str):
+        ready["day_date"] = date.fromisoformat(ready["day_date"])
+    return ready
+
+
+def _unchanged(proposed: Any, current: Any) -> bool:
+    if proposed is None:
+        return True
+    if isinstance(current, date):
+        return str(proposed) == current.isoformat()
+    return proposed == current
 
 
 def _option_focus(day_items: list[PlanItem], conflict_item_ids: list[str]) -> PlanItem:

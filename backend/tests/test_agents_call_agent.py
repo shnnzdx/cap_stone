@@ -260,3 +260,24 @@ def test_agent_route_defaults_to_deepseek(monkeypatch):
     monkeypatch.delenv("AGENT_AI_PROVIDER", raising=False)
 
     assert base._resolve_provider_name(base.AGENT_ROUTE) == base.DEEPSEEK_PROVIDER
+
+
+def test_a_finished_answer_is_returned_even_when_it_went_over_budget():
+    """预算上限的作用是不再继续花钱,不是销毁已经买到的答案。
+
+    真实场景:一周的行程跑四轮,累计 token 会超过上限(每轮都重发整段上下文),
+    此时模型已经给出了完整回答。旧行为把它换成一句 ERROR,调用方看到
+    stopped_reason 就降级,于是用户永远看不到 agent 的真实回答。
+    """
+    result = base.call_agent(
+        system="s",
+        user="u",
+        tools=(),
+        mock_rounds=(_reply("here is the real answer", tokens=999),),
+        max_rounds=3,
+        max_total_tokens=10,
+    )
+
+    assert result.content == "here is the real answer"
+    assert result.stopped_reason is None
+    assert result.total_tokens == 999
