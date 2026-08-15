@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from ..http_client import should_trust_env_proxies
+
 GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search"
 PLACES_URL = "https://api.geoapify.com/v2/places"
 PLACE_CATEGORY_GROUPS = (
@@ -67,7 +69,10 @@ def fetch_places(destination: str, *, limit: int = 72) -> tuple[GeoapifyPlace, .
         raise GeoapifyUnavailable("GEOAPIFY_API_KEY is not configured")
 
     try:
-        with httpx.Client(timeout=httpx.Timeout(10.0)) as client:
+        with httpx.Client(
+            timeout=httpx.Timeout(10.0),
+            trust_env=should_trust_env_proxies(),
+        ) as client:
             geocode = client.get(
                 GEOCODE_URL,
                 params={

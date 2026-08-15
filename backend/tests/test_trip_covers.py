@@ -26,6 +26,7 @@ def _photo(photo_id: str = "city-photo") -> dict:
 
 def test_unsplash_search_uses_landscape_content_filter_and_tracks_selection(monkeypatch):
     calls = []
+    client_kwargs = {}
 
     class Response:
         def __init__(self, payload):
@@ -39,6 +40,7 @@ def test_unsplash_search_uses_landscape_content_filter_and_tracks_selection(monk
 
     class Client:
         def __init__(self, **kwargs):
+            client_kwargs.update(kwargs)
             assert kwargs["headers"]["Authorization"] == "Client-ID test-key"
 
         def __enter__(self):
@@ -53,11 +55,15 @@ def test_unsplash_search_uses_landscape_content_filter_and_tracks_selection(monk
                 return Response({"results": [_photo()]})
             return Response({"url": "https://images.unsplash.com/tracked"})
 
+    monkeypatch.setenv("ALL_PROXY", "http://127.0.0.1:9")
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
     monkeypatch.setattr(cover_service.httpx, "Client", Client)
 
     cover = cover_service.fetch_unsplash_cover("Paris, France", access_key="test-key")
 
     assert cover is not None
+    assert client_kwargs["trust_env"] is False
     assert calls[0][1]["orientation"] == "landscape"
     assert calls[0][1]["content_filter"] == "high"
     assert calls[0][1]["query"] == "Paris, France city travel"

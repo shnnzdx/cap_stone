@@ -171,6 +171,7 @@ def test_city_boundary_name_is_used_as_cache_identity():
 
 def test_geoapify_fetches_balanced_category_groups_with_spatial_biases(monkeypatch):
     calls = []
+    client_kwargs = {}
 
     class Response:
         def __init__(self, payload):
@@ -183,8 +184,8 @@ def test_geoapify_fetches_balanced_category_groups_with_spatial_biases(monkeypat
             return self.payload
 
     class Client:
-        def __init__(self, **_kwargs):
-            pass
+        def __init__(self, **kwargs):
+            client_kwargs.update(kwargs)
 
         def __enter__(self):
             return self
@@ -214,11 +215,15 @@ def test_geoapify_fetches_balanced_category_groups_with_spatial_biases(monkeypat
             }}]})
 
     monkeypatch.setenv("GEOAPIFY_API_KEY", "configured-for-test")
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    monkeypatch.delenv("ALL_PROXY", raising=False)
     monkeypatch.setattr(geoapify.httpx, "Client", Client)
 
     places = geoapify.fetch_places("Paris, France")
     place_calls = [call for call in calls if call[0] == geoapify.PLACES_URL]
 
+    assert client_kwargs["trust_env"] is False
     expected_categories = {
         category
         for _group, categories in geoapify.PLACE_CATEGORY_GROUPS
@@ -239,6 +244,37 @@ def test_geoapify_fetches_balanced_category_groups_with_spatial_biases(monkeypat
     assert {geoapify.category_group(place.category) for place in places} == {
         group for group, _categories in geoapify.PLACE_CATEGORY_GROUPS
     }
+
+
+def test_geoapify_keeps_env_proxy_support_when_proxy_is_not_dead_local_port(monkeypatch):
+    captured = {}
+
+    class Client:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get(self, url, *, params):
+            if url == geoapify.GEOCODE_URL:
+                return type("Response", (), {
+                    "raise_for_status": lambda self: None,
+                    "json": lambda self: {"results": []},
+                })()
+            raise AssertionError("Places lookup should stop after empty geocode result")
+
+    monkeypatch.setenv("GEOAPIFY_API_KEY", "configured-for-test")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example.com:8080")
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("ALL_PROXY", raising=False)
+    monkeypatch.setattr(geoapify.httpx, "Client", Client)
+
+    assert geoapify.fetch_places("Paris, France") == ()
+    assert captured["trust_env"] is True
 
 
 def test_display_formatting_keeps_raw_provider_facts_unchanged():

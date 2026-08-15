@@ -162,22 +162,35 @@ def _bearer_token(authorization: str | None) -> str | None:
 # -------------------- Request and response shapes --------------------
 
 
+class ChangeOptionIn(BaseModel):
+    item_id: str
+    label: str | None = None
+    title: str
+    body: str | None = None
+    tradeoff: str | None = None
+    start_hour: float | None = None
+    day_date: date | None = None
+    duration_min: int | None = None
+
+
 class ChangeRequest(BaseModel):
     title: str | None = None
     place: str | None = None
     start_hour: float | None = Field(default=None, ge=0, le=24)
     day_date: date | None = None
+    duration_min: int | None = Field(default=None, gt=0)
     price_per_person: float | None = Field(default=None, ge=0)
     # Include new coordinates when replacing a place so the map moves with it.
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
     request: str = ""
     reason: str | None = None
+    options: list[ChangeOptionIn] = Field(default_factory=list)
 
     def patch(self) -> dict:
         return {
             k: v
-            for k, v in self.model_dump(exclude={"request", "reason"}).items()
+            for k, v in self.model_dump(exclude={"request", "reason", "options"}).items()
             if v is not None
         }
 
@@ -865,6 +878,71 @@ def _require_scoped_membership_in_trip(
         raise HTTPException(404, "Member not found") from exc
 
 
+def _validated_change_options(
+    db: Session,
+    current_item: PlanItem,
+    actor_membership_id: str,
+    options: list[ChangeOptionIn],
+) -> list[dict]:
+    accepted: list[dict] = []
+    trip_id = current_item.plan.trip_id
+    for option in options[:5]:
+        option_item = db.scalar(
+            select(PlanItem)
+            .join(Plan, Plan.id == PlanItem.plan_id)
+            .where(PlanItem.id == option.item_id, Plan.trip_id == trip_id)
+        )
+        if option_item is None:
+            continue
+        # A round settles exactly one item, and settle_round applies the winning
+        # patch to that item. An option about a different item would be validated
+        # against one item and executed against another, so it cannot be honored.
+        if option_item.id != current_item.id:
+            continue
+
+        patch = {
+            key: value
+            for key, value in {
+                "start_hour": option.start_hour,
+                "day_date": option.day_date,
+                "duration_min": option.duration_min,
+            }.items()
+            if value is not None
+        }
+        if not patch:
+            continue
+        if "start_hour" in patch and not (
+            orch.DAY_START_HOUR <= patch["start_hour"] <= orch.DAY_END_HOUR
+        ):
+            continue
+        if "duration_min" in patch and patch["duration_min"] <= 0:
+            continue
+
+        savepoint = db.begin_nested()
+        try:
+            orch.classify_change(db, option_item, patch, actor_membership_id)
+        except Exception:
+            savepoint.rollback()
+            continue
+        else:
+            savepoint.rollback()
+
+        accepted.append(
+            {
+                "label": _truncate(option.label, 60),
+                "title": _truncate(option.title, 60) or "Alternative",
+                "body": _truncate(option.body, 200),
+                "tradeoff": _truncate(option.tradeoff, 200),
+                "patch": patch,
+            }
+        )
+    return accepted
+
+
+def _truncate(value: str | None, max_length: int) -> str:
+    return (value or "")[:max_length]
+
+
 @app.get("/api/rounds/{round_id}")
 def get_round(
     round_id: str,
@@ -1073,9 +1151,16 @@ def submit_change(
 ) -> dict:
     """Submit a real change. Classification and execution happen together."""
     item = _require_scoped_plan_item(db, me, item_id)
+    alternatives = _validated_change_options(db, item, me.id, body.options)
     try:
         outcome = orch.propose_change(
-            db, item, body.patch(), me.id, request=body.request, reason=body.reason
+            db,
+            item,
+            body.patch(),
+            me.id,
+            request=body.request,
+            reason=body.reason,
+            alternatives=alternatives,
         )
     except orch.ReasonRequired as exc:
         raise HTTPException(422, str(exc)) from exc

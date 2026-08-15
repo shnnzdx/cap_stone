@@ -144,16 +144,6 @@ Put runtime variables in `backend/.env`. Do not commit real secrets.
 | `DEEPSEEK_API_KEY` | DeepSeek cloud API key | none |
 | `DEEPSEEK_BASE_URL` | DeepSeek base URL | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | DeepSeek model name | `deepseek-v4-flash` |
-| `OLLAMA_CLOUD_API_KEY` | Ollama Cloud API key | none |
-| `OLLAMA_CLOUD_BASE_URL` | Ollama Cloud base URL | `https://ollama.com/v1/` |
-| `OLLAMA_CLOUD_MODEL` | Ollama Cloud model name | `qwen3.5:cloud` |
-| `CHAT_AI_PROVIDER` | provider used by chat agent | `ollama_cloud` |
-| `PLANNER_AI_PROVIDER` | provider used by planner agent | `deepseek` |
-| `EXPLAINER_AI_PROVIDER` | provider used by explainer agent | `deepseek` |
-| `AI_FALLBACK_PROVIDER` | optional fallback if the routed provider fails | none |
-| `OPENAI_API_KEY` | legacy single-provider API key fallback | none |
-| `OPENAI_BASE_URL` | legacy single-provider base URL fallback | none |
-| `OPENAI_MODEL` | legacy single-provider model fallback | `gpt-4o-mini` |
 | `MOCK_AI` | use local mock AI when `1` | `1` |
 | `SETTLE_TICK_SECONDS` | settlement polling interval | `60` |
 | `DISABLE_SCHEDULER` | disable scheduler when `1` | none |
@@ -161,10 +151,10 @@ Put runtime variables in `backend/.env`. Do not commit real secrets.
 | `FRONTEND_BASE_URL` | frontend base URL for redirects | `http://localhost:5173` |
 | `CORS_ORIGINS` | allowed frontend origins | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` |
 
-Current recommended runtime split:
+Current AI runtime:
 
 ```text
-chat      -> ollama_cloud
+chat      -> deepseek
 planner   -> deepseek
 explainer -> deepseek
 ```
@@ -320,6 +310,9 @@ call a third-party provider directly.
   Geoapify Places request.
 - Results are normalized and upserted using the unique provider identity
   `(provider, provider_place_id)`.
+- Enabling real AI with `MOCK_AI=0` does not bypass this place pipeline: Planner still
+  needs real place candidates from PostgreSQL cache and Geoapify before DeepSeek can
+  choose among them.
 - Missing image, opening hours, price, duration, or walking metadata remains null.
 - A missing key, timeout, rate limit, provider 5xx, or invalid response falls back to
   the existing cache. With no candidates, normal blocked-plan behavior remains active.
@@ -335,6 +328,8 @@ Trip city covers use a separate backend-only Unsplash key:
 ```env
 UNSPLASH_ACCESS_KEY=
 ```
+
+Unsplash is only for Trip city covers. It does not provide Planner candidate places.
 
 The dashboard persists the selected hotlinked image URL and attribution on `Trip`.
 Place and PlanItem photos remain separate. Provider failure keeps the neutral Travel cover.

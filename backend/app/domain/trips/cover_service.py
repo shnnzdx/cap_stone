@@ -18,6 +18,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ...db.models import Trip
+from ..http_client import should_trust_env_proxies
 
 UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
 UNSPLASH_HOME_URL = "https://unsplash.com/"
@@ -78,7 +79,11 @@ def fetch_unsplash_cover(destination: str, *, access_key: str) -> UnsplashCover 
         "Accept-Version": "v1",
     }
     try:
-        with httpx.Client(timeout=httpx.Timeout(8.0), headers=headers) as client:
+        with httpx.Client(
+            timeout=httpx.Timeout(8.0),
+            headers=headers,
+            trust_env=should_trust_env_proxies(),
+        ) as client:
             response = client.get(
                 UNSPLASH_SEARCH_URL,
                 params={
