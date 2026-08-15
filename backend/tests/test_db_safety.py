@@ -1,6 +1,7 @@
 import pytest
 
 from app.db import seed
+from tests import conftest as pytest_conftest
 from tests import _db_test_harness as test_harness
 
 
@@ -52,3 +53,10 @@ def test_pytest_database_name_must_be_explicitly_test_only(database_name, allowe
 def test_pytest_database_guard_rejects_non_test_database_name():
     with pytest.raises(RuntimeError, match="explicitly test-only database"):
         test_harness.require_safe_test_database_name("tripsync")
+
+
+def test_pytest_test_database_url_shell_override_wins_over_dotenv(monkeypatch):
+    override_url = "postgresql+psycopg://postgres:password@localhost:5432/pytest_override_test"
+    monkeypatch.setenv("TEST_DATABASE_URL", override_url)
+
+    assert pytest_conftest._load_test_database_url_from_environment() == override_url

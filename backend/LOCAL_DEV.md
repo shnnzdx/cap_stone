@@ -28,6 +28,25 @@ tooling, but backend runtime and backend tests should be aligned to `backend/.en
 - Local PostgreSQL running on `localhost:5432` for the test database
 - Cloud database access configured only if you intend to use the cloud `DATABASE_URL`
 
+On this machine, the current local PostgreSQL installation is:
+
+```text
+install dir: D:\PostgreSQL\18\pgsql
+data dir:    D:\PostgreSQL\18\data
+user:        postgres
+password:    postgres
+port:        5432
+```
+
+The separate machine note is:
+
+```text
+C:\Users\zdxzh\Desktop\PostgreSQL_使用说明.md
+```
+
+That file records the same local installation in more detail. The backend instructions
+here are the TripSync-specific layer on top of it.
+
 If your machine does not provide a working `python` command, use the full path to an
 installed interpreter when creating the virtual environment, for example:
 
@@ -52,8 +71,13 @@ From PowerShell, if `createdb` is already on your `PATH`:
 createdb -h localhost -p 5432 -U postgres tripsync_test
 ```
 
-If `createdb` is not on your `PATH`, call the executable from your local PostgreSQL
-installation directory instead.
+If `createdb` is not on your `PATH`, call the executable from the current machine's
+PostgreSQL installation directory instead:
+
+```powershell
+$env:PGPASSWORD='postgres'
+D:\PostgreSQL\18\pgsql\bin\createdb.exe -h localhost -p 5432 -U postgres tripsync_test
+```
 
 If `tripsync_test` already exists, keep it.
 
@@ -73,6 +97,13 @@ local development for seeding or offline backend work:
 createdb -h localhost -p 5432 -U postgres tripsync
 ```
 
+Current machine-specific equivalent:
+
+```powershell
+$env:PGPASSWORD='postgres'
+D:\PostgreSQL\18\pgsql\bin\createdb.exe -h localhost -p 5432 -U postgres tripsync
+```
+
 Before seeding, running uvicorn, or running pytest, make sure PostgreSQL itself is
 already accepting connections on `localhost:5432`.
 
@@ -82,11 +113,23 @@ Quick verification:
 pg_isready -h localhost -p 5432
 ```
 
-If `pg_isready` is not on `PATH`, run the executable from your PostgreSQL installation
-folder instead. The expected healthy result is:
+If `pg_isready` is not on `PATH`, run the executable from the current machine's
+PostgreSQL installation folder instead:
+
+```powershell
+D:\PostgreSQL\18\pgsql\bin\pg_isready.exe -h localhost -p 5432
+```
+
+The expected healthy result is:
 
 ```text
 localhost:5432 - accepting connections
+```
+
+If PostgreSQL is not running yet, start it with:
+
+```powershell
+D:\PostgreSQL\18\pgsql\bin\pg_ctl.exe -D D:\PostgreSQL\18\data start
 ```
 
 ## 4. Configure `backend/.env`
@@ -98,8 +141,8 @@ Use URL-encoded PostgreSQL password characters in both URLs.
 Current example:
 
 ```env
-DATABASE_URL=postgresql+psycopg://<RDS_USER>:<URL_ENCODED_PASSWORD>@<RDS_HOST>:5432/tripsync
-TEST_DATABASE_URL=postgresql+psycopg://postgres:<URL_ENCODED_PASSWORD>@localhost:5432/tripsync_test
+DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/tripsync
+TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/tripsync_test
 UNSPLASH_ACCESS_KEY=
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
@@ -114,8 +157,10 @@ CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 
 Notes:
 
-- `DATABASE_URL` may point at cloud RDS, but the backend can only start if that database
-  is reachable from this machine
+- on this machine, the current active local setup points both URLs at local PostgreSQL,
+  but keeps them on two different databases: `tripsync` and `tripsync_test`
+- `DATABASE_URL` may still be switched to cloud RDS later, but the backend can only
+  start if that database is reachable from this machine
 - `TEST_DATABASE_URL` should stay local and disposable because tests rebuild schema
 - keep `DATABASE_URL` and `TEST_DATABASE_URL` on different databases
 - runtime AI is now DeepSeek-only through `DEEPSEEK_*`
@@ -206,6 +251,9 @@ If `DATABASE_URL` points at cloud RDS and that host is not reachable from this m
 uvicorn startup or the first request may fail or time out. In that case, either fix
 network access to the cloud database or temporarily point `DATABASE_URL` back to a local
 PostgreSQL database for local-only work.
+
+For the current local Planner V1 harness work, the intended shape is local PostgreSQL
+for both runtime and test databases, not cloud RDS.
 
 ## 7.5 Login Checklist
 
@@ -313,6 +361,32 @@ $env:TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@localhost:5432/tr
 $env:DISABLE_SCHEDULER='1'
 $env:MOCK_AI='1'
 .\.venv\Scripts\python.exe -m pytest tests/test_plan_generation.py -q
+```
+
+## 10.5 Run The Planner V1 Real-AI Harness
+
+For the current Planner V1 baseline work, use:
+
+```powershell
+cd backend
+D:\PostgreSQL\18\pgsql\bin\pg_isready.exe -h localhost -p 5432
+$env:MOCK_AI='0'
+$env:DISABLE_SCHEDULER='1'
+.\.venv\Scripts\python.exe -u app/agents/agent-server/run_planner_eval.py
+```
+
+This harness:
+
+- uses the real Planner path only
+- runs two isolated executions per scenario
+- keeps fixed place supply inside the harness
+- prints both human-readable summaries and machine-readable JSON
+
+If it appears to hang before any scenario output, verify PostgreSQL first. On this
+machine, the most direct startup command is:
+
+```powershell
+D:\PostgreSQL\18\pgsql\bin\pg_ctl.exe -D D:\PostgreSQL\18\data start
 ```
 
 ## 10. Common Problems

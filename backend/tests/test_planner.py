@@ -99,6 +99,7 @@ def test_day_prompt_exposes_activity_count_as_a_soft_target():
     assert "dinner in the 17.5-20.0 window" in prompt
     assert "candidate_id" in prompt
     assert "do not return any name field" in prompt
+    assert "legal_start_hours" in prompt
 
 
 def test_day_schema_returns_candidate_id_without_place_names():
@@ -164,9 +165,23 @@ def test_plan_day_retries_once_after_invalid_ai_output_and_accepts_repaired_resu
     assert result.planner_note == "Repaired to use only provided candidates."
     assert len(calls) == 2
     assert "The previous day plan failed deterministic validation" in calls[1]["user"]
+    assert "legal_start_hours" in calls[1]["user"]
     assert {
         pick.candidate_id for pick in result.picks
     } <= {candidate.candidate_id for candidate in _day_payload().candidates}
+
+
+def test_candidate_legal_start_hours_respect_open_close_and_window_rules():
+    park, cultural_center, restaurant = _day_payload().candidates
+
+    assert 9.0 in planner._candidate_legal_start_hours(park)
+    assert 20.25 not in planner._candidate_legal_start_hours(park)
+
+    assert 9.0 not in planner._candidate_legal_start_hours(cultural_center)
+    assert 10.0 in planner._candidate_legal_start_hours(cultural_center)
+
+    assert 11.5 in planner._candidate_legal_start_hours(restaurant)
+    assert 15.0 not in planner._candidate_legal_start_hours(restaurant)
 
 
 def test_plan_day_raises_unusable_after_second_invalid_ai_output(monkeypatch):

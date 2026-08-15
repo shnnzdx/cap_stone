@@ -41,7 +41,7 @@ MEAL_SEARCH_RADII_KM = (1.5, 3.0, 6.0)
 MAX_MEAL_DETOUR_KM = MEAL_SEARCH_RADII_KM[-1]
 DAY_ACTIVITY_PATTERN = (3, 2, 4, 3, 2)
 RULE_TIME_OPTIONS = {
-    "morning": (9.0, 9.5, 10.0, 10.5),
+    "morning": (9.0, 9.5, 10.0, 10.5, 11.0),
     "lunch": (11.75, 12.0, 12.5, 13.0),
     "afternoon": (14.0, 14.5, 15.0, 15.5, 16.0),
     "dinner": (17.75, 18.0, 18.5, 19.0, 19.5),
@@ -50,7 +50,7 @@ RULE_TIME_OPTIONS = {
 SIGHTSEEING_TIME_PATTERNS = {
     2: ((9.5, 16.0), (10.0, 16.5)),
     3: ((9.0, 14.25, 16.5), (9.5, 14.75, 16.75)),
-    4: ((9.0, 10.75, 14.25, 16.5), (9.5, 10.5, 14.75, 16.75)),
+    4: ((9.0, 11.0, 14.25, 16.5), (9.5, 11.0, 14.75, 16.75)),
 }
 VALIDATION_START_TIMES = tuple(
     start_hour for options in RULE_TIME_OPTIONS.values() for start_hour in options

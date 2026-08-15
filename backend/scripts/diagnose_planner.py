@@ -1,77 +1,25 @@
-"""Call the canonical day planner directly against the configured model endpoint."""
+"""Superseded Planner diagnostic entry point.
+
+This repository now uses:
+
+    app/agents/agent-server/run_planner_eval.py
+
+for repeatable Planner baseline evaluation.
+
+The old single-day diagnostic script had drifted out of sync with the current
+Planner types and no longer represented the real generation pipeline.
+"""
 
 from __future__ import annotations
 
-import os
-import sys
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BACKEND_ROOT))
-load_dotenv(BACKEND_ROOT / ".env")
-
-from app.agents import base, planner  # noqa: E402
-
 
 def main() -> None:
-    runtime = base.provider_runtime_state()
-    planner_provider = base._resolve_provider_name(base.PLANNER_ROUTE)
-    print("Planner diagnostic configuration:")
-    print(f"  MOCK_AI={os.getenv('MOCK_AI')}")
-    print(f"  planner_provider={planner_provider}")
-    for provider_name, config in runtime.items():
-        print(
-            f"  {provider_name}: "
-            f"base_url={config['base_url']} "
-            f"model={config['model']} "
-            f"api_key_set={config['has_api_key']}"
-        )
-    print()
-
-    payload = planner.PlanDayInput(
-        day_index=1,
-        candidates=(
-            planner.PoiOption(
-                name="Millennium Park & Cloud Gate",
-                place="Loop",
-                price=0.0,
-                duration_min=90,
-                opens=9.0,
-                closes=20.0,
-                tags=("culture",),
-            ),
-            planner.PoiOption(
-                name="Chicago Cultural Center",
-                place="Loop",
-                price=0.0,
-                duration_min=90,
-                opens=10.0,
-                closes=18.0,
-                tags=("culture",),
-            ),
-            planner.PoiOption(
-                name="Girl & the Goat",
-                place="West Loop",
-                price=45.0,
-                duration_min=120,
-                opens=16.0,
-                closes=22.0,
-                tags=("food",),
-            ),
-        ),
-        already_used=("Art Institute of Chicago",),
-        budget_left=120.0,
-        interests=("museums", "food"),
+    raise SystemExit(
+        "diagnose_planner.py is superseded. Run "
+        "`$env:MOCK_AI='0'; $env:DISABLE_SCHEDULER='1'; "
+        ".\\.venv\\Scripts\\python.exe -u app/agents/agent-server/run_planner_eval.py` "
+        "from backend/ instead."
     )
-    result = planner.plan_day(payload)
-    print()
-    print(f"used_ai={result.used_ai}")
-    print(f"note={result.planner_note}")
-    for pick in result.picks:
-        print(f"pick: {pick.poi_name} at {pick.start_hour}")
 
 
 if __name__ == "__main__":

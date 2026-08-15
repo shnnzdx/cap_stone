@@ -36,6 +36,16 @@ TIME_WINDOWS = {
     "dinner": (17.5, 20.0),
     "evening": (20.25, 22.5),
 }
+VALID_START_HOURS = tuple(
+    quarter / 4
+    for quarter in sorted(
+        {
+            slot
+            for start, end in TIME_WINDOWS.values()
+            for slot in range(int(round(start * 4)), int(round(end * 4)) + 1)
+        }
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -111,12 +121,7 @@ def _call_day_model(
 ) -> dict[str, Any]:
     user = _day_prompt(payload)
     if repair_error:
-        user += (
-            "\n\nThe previous day plan failed deterministic validation:\n"
-            f"{repair_error}\n"
-            "Return a corrected full day plan using only the provided candidate_id values "
-            "and valid category-aware time windows."
-        )
+        user += _repair_guidance(payload, repair_error)
     return base.call_model(
         system=SYSTEM,
         user=user,
@@ -154,24 +159,7 @@ def _day_schema() -> dict[str, Any]:
 
 def _day_prompt(payload: PlanDayInput) -> str:
     candidate_lines = [
-        json.dumps(
-            {
-                "candidate_id": candidate.candidate_id,
-                "english_name": candidate.name,
-                "local_name": candidate.local_name,
-                "category": candidate.category,
-                "place": candidate.place,
-                "latitude": candidate.latitude,
-                "longitude": candidate.longitude,
-                "price": candidate.price,
-                "duration_min": candidate.duration_min,
-                "opens": candidate.opens,
-                "closes": candidate.closes,
-                "opening_hours": candidate.opening_hours,
-                "tags": candidate.tags,
-            },
-            ensure_ascii=False,
-        )
+        _candidate_prompt_line(candidate)
         for candidate in payload.candidates
     ]
     return "\n".join(
@@ -222,6 +210,72 @@ def _day_prompt(payload: PlanDayInput) -> str:
             *candidate_lines,
         ]
     )
+
+
+def _candidate_prompt_line(candidate: PoiOption) -> str:
+    return json.dumps(
+        {
+            "candidate_id": candidate.candidate_id,
+            "english_name": candidate.name,
+            "local_name": candidate.local_name,
+            "category": candidate.category,
+            "place": candidate.place,
+            "latitude": candidate.latitude,
+            "longitude": candidate.longitude,
+            "price": candidate.price,
+            "duration_min": candidate.duration_min,
+            "opens": candidate.opens,
+            "closes": candidate.closes,
+            "opening_hours": candidate.opening_hours,
+            "tags": candidate.tags,
+            "legal_start_hours": list(_candidate_legal_start_hours(candidate)),
+        },
+        ensure_ascii=False,
+    )
+
+
+def _repair_guidance(payload: PlanDayInput, repair_error: str) -> str:
+    legal_lines = [
+        _candidate_prompt_line(candidate)
+        for candidate in payload.candidates
+    ]
+    return "\n".join(
+        [
+            "",
+            "",
+            "The previous day plan failed deterministic validation:",
+            repair_error,
+            "Return a corrected full day plan from scratch.",
+            "Use only the provided candidate_id values.",
+            "Use only start_hour values that appear in that candidate's legal_start_hours list.",
+            "Do not place sightseeing in lunch or dinner windows unless the candidate is a real meal venue.",
+            "If a candidate opens later, do not schedule it earlier. If duration would end after close, move it or drop it.",
+            "Candidate legality guide:",
+            *legal_lines,
+        ]
+    )
+
+
+def _candidate_legal_start_hours(candidate: PoiOption) -> tuple[float, ...]:
+    hours: list[float] = []
+    for start_hour in VALID_START_HOURS:
+        window = time_window(start_hour)
+        if window is None:
+            continue
+        if not category_allows_window(candidate.tags, window):
+            continue
+        if candidate.opens is not None and start_hour < candidate.opens:
+            continue
+        if candidate.closes is not None:
+            end_hour = (
+                start_hour + candidate.duration_min / 60
+                if candidate.duration_min is not None
+                else start_hour
+            )
+            if end_hour > candidate.closes:
+                continue
+        hours.append(start_hour)
+    return tuple(hours)
 
 
 def _known(value: object | None) -> object:

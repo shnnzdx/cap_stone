@@ -25,11 +25,17 @@ from app.db.models import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(BACKEND_ROOT / ".env", override=True)
 
-TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL", "postgresql+psycopg://localhost/tripsync_test"
-)
+
+def _load_test_database_url_from_environment() -> str:
+    # Allow per-run shell overrides while still loading local defaults from .env.
+    load_dotenv(BACKEND_ROOT / ".env", override=False)
+    return os.getenv(
+        "TEST_DATABASE_URL", "postgresql+psycopg://localhost/tripsync_test"
+    )
+
+
+TEST_DATABASE_URL = _load_test_database_url_from_environment()
 
 # Tests must stay on the disposable local test database even when normal
 # runtime points DATABASE_URL at a cloud RDS instance.

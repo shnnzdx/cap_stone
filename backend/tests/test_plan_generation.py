@@ -183,19 +183,25 @@ def _generated_items(db: Session, plan_id: str) -> list[PlanItem]:
 def _candidate_triplet(
     payload: planner.PlanDayInput,
 ) -> tuple[planner.PoiOption, planner.PoiOption, planner.PoiOption]:
+    def supports(option: planner.PoiOption, start_hour: float) -> bool:
+        return (
+            (option.opens is None or option.opens <= start_hour)
+            and (option.closes is None or start_hour <= option.closes)
+        )
+
     morning = next(
-        option for option in payload.candidates if option.opens <= 10.0 <= option.closes
+        option for option in payload.candidates if supports(option, 10.0)
     )
     afternoon = next(
         option
         for option in payload.candidates
-        if option.name != morning.name and option.opens <= 14.0 <= option.closes
+        if option.candidate_id != morning.candidate_id and supports(option, 14.0)
     )
     late_afternoon = next(
         option
         for option in payload.candidates
-        if option.name not in {morning.name, afternoon.name}
-        and option.opens <= 16.0 <= option.closes
+        if option.candidate_id not in {morning.candidate_id, afternoon.candidate_id}
+        and supports(option, 16.0)
         and not planner.is_reliable_meal_candidate(option.tags)
     )
     return morning, afternoon, late_afternoon
@@ -252,6 +258,67 @@ def _paid_places() -> tuple[PlannerPlace, ...]:
                 image_url=None,
                 opening_hours=None,
                 price=10.0,
+                tags=("catering", "restaurant"),
+            )
+        )
+    return tuple(rows)
+
+
+def _rules_evening_places() -> tuple[PlannerPlace, ...]:
+    rows = []
+    for index in range(8):
+        rows.append(
+            PlannerPlace(
+                candidate_id=f"rules-day-{index}",
+                name=f"Rules Day Stop {index}",
+                location="Chicago",
+                latitude=41.80 + index / 100,
+                longitude=-87.60 - index / 100,
+                category="tourism.attraction",
+                address="Chicago",
+                image_url=None,
+                opening_hours=None,
+                price=15.0,
+                duration_min=60,
+                opens=9.0,
+                closes=18.0,
+                tags=("tourism", "attraction"),
+            )
+        )
+    rows.append(
+        PlannerPlace(
+            candidate_id="rules-evening-view",
+            name="Rules Evening View",
+            location="Chicago",
+            latitude=41.89,
+            longitude=-87.62,
+            category="tourism.attraction",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=20.0,
+            duration_min=60,
+            opens=9.0,
+            closes=23.0,
+            tags=("views", "evening", "signature"),
+        )
+    )
+    for index in range(4):
+        rows.append(
+            PlannerPlace(
+                candidate_id=f"rules-meal-{index}",
+                name=f"Rules Meal {index}",
+                location="Chicago",
+                latitude=41.85 + index / 100,
+                longitude=-87.63 - index / 100,
+                category="catering.restaurant",
+                address="Chicago",
+                image_url=None,
+                opening_hours=None,
+                price=18.0,
+                duration_min=60,
+                opens=11.0,
+                closes=22.0,
                 tags=("catering", "restaurant"),
             )
         )
@@ -532,6 +599,9 @@ def test_rules_can_place_a_high_value_evening_activity_after_dinner(
 ):
     setup = _make_trip(db, days=3, budget_ceiling=800.0)
     monkeypatch.setattr(
+        generator.place_service, "places_for_planner", lambda *_args: _rules_evening_places()
+    )
+    monkeypatch.setattr(
         planner,
         "plan_day",
         lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
@@ -673,29 +743,28 @@ def test_canonical_generation_retries_one_invalid_ai_day_and_persists_repaired_p
 ):
     setup = _make_trip(db, days=1)
     monkeypatch.setenv("MOCK_AI", "0")
-    responses = iter(
-        [
-            {
+    calls = []
+    expected_titles = []
+
+    def fake_call_day_model(payload: planner.PlanDayInput, *, repair_error: str | None = None):
+        calls.append({"payload": payload, "repair_error": repair_error})
+        if repair_error is None:
+            return {
                 "note": "bad first pass",
                 "picks": [{"candidate_id": "invented_id", "start_hour": 10.0}],
-            },
-            {
-                "note": "Repaired canonical planner day.",
-                "picks": [
-                    {"candidate_id": "curated_chicago:16", "start_hour": 10.0},
-                    {"candidate_id": "curated_chicago:6", "start_hour": 14.0},
-                    {"candidate_id": "curated_chicago:13", "start_hour": 16.0},
-                ],
-            },
-        ]
-    )
-    calls = []
+            }
+        morning, afternoon, late_afternoon = _candidate_triplet(payload)
+        expected_titles[:] = [morning.name, afternoon.name, late_afternoon.name]
+        return {
+            "note": "Repaired canonical planner day.",
+            "picks": [
+                {"candidate_id": morning.candidate_id, "start_hour": 10.0},
+                {"candidate_id": afternoon.candidate_id, "start_hour": 14.0},
+                {"candidate_id": late_afternoon.candidate_id, "start_hour": 16.0},
+            ],
+        }
 
-    def fake_call_model(**kwargs):
-        calls.append(kwargs)
-        return next(responses)
-
-    monkeypatch.setattr(planner.base, "call_model", fake_call_model)
+    monkeypatch.setattr(planner, "_call_day_model", fake_call_day_model)
 
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 
@@ -711,11 +780,9 @@ def test_canonical_generation_retries_one_invalid_ai_day_and_persists_repaired_p
         ),
     )
     assert len(calls) == 2
-    assert "The previous day plan failed deterministic validation" in calls[1]["user"]
+    assert calls[1]["repair_error"] == "Expected between 2 and 4 picks"
     sightseeing_titles = [item.title for item in result.items if not item.is_meal]
-    assert sightseeing_titles == [
-        "Millennium Park & Cloud Gate", "Chicago Cultural Center", "Chicago Riverwalk"
-    ]
+    assert sightseeing_titles == expected_titles
     assert sum(item.is_meal for item in result.items) == 2
     origins = set(db.scalars(select(PlanChange.origin)).all())
     assert origins == {"ai_generate", "rule_generate"}

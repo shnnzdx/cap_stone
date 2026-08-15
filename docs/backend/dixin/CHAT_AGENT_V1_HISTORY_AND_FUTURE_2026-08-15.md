@@ -286,3 +286,8 @@ Chat Agent V1
 FUNCTIONALLY COMPLETE
 REGRESSION BASELINE GREEN
 ```
+
+See also:
+
+- `docs/backend/dixin/CADENSY_AI_V1_CAPSTONE_COMPLETE_2026-08-15.md`
+  for the final capstone-level status across both Chat Agent and Planner
