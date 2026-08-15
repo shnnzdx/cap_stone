@@ -1,15 +1,17 @@
 # Repo Working Rules For AI Agents
 
-Start here before changing architecture, session logic, navigation logic, or Trip workspace behavior.
+Read this before changing architecture, session logic, navigation behavior, or Trip workspace behavior.
 
-## Read First
+## Read Order
 
-Read these files before substantial work:
+Default read order:
 
-- `README.md`
-- `INTEGRATION-ROADMAP.md`
-- `HANDOFF.md`
-- `docs/navigation-known-wrong-behavior.md`
+1. `README.md`
+2. `AGENTS.md`
+3. `AI.md` if the task touches chat, planner, prompts, or AI-adjacent backend behavior
+4. `INTEGRATION-ROADMAP.md` for repo-level integration questions
+5. `HANDOFF.md` only when long historical context is actually needed
+6. `docs/navigation-known-wrong-behavior.md` for navigation work
 
 If the task is backend cleanup or repo consolidation, also read:
 
@@ -17,9 +19,9 @@ If the task is backend cleanup or repo consolidation, also read:
 - `backend/README.md`
 - `backend/LOCAL_DEV.md`
 
-## Current Source Of Truth
+## Source Of Truth
 
-Treat these as the active source-of-truth:
+Primary source directories:
 
 - `frontend/`
 - `trip/`
@@ -27,86 +29,76 @@ Treat these as the active source-of-truth:
 - `shared/`
 - `docs/`
 
-Do not treat these as primary source files:
+Do not treat these generated outputs as primary:
 
 - `frontend/dist/`
 - `trip/dist/`
 - `frontend/public/trip-app/assets/`
 
-If you change `trip/` and the embedded `/trip` experience must reflect it, use:
+If you change `trip/` and the embedded `/trip` experience must reflect it, run:
 
-- `cd frontend && npm run build:trip-preview`
+```bash
+cd frontend
+npm run build:trip-preview
+```
 
-## Frozen Architecture Boundaries
+## Frozen Boundaries
 
 These boundaries are already established. Do not casually redesign them.
 
-### Candidate 1: Navigation
+### Navigation
 
 - `shared/trip-navigation-policy/` owns workspace destination policy, route reachability, restoration fallback, and invite/join destination decisions.
 - UI code must not reintroduce role-based or destination policy inline.
 
-### Candidate 2: Technical Session
+### Technical Session
 
 - `shared/session-runtime/` owns raw `tripsync:*` storage keys, bearer-token mechanics, request identity headers, invite adoption cache persistence, invalid-session clearing, and logout sequencing.
 - Runtime callers must not directly own `localStorage` session persistence policy, `Authorization`, `X-Trip-Id`, or `X-Membership-Id` assembly.
 
-### Candidate 3: Plan Workspace
+### Plan Workspace
 
-- `trip/src/final/plan-feature/PlanFeature.jsx` is the single public Plan feature boundary.
-- `usePlanInteractionRuntime` owns Plan selection, focus, comments, map/list coordination, menu state, booking interactions, and drawer open/close state.
-- `useAssistantChangeRequestFlow` owns drawer-local Cadensy conversation, proposal apply flow, change-request outcome handling, and command emission for confirm redirects.
-- `trip/src/final/FinalApp.jsx` should only own Plan route mount, workspace composition, PlanFeature inputs, and command execution.
+- `trip/src/final/plan-feature/PlanFeature.jsx` is the public Plan feature boundary.
+- `usePlanInteractionRuntime` owns Plan selection, focus, comments, map/list coordination, menu state, booking interactions, and drawer state.
+- `useAssistantChangeRequestFlow` owns drawer-local Cadensy conversation, proposal apply flow, and confirm redirect orchestration.
+- `trip/src/final/FinalApp.jsx` should only own Plan route mount, workspace composition, and command execution.
 
-## UI Changes Are Allowed
-
-You can freely change product and trip UI design when the change is mostly visual:
-
-- typography, color, spacing, radius, shadows
-- layout, section order, responsive structure
-- drawer/modal appearance
-- navbar/sidebar styling
-- Plan page visual structure
-- Product page visual structure
-- animation and transitions
-- loading, empty, hover, and active states
-
-## Use This Decision Rule
+## Change Placement Rule
 
 When deciding where a change belongs:
 
-- If the change is about how it looks, change the UI.
-- If the change is about where the user should go, respect Candidate 1.
-- If the change is about who the user is, what trip/session is active, or which identity headers/storage are used, respect Candidate 2.
-- If the change is about how Plan selection/comments/map/booking/drawer/Cadensy behavior works, respect Candidate 3.
+- visual change: update UI
+- destination/routing policy change: respect `shared/trip-navigation-policy/`
+- session identity/storage/header change: respect `shared/session-runtime/`
+- Plan workspace behavior change: stay inside the Plan feature seam
+- AI behavior change: read `AI.md` first and preserve read-only / Apply-required boundaries
 
-## Do Not Reintroduce These Old Problems
+## Things Not To Reintroduce
 
 - Do not hard-code role-based destination logic inside UI components.
-- Do not read or write raw `tripsync:*` session keys outside `shared/session-runtime/`, except in tests and explicit compatibility fixtures.
+- Do not read or write raw `tripsync:*` keys outside `shared/session-runtime/`, except in tests and explicit compatibility fixtures.
 - Do not manually assemble `Authorization`, `X-Trip-Id`, or `X-Membership-Id` outside the session runtime seam.
 - Do not move Plan interaction logic back into `FinalApp`.
-- Do not duplicate Plan selection, comments, drawer, map, booking, or assistant state in a second place just to support a visual redesign.
+- Do not duplicate Plan selection, comments, drawer, map, booking, or assistant state just to support a redesign.
 - Do not use `shared/` as a dumping ground for unrelated helpers.
 
-## For Refactors
+## Refactor Rule
 
 Before major refactors:
 
-- assess first
-- grill the strongest candidate
-- freeze the boundary
-- make a migration plan
-- implement in phases
+1. assess the current seam
+2. challenge the strongest candidate
+3. freeze the boundary
+4. make a migration plan
+5. implement in phases
 
-Do not refactor based only on file size.
-Use locality, leverage, testability, migration risk, and the deletion test.
+Do not refactor based only on file size. Prefer locality, leverage, testability, migration risk, and the deletion test.
 
 ## Backend Default
 
-If no newer instruction overrides this, the safest next architecture step is:
+If no newer instruction overrides this, the safest next backend move is:
 
-- backend architecture assessment first
-- implementation second
+1. architecture assessment first
+2. implementation second
 
 Do not start by rewriting backend modules before identifying the real seam.

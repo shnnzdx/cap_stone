@@ -2,11 +2,13 @@
 
 Read this before editing agent code, prompts, schemas, or AI-side backend behavior.
 
-This file is about implementation rules for agents. Product behavior lives in:
+This file is about implementation rules for agents. For current repo-level context and product references, start from:
 
-- `PRODUCT.md`
-- `../trip/BACKEND.md`
+- `../AI.md`
+- `../README.md`
 - `../HANDOFF.md`
+- `class/PRODUCT.md`
+- `../trip/BACKEND.md`
 
 ## 1. Purpose
 
@@ -208,7 +210,8 @@ Particularly important:
 
 When agent responsibilities or guarantees change, update:
 
-- `PRODUCT.md`
+- `../AI.md`
+- `class/PRODUCT.md`
 - `../trip/BACKEND.md`
 - `../HANDOFF.md`
 - relevant backend tests
