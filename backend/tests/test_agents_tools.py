@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import date
@@ -178,6 +178,94 @@ def test_find_replacement_place_guard_rejects_until_current_plan_was_checked(db,
     assert result.tool_results[0]["guard_rejected"] is True
     assert "get_current_plan" in result.tool_results[0]["output"]
 
+
+def test_cross_day_classify_guard_requires_target_day_inspection(db, full_trip):
+    tools = tuple(_tools_by_name(db, full_trip).values())
+    result = call_agent(
+        system="Use tools.",
+        user="Move the museum to tomorrow.",
+        tools=tools,
+        mock_rounds=(
+            AgentProviderReply(
+                content="",
+                tool_calls=(
+                    AgentToolCall(
+                        id="call-1",
+                        name="get_current_plan",
+                        arguments={"day": "2026-08-15"},
+                    ),
+                ),
+            ),
+            AgentProviderReply(
+                content="",
+                tool_calls=(
+                    AgentToolCall(
+                        id="call-2",
+                        name="classify_change",
+                        arguments={
+                            "item_title": "Art Institute of Chicago",
+                            "day": "2026-08-15",
+                            "new_day_date": "2026-08-16",
+                        },
+                    ),
+                ),
+            ),
+        ),
+        max_rounds=2,
+    )
+
+    assert result.tool_results[1]["guard_rejected"] is True
+    assert "target day 2026-08-16" in result.tool_results[1]["output"]
+
+
+
+def test_cross_day_classify_guard_allows_target_day_after_it_was_checked(db, full_trip):
+    tools = tuple(_tools_by_name(db, full_trip).values())
+    result = call_agent(
+        system="Use tools.",
+        user="Move the museum to tomorrow.",
+        tools=tools,
+        mock_rounds=(
+            AgentProviderReply(
+                content="",
+                tool_calls=(
+                    AgentToolCall(
+                        id="call-1",
+                        name="get_current_plan",
+                        arguments={"day": "2026-08-15"},
+                    ),
+                ),
+            ),
+            AgentProviderReply(
+                content="",
+                tool_calls=(
+                    AgentToolCall(
+                        id="call-2",
+                        name="get_current_plan",
+                        arguments={"day": "2026-08-16"},
+                    ),
+                ),
+            ),
+            AgentProviderReply(
+                content="",
+                tool_calls=(
+                    AgentToolCall(
+                        id="call-3",
+                        name="classify_change",
+                        arguments={
+                            "item_title": "Art Institute of Chicago",
+                            "day": "2026-08-15",
+                            "new_day_date": "2026-08-16",
+                        },
+                    ),
+                ),
+            ),
+        ),
+        max_rounds=3,
+    )
+
+    assert result.tool_results[2]["guard_rejected"] is False
+    assert result.tool_results[2]["output"]["proposed_patch"]["day_date"] == "2026-08-16"
 
 def test_tools_do_not_write_decision_or_plan_tables(db, full_trip):
     tools = _tools_by_name(db, full_trip)
@@ -629,7 +717,7 @@ def test_a_failed_suggestion_leaves_the_session_usable(db, full_trip):
 
 
 def test_computed_options_are_a_fallback_not_a_supplement(db, full_trip):
-    """写了自己的方案时就不再补通用选项——六个选项的选票没人会读完。"""
+    """写了自己的方案时就不再补通用选项，六个选项的选票没人会读完。"""
     tools = _tools_by_name(db, full_trip)
 
     with_suggestion = tools["propose_options"].handler(
@@ -652,5 +740,20 @@ def test_computed_options_are_a_fallback_not_a_supplement(db, full_trip):
 
     assert [o["id"] for o in with_suggestion["options"]] == ["keep", "suggested-1"]
     assert all(o["kind"] != "computed" for o in with_suggestion["options"])
-    # 没有自己的方案时,通用选项照常兜底,否则这张票没得投。
+    # 没有自己的方案时，通用选项照常兜底，否则这张票没得投。
     assert any(o["kind"] == "computed" for o in without["options"])
+
+
+def test_find_replacement_place_fails_safely_for_non_chicago_destinations(db, full_trip):
+    full_trip["trip"].destination = "Tokyo"
+    db.flush()
+    tools = _tools_by_name(db, full_trip)
+
+    result = tools["find_replacement_place"].handler(
+        item_id=full_trip["art"].id,
+        keywords=["cafe"],
+    )
+
+    assert result["error"] == "unsupported_destination"
+    assert "Chicago" in result["message"]
+    assert "Tokyo" in result["message"]

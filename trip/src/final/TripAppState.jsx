@@ -750,11 +750,11 @@ export function TripAppProvider({ children }) {
     return normalized
   }, [requestJson])
 
-  const classify = useCallback(async ({ item, actionType, request }) => {
+  const classify = useCallback(async ({ item, actionType, request, patch = null }) => {
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
-      const body = { ...requestPatch(actionType, item, request), request }
+      const body = patch ? { ...patch, request } : { ...requestPatch(actionType, item, request), request }
       return await requestJson(`/api/plans/items/${item.id}/classify`, {
         method: 'POST',
         body: JSON.stringify(body),

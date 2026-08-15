@@ -157,46 +157,51 @@ test("phase 4 assistant flow currently owns drawer-local lifecycle, Cadensy conv
   assert.match(source, /window\.setTimeout\(\(\) => inputRef\.current\?\.focus\(\{ preventScroll: true \}\), 80\)/);
   assert.match(source, /const loadingId = `ai-loading-\$\{Date\.now\(\)\}`/);
   assert.match(source, /const userMessage = \{ id: `user-\$\{Date\.now\(\)\}`, from: 'you', text \}/);
-  assert.match(source, /setMessages\(current => \[\.\.\.current, userMessage, \{ id: loadingId, from: 'tripSync', text: 'Thinking\.\.\.', loading: true \}\]\)/);
-  assert.match(source, /const history = messages\s*\.filter\(message => !message\.loading && message\.text\)\s*\.map\(message => \(\{\s*role: message\.from === 'you' \? 'user' : 'assistant',\s*text: message\.text,\s*\}\)\)/s);
+  assert.match(source, /setMessages\(current => \[\.\.\.current, userMessage, \{ id: loadingId, from: 'tripSync', text: ASSISTANT_LOADING_MESSAGES\[0\], loading: true \}\]\)/);
+  assert.match(source, /const assistantErrorText = err => \(/);
+  assert.match(source, /const historyTurnFromMessage = message => \{/);
+  assert.match(source, /turn\.candidate_options = message\.candidateOptions\.map\(option => \(\{/);
+  assert.match(source, /const history = messages\s*\.filter\(message => !message\.loading && message\.text\)\s*\.map\(historyTurnFromMessage\)/s);
   assert.match(source, /const result = await app\.chatWithTrip\(\{ message: text, itemId, history \}\)/);
-  assert.match(source, /text: result\.reply,\s*proposedChange: result\.proposed_change,\s*request: text,/s);
-  assert.match(source, /const text = err\.status === 409\s*\? 'A vote is already open for this time block\.'\s*: err\.status === 422\s*\? 'Reopening this block needs a written reason\.'\s*: 'I could not reach the backend\. Try again in a moment\.'/s);
+  assert.match(source, /text: result\.reply,\s*proposedChange: result\.proposed_change,\s*candidateOptions,\s*selectedCandidateId: '',\s*request: text,\s*applyError: '',\s*selectionNote: '',\s*classifyingCandidate: false,/s);
+  assert.match(source, /const text = assistantErrorText\(err\)/);
   assert.match(source, /setMessages\(current => current\.map\(message => message\.id === loadingId \? \{ \.\.\.message, text, loading: false, error: true \} : message\)\)/);
 });
-
 test("phase 4 assistant flow currently owns proposal apply state, submitChange branching, and confirm redirect command generation", async () => {
   const source = await loadAssistantFlowSource();
 
   assert.match(source, /const applyProposal = async \(message, proposedChange\) => \{/);
   assert.match(source, /const targetItem = itemById\[proposedChange\.item_id\] \|\| \(item\.id === proposedChange\.item_id \? item : \{ id: proposedChange\.item_id, title: proposedChange\.item_title \}\)/);
   assert.match(source, /updateMessage\(message\.id, \{ applying: true, applyError: '' \}\)/);
-  assert.match(source, /const outcome = await app\.submitChange\(\{\s*item: targetItem,\s*actionType: mode,\s*request: message\.request,\s*verdict: proposedChange\.verdict,\s*patch: proposedChange\.patch,\s*\}\)/s);
+  assert.match(source, /const outcome = await app\.submitChange\(\{\s*item: targetItem,\s*actionType: mode,\s*request: message\.request,\s*verdict: proposedChange\.verdict,\s*patch: proposedChange\.patch,\s*options: roundAlternativesFrom\(message\.candidateOptions, targetItem\.id\),\s*\}\)/s);
   assert.match(source, /updateMessage\(message\.id, \{ applying: false, applied: true \}\)/);
   assert.match(source, /if \(outcome\.path === 'notice'\) \{\s*app\.notify\('Updated'\)\s*onResolvedOutcome\?\.\(\{ kind: 'focus-item', itemId: targetItem\.id, outcome, targetItem \}\)\s*\}/s);
   assert.match(source, /else if \(outcome\.path === 'round' \|\| outcome\.path === 'reopen_round'\) \{\s*app\.notify\('Vote opened'\)\s*onResolvedOutcome\?\.\(\{ kind: 'focus-round', itemId: targetItem\.id, outcome, targetItem \}\)\s*\}/s);
-  assert.match(source, /else \{\s*setPendingRedirect\('Affected members need to confirm\. Opening the conversation\.\.\.'\)\s*onCommand\?\.\(\{ type: 'navigate', to: tripHref\(\(app\.trip \|\| trip\)\.id, 'conflict'\), delayMs: 850 \}\)\s*\}/s);
-  assert.match(source, /const applyError = err\.status === 409\s*\? 'A vote is already open for this time block\.'\s*: err\.status === 422\s*\? 'Reopening this block needs a written reason\.'\s*: 'I could not reach the backend\. Try again in a moment\.'/s);
+  assert.match(source, /const tripId = app\.activeTripId \|\| app\.trip\?\.id \|\| trip\?\.id/);
+  assert.match(source, /else \{\s*setPendingRedirect\('Affected members need to confirm\. Opening the conversation\.\.\.'\)\s*const tripId = app\.activeTripId \|\| app\.trip\?\.id \|\| trip\?\.id\s*if \(tripId\) onCommand\?\.\(\{ type: 'navigate', to: tripHref\(tripId, 'conflict'\), delayMs: 850 \}\)\s*\}/s);
+  assert.match(source, /const applyError = assistantErrorText\(err\)/);
 });
-
 test("phase 4 AssistantDrawer consumes a coherent assistant-flow view and actions interface", async () => {
   const source = await loadPlanFeatureSource();
 
   assert.match(source, /const \{\s*view,\s*actions,\s*\} = useAssistantChangeRequestFlow\(\{/s);
   assert.match(source, /onResolvedOutcome,\s*\}\)/s);
   assert.match(source, /ref=\{view\.threadRef\}/);
-  assert.match(source, /currentItem=\{view\.itemById\[message\.proposedChange\.item_id\]/);
+  assert.match(source, /const focusItemId = message\.proposedChange\?\.item_id \|\| message\.candidateOptions\?\.find\(option => option\.id === message\.selectedCandidateId\)\?\.item_id/);
+  assert.match(source, /const currentItem = focusItemId \? \(view\.itemById\[focusItemId\] \|\| \(item\.id === focusItemId \? item : null\)\) : null/);
+  assert.match(source, /\(message\.proposedChange \|\| message\.candidateOptions\?\.length\) && <ChangeConfirmCard/);
+  assert.match(source, /disabled=\{message\.applied \|\| message\.applying \|\| message\.classifyingCandidate\}/);
+  assert.match(source, /patch\.duration_min !== undefined\s*\? \{ label: 'Duration', before: before\.duration, after: after\.duration \}/s);
   assert.match(source, /onApply=\{\(\) => actions\.applyProposal\(message, message\.proposedChange\)\}/);
   assert.match(source, /onDismiss=\{\(\) => actions\.dismissProposal\(message\.id\)\}/);
   assert.match(source, /view\.pendingRedirect && <p className="redirectHint">\{view\.pendingRedirect\}<\/p>/);
   assert.match(source, /ref=\{view\.inputRef\} value=\{view\.draft\} onChange=\{event => actions\.updateDraft\(event\.target\.value\)\}/);
   assert.match(source, /disabled=\{view\.sending \|\| !view\.draft\.trim\(\)\} onClick=\{actions\.sendMessage\}/);
 });
-
 test("phase 4 plan page currently owns loading, error, decision, and empty-created-plan notices", async () => {
   const source = await loadPlanFeatureSource();
 
-  assert.match(source, /if \(currentTrip\.isCreated \|\| \(!app\.loading\.initial && view\.days\.length === 0\)\) return <NewTripPlan currentTrip=\{currentTrip\}\/>/);
+  assert.match(source, /if \(!app\.loading\.initial && view\.days\.length === 0\) return <NewTripPlan currentTrip=\{currentTrip\}\/>/);
   assert.match(source, /app\.loading\.initial && <div className="planNotice">[\s\S]*?<strong>Loading trip data<\/strong><p>Fetching the current plan from the backend\.<\/p>[\s\S]*?<\/div>/);
   assert.match(source, /app\.error && <div className="planNotice">[\s\S]*?<strong>Backend request failed<\/strong><p>\{app\.error\}<\/p>[\s\S]*?onClick=\{app\.refreshAll\}>Retry<\/button><\/div>/);
   assert.match(source, /app\.conflictCreated && !app\.decisionResolved && <Link className="planNotice" to=\{tripHref\(currentTrip\.id, 'updates'\)\}>[\s\S]*?<strong>Proposed change waiting for confirmation<\/strong>/);

@@ -386,19 +386,44 @@ def _change_parameters() -> dict[str, Any]:
     }
 
 
+def _inspected_plan_days(state: AgentRunState) -> set[str]:
+    days: set[str] = set()
+    for call in state.called_tools:
+        if call.get("name") != "get_current_plan":
+            continue
+        arguments = call.get("arguments") if isinstance(call, dict) else {}
+        day = "all"
+        if isinstance(arguments, dict):
+            day = str(arguments.get("day") or "all")
+        days.add(day.strip().lower())
+    return days
+
+
 def _requires_current_plan_guard(tool_name: str):
     def guard(state: AgentRunState, arguments: dict[str, Any]) -> str | None:
-        if any(call.get("name") == "get_current_plan" for call in state.called_tools):
-            return None
+        checked_days = _inspected_plan_days(state)
         day = str(arguments.get("day") or "all")
-        return (
-            f"Cannot call {tool_name} yet: you have not checked the Current Plan. "
-            f"Please call get_current_plan(day='{day}') first, use the real itinerary "
-            "facts it returns, then retry."
-        )
+        if not checked_days:
+            return (
+                f"Cannot call {tool_name} yet: you have not checked the Current Plan. "
+                f"Please call get_current_plan(day='{day}') first, use the real itinerary "
+                "facts it returns, then retry."
+            )
+        target_day = str(arguments.get("new_day_date") or "").strip().lower()
+        if (
+            tool_name == "classify_change"
+            and target_day
+            and "all" not in checked_days
+            and target_day not in checked_days
+        ):
+            return (
+                f"Cannot call {tool_name} for a cross-day move yet: you have not checked "
+                f"the target day {arguments.get('new_day_date')}. Please call "
+                f"get_current_plan(day='{arguments.get('new_day_date')}') first, then retry."
+            )
+        return None
 
     return guard
-
 
 def _require_trip_membership(db: Session, trip_id: str, membership_id: str) -> None:
     membership = db.get(TripMembership, membership_id)
@@ -918,9 +943,23 @@ def _hour_label(hour: float) -> str:
     return f"{display}:{minutes:02d} {suffix}"
 
 
+def _supports_curated_replacements(trip: Trip | None) -> bool:
+    return trip is not None and "chicago" in (trip.destination or "").strip().lower()
+
+
 def _find_replacement_place(
     db: Session, trip_id: str, item_id: str, keywords: list[str]
 ) -> dict[str, Any]:
+    trip = db.get(Trip, trip_id)
+    if not _supports_curated_replacements(trip):
+        destination = trip.destination if trip is not None else "unknown"
+        return _tool_error(
+            "unsupported_destination",
+            (
+                "Replacement suggestions are only available for curated Chicago trips "
+                f"right now. This trip destination is '{destination}'."
+            ),
+        )
     plan = _active_plan(db, trip_id)
     items = list(
         db.scalars(
@@ -943,7 +982,6 @@ def _find_replacement_place(
         "keywords": list(keywords),
         "candidates": [_json_safe(candidate) for candidate in filtered],
     }
-
 
 def _replacement_candidates(
     items: list[PlanItem], selected: PlanItem

@@ -31,6 +31,35 @@ const ASSISTANT_LOADING_MESSAGES = [
   'Organizing the options...',
 ]
 
+const assistantErrorText = err => (
+  err.status === 409
+    ? 'A vote is already open for this time block.'
+    : err.status === 422
+      ? 'Reopening this block needs a written reason.'
+      : 'I could not reach the backend. Try again in a moment.'
+)
+
+const hasExecutablePatch = option => Boolean(option?.patch && Object.keys(option.patch).length)
+
+const historyTurnFromMessage = message => {
+  const turn = {
+    role: message.from === 'you' ? 'user' : 'assistant',
+    text: message.text,
+  }
+  if (message.from !== 'you' && Array.isArray(message.candidateOptions) && message.candidateOptions.length) {
+    turn.candidate_options = message.candidateOptions.map(option => ({
+      id: option.id,
+      label: option.label || '',
+      title: option.title || '',
+      body: option.body || '',
+      tradeoff: option.tradeoff || '',
+      item_id: option.item_id,
+      patch: option.patch || {},
+    }))
+  }
+  return turn
+}
+
 export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolvedOutcome }) {
   const app = useTripApp()
   const [pendingRedirect, setPendingRedirect] = useState('')
@@ -106,10 +135,7 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
     try {
       const history = messages
         .filter(message => !message.loading && message.text)
-        .map(message => ({
-          role: message.from === 'you' ? 'user' : 'assistant',
-          text: message.text,
-        }))
+        .map(historyTurnFromMessage)
       const result = await app.chatWithTrip({ message: text, itemId, history })
       const candidateOptions = Array.isArray(result.candidate_options) ? result.candidate_options : []
       setMessages(current => current.map(message => message.id === loadingId ? {
@@ -119,37 +145,75 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
         text: result.reply,
         proposedChange: result.proposed_change,
         candidateOptions,
-        selectedCandidateId: candidateOptions[0]?.id || '',
+        selectedCandidateId: '',
         request: text,
+        applyError: '',
+        selectionNote: '',
+        classifyingCandidate: false,
       } : message))
     } catch (err) {
-      const text = err.status === 409
-        ? 'A vote is already open for this time block.'
-        : err.status === 422
-          ? 'Reopening this block needs a written reason.'
-          : 'I could not reach the backend. Try again in a moment.'
+      const text = assistantErrorText(err)
       setMessages(current => current.map(message => message.id === loadingId ? { ...message, text, loading: false, error: true } : message))
     } finally {
       setSending(false)
     }
   }
 
-  const dismissProposal = id => updateMessage(id, { proposedChange: null })
+  const dismissProposal = id => updateMessage(id, { proposedChange: null, applyError: '', selectionNote: '' })
 
-  const selectCandidateOption = (message, option) => {
+  const selectCandidateOption = async (message, option) => {
     const targetItem = itemById[option.item_id] || (item.id === option.item_id ? item : null)
+    if (!targetItem) {
+      updateMessage(message.id, {
+        selectedCandidateId: option.id,
+        proposedChange: null,
+        classifyingCandidate: false,
+        selectionNote: '',
+        applyError: 'That option is no longer available from the current plan.',
+      })
+      return
+    }
+
     updateMessage(message.id, {
       selectedCandidateId: option.id,
-      proposedChange: {
-        ...(message.proposedChange || {}),
-        item_id: option.item_id,
-        item_title: targetItem?.title || message.proposedChange?.item_title || option.title,
-        patch: option.patch || {},
-        verdict: message.proposedChange?.verdict,
-      },
+      proposedChange: null,
       applied: false,
       applyError: '',
+      selectionNote: '',
+      classifyingCandidate: hasExecutablePatch(option),
     })
+
+    if (!hasExecutablePatch(option)) {
+      updateMessage(message.id, {
+        classifyingCandidate: false,
+        selectionNote: 'That option keeps the Current Plan as-is.',
+      })
+      return
+    }
+
+    try {
+      const verdict = await app.classify({
+        item: targetItem,
+        actionType: mode,
+        request: message.request,
+        patch: option.patch || {},
+      })
+      updateMessage(message.id, {
+        classifyingCandidate: false,
+        proposedChange: {
+          item_id: option.item_id,
+          item_title: targetItem.title || option.title,
+          patch: option.patch || {},
+          verdict,
+        },
+      })
+    } catch (err) {
+      updateMessage(message.id, {
+        classifyingCandidate: false,
+        proposedChange: null,
+        applyError: assistantErrorText(err),
+      })
+    }
   }
 
   const applyProposal = async (message, proposedChange) => {
@@ -181,11 +245,7 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
         if (tripId) onCommand?.({ type: 'navigate', to: tripHref(tripId, 'conflict'), delayMs: 850 })
       }
     } catch (err) {
-      const applyError = err.status === 409
-        ? 'A vote is already open for this time block.'
-        : err.status === 422
-          ? 'Reopening this block needs a written reason.'
-          : 'I could not reach the backend. Try again in a moment.'
+      const applyError = assistantErrorText(err)
       updateMessage(message.id, { applying: false, applyError })
     }
   }

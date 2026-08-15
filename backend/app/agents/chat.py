@@ -30,9 +30,21 @@ class ItemContext:
 
 
 @dataclass(frozen=True)
+class HistoryCandidateOption:
+    id: str
+    label: str
+    title: str
+    body: str
+    tradeoff: str
+    item_id: str
+    patch: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class HistoryTurn:
     role: Literal["user", "assistant"]
     text: str
+    candidate_options: tuple[HistoryCandidateOption, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -124,6 +136,19 @@ def ask_for_change() -> str:
 def no_change_reply() -> str:
     return "I can help with that, but I do not see a specific trip change to check yet."
 
+
+
+def failure_reply(request: QuestionInput) -> str:
+    if request.item:
+        return (
+            f"I could not check that reliably right now. {request.item.title} is currently "
+            f"scheduled at {request.item.start_hour:g}:00 at {request.item.place}. "
+            "The Current Plan has not changed."
+        )
+    return (
+        "I could not check that reliably right now. I can still answer questions "
+        "about the shared itinerary or help prepare a change to a specific block."
+    )
 
 def fallback_explanation(verdict: Classification) -> str:
     return f"{verdict.headline}. {verdict.detail}"

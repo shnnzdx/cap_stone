@@ -177,6 +177,7 @@ class ChangeRequest(BaseModel):
     place: str | None = None
     start_hour: float | None = Field(default=None, ge=0, le=24)
     day_date: date | None = None
+    duration_min: int | None = Field(default=None, gt=0)
     price_per_person: float | None = Field(default=None, ge=0)
     # Include new coordinates when replacing a place so the map moves with it.
     lat: float | None = Field(default=None, ge=-90, le=90)
@@ -247,9 +248,20 @@ class TripCreateRequest(BaseModel):
     currency: str = Field(default="USD", min_length=1, max_length=8)
 
 
+class ChatTurnCandidateOptionRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=120)
+    label: str = Field(default="", max_length=120)
+    title: str = Field(default="", max_length=200)
+    body: str = Field(default="", max_length=1000)
+    tradeoff: str = Field(default="", max_length=1000)
+    item_id: str = Field(min_length=1, max_length=120)
+    patch: dict = Field(default_factory=dict)
+
+
 class ChatTurnRequest(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     text: str = Field(min_length=1, max_length=1000)
+    candidate_options: list[ChatTurnCandidateOptionRequest] = Field(default_factory=list, max_length=10)
 
 
 class ChatRequest(BaseModel):
@@ -733,7 +745,22 @@ def chat_with_trip(
             message=body.message,
             item_id=body.item_id,
             history=tuple(
-                chat_agent.HistoryTurn(role=turn.role, text=turn.text)
+                chat_agent.HistoryTurn(
+                    role=turn.role,
+                    text=turn.text,
+                    candidate_options=tuple(
+                        chat_agent.HistoryCandidateOption(
+                            id=option.id,
+                            label=option.label,
+                            title=option.title,
+                            body=option.body,
+                            tradeoff=option.tradeoff,
+                            item_id=option.item_id,
+                            patch=option.patch,
+                        )
+                        for option in turn.candidate_options
+                    ),
+                )
                 for turn in body.history
             ),
         )
@@ -1330,7 +1357,7 @@ def list_members(
     return pref_service.list_members(db, me)
 
 
-# ————————————————————— Organizer actions —————————————————————
+# ————————————————————�?Organizer actions ————————————————————�?
 #
 # All three maintain the shared frame. None of them decides for anyone else.
 

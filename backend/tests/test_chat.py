@@ -49,7 +49,7 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
 
     def fake_call_agent(**kwargs):
         return base.AgentRunResult(
-            content="I can prepare the shopping replacement.",
+            content="I can prepare moving this later.",
             trace_id="trace",
             rounds=(),
             tool_results=(
@@ -58,10 +58,7 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
                     "arguments": {},
                     "output": {
                         "item": {"id": full_trip["art"].id},
-                        "proposed_patch": {
-                            "title": "Magnificent Mile shopping",
-                            "place": "Magnificent Mile",
-                        },
+                        "proposed_patch": {"start_hour": 15.5},
                     },
                     "guard_rejected": False,
                 },
@@ -77,7 +74,7 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
             f"/api/trips/{full_trip['trip'].id}/chat",
             headers=_headers(full_trip["me"].id),
             json={
-                "message": "I want to go shopping this afternoon",
+                "message": "Move this to 3:30 PM",
                 "item_id": full_trip["art"].id,
             },
         )
@@ -87,10 +84,21 @@ def test_chat_mock_flow_returns_reply_change_and_verdict(monkeypatch, db: Sessio
     assert not re.search(r"[\u4e00-\u9fff]", body["reply"])
     assert body["proposed_change"]["item_id"] == full_trip["art"].id
     assert body["proposed_change"]["item_title"] == "Art Institute of Chicago"
-    assert body["proposed_change"]["patch"]["title"] == "Magnificent Mile shopping"
-    assert body["proposed_change"]["patch"]["place"] == "Magnificent Mile"
+    assert body["proposed_change"]["patch"]["start_hour"] == 15.5
     assert body["proposed_change"]["verdict"]["path"] == "notice"
 
+def test_submit_change_accepts_duration_patch(db: Session, full_trip: dict):
+    with _client(db) as client:
+        response = client.post(
+            f"/api/plans/items/{full_trip['art'].id}/changes",
+            headers=_headers(full_trip["me"].id),
+            json={"duration_min": 90, "request": "Shorten this visit"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "notice"
+    db.refresh(full_trip["art"])
+    assert full_trip["art"].duration_min == 90
 
 def test_chat_resolves_delegated_downtown_cafe_replacement_from_history(
     monkeypatch, db: Session, full_trip: dict
@@ -245,11 +253,7 @@ def test_chat_is_read_only(monkeypatch, db: Session, full_trip: dict):
                     "arguments": {},
                     "output": {
                         "item": {"id": full_trip["art"].id},
-                        "proposed_patch": {
-                            "start_hour": 15.5,
-                            "title": "Magnificent Mile shopping",
-                            "place": "Magnificent Mile",
-                        },
+                        "proposed_patch": {"start_hour": 15.5},
                     },
                     "guard_rejected": False,
                 },
@@ -271,7 +275,7 @@ def test_chat_is_read_only(monkeypatch, db: Session, full_trip: dict):
             f"/api/trips/{full_trip['trip'].id}/chat",
             headers=_headers(full_trip["me"].id),
             json={
-                "message": "Move this to 3:30 PM and make it shopping",
+                "message": "Move this to 3:30 PM",
                 "item_id": full_trip["art"].id,
             },
         )
@@ -283,7 +287,6 @@ def test_chat_is_read_only(monkeypatch, db: Session, full_trip: dict):
         DecisionRound: _snapshot(db, DecisionRound),
         ChangeProposal: _snapshot(db, ChangeProposal),
     } == before
-
 
 def test_chat_asks_when_it_cannot_identify_the_item(monkeypatch, db: Session, full_trip: dict):
     monkeypatch.setenv("MOCK_AI", "1")
@@ -385,7 +388,94 @@ def test_chat_degrades_when_openai_is_unavailable_and_classify_still_works(
 
     assert chat_response.status_code == 200
     assert chat_response.json()["proposed_change"] is None
-    assert "specific trip change" in chat_response.json()["reply"].lower()
+    assert "could not check that reliably" in chat_response.json()["reply"].lower()
+    assert "art institute of chicago" in chat_response.json()["reply"].lower()
+    assert "current plan has not changed" in chat_response.json()["reply"].lower()
     assert not re.search(r"[\u4e00-\u9fff]", chat_response.json()["reply"])
     assert classify_response.status_code == 200
     assert classify_response.json()["path"] == "notice"
+
+
+def test_chat_selecting_previous_candidate_is_read_only(
+    monkeypatch, db: Session, full_trip: dict
+):
+    def unexpected_call_agent(**kwargs):
+        raise AssertionError("call_agent should not run for follow-up option selection")
+
+    monkeypatch.setattr(base, "call_agent", unexpected_call_agent)
+
+    before = {
+        PlanItem: _snapshot(db, PlanItem),
+        DecisionRound: _snapshot(db, DecisionRound),
+        ChangeProposal: _snapshot(db, ChangeProposal),
+    }
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "Option 2.",
+                "history": [
+                    {
+                        "role": "assistant",
+                        "text": "Here are a few options.",
+                        "candidate_options": [
+                            {
+                                "id": "keep",
+                                "label": "Keep current",
+                                "title": "Keep current",
+                                "body": "No change.",
+                                "tradeoff": "Wednesday stays busy.",
+                                "item_id": full_trip["art"].id,
+                                "patch": {},
+                            },
+                            {
+                                "id": "move-later",
+                                "label": "Move later",
+                                "title": "Move the museum later",
+                                "body": "Shift Art Institute of Chicago to 3:00 PM.",
+                                "tradeoff": "Dinner has less buffer afterward.",
+                                "item_id": full_trip["art"].id,
+                                "patch": {"start_hour": 15.0},
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["proposed_change"] is not None
+    assert body["proposed_change"]["item_id"] == full_trip["art"].id
+    assert body["proposed_change"]["patch"] == {"start_hour": 15.0}
+    assert body["proposed_change"]["verdict"]["path"] == "notice"
+    assert body["candidate_options"] == []
+    assert "click Apply" in body["reply"]
+    assert {
+        PlanItem: _snapshot(db, PlanItem),
+        DecisionRound: _snapshot(db, DecisionRound),
+        ChangeProposal: _snapshot(db, ChangeProposal),
+    } == before
+
+
+def test_chat_stale_selected_item_fails_safely_without_a_404(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setattr(base, "call_agent", lambda **kwargs: (_ for _ in ()).throw(AssertionError("call_agent should not run")))
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "Move this one later",
+                "item_id": "missing-item-id",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["proposed_change"] is None
+    assert "which item" in body["reply"].lower()
