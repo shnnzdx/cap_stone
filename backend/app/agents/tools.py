@@ -986,6 +986,8 @@ def _find_replacement_place(
 def _replacement_candidates(
     items: list[PlanItem], selected: PlanItem
 ) -> tuple[dict[str, Any], ...]:
+    if selected.duration_min is None:
+        return ()
     existing_titles = {item.title for item in items if item.id != selected.id}
     end_hour = selected.start_hour + selected.duration_min / 60
     candidates: list[dict[str, Any]] = []

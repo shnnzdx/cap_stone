@@ -236,9 +236,20 @@ class TripCreateRequest(BaseModel):
     currency: str = Field(default="USD", min_length=1, max_length=8)
 
 
+class ChatTurnCandidateOptionRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=120)
+    label: str = Field(default="", max_length=120)
+    title: str = Field(default="", max_length=200)
+    body: str = Field(default="", max_length=1000)
+    tradeoff: str = Field(default="", max_length=1000)
+    item_id: str = Field(min_length=1, max_length=120)
+    patch: dict = Field(default_factory=dict)
+
+
 class ChatTurnRequest(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     text: str = Field(min_length=1, max_length=1000)
+    candidate_options: list[ChatTurnCandidateOptionRequest] = Field(default_factory=list, max_length=10)
 
 
 class ChatRequest(BaseModel):
@@ -736,7 +747,22 @@ def chat_with_trip(
             message=body.message,
             item_id=body.item_id,
             history=tuple(
-                chat_agent.HistoryTurn(role=turn.role, text=turn.text)
+                chat_agent.HistoryTurn(
+                    role=turn.role,
+                    text=turn.text,
+                    candidate_options=tuple(
+                        chat_agent.HistoryCandidateOption(
+                            id=option.id,
+                            label=option.label,
+                            title=option.title,
+                            body=option.body,
+                            tradeoff=option.tradeoff,
+                            item_id=option.item_id,
+                            patch=option.patch,
+                        )
+                        for option in turn.candidate_options
+                    ),
+                )
                 for turn in body.history
             ),
         )
@@ -753,7 +779,23 @@ def chat_with_trip(
             "patch": result.proposed_change.patch,
             "verdict": _classification_out(result.proposed_change.verdict),
         }
-    return {"reply": result.reply, "proposed_change": proposed}
+    candidate_options = [
+        {
+            "id": option.id,
+            "label": option.label,
+            "title": option.title,
+            "body": option.body,
+            "tradeoff": option.tradeoff,
+            "item_id": option.item_id,
+            "patch": option.patch,
+        }
+        for option in result.candidate_options
+    ]
+    return {
+        "reply": result.reply,
+        "proposed_change": proposed,
+        "candidate_options": candidate_options,
+    }
 
 
 def _require_scoped_plan(

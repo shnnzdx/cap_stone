@@ -1,4 +1,4 @@
-"""Agent 地基测试 —— 守的是"双 provider 不会把私密数据和配置混乱带进 prompt"。"""
+"""Agent 地基测试 —— 守的是"DeepSeek 单一路径不会把私密数据和配置混乱带进 prompt"。"""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def test_safe_context_still_says_enough_to_be_useful():
 
 def test_mock_mode_never_touches_the_network(monkeypatch):
     monkeypatch.setenv("MOCK_AI", "1")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
     result = base.call_model(
         system="s",
@@ -100,9 +100,7 @@ def test_mock_mode_never_touches_the_network(monkeypatch):
 
 def test_missing_key_raises_agent_unavailable(monkeypatch):
     monkeypatch.delenv("MOCK_AI", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.delenv("OLLAMA_CLOUD_API_KEY", raising=False)
 
     with pytest.raises(base.AgentUnavailable):
         base.call_model(
@@ -131,43 +129,44 @@ def test_json_object_mode_for_compatible_providers(provider_name: str, provider_
     }
 
 
-def test_ollama_cloud_keeps_strict_json_schema_mode():
-    config = _provider(base.OLLAMA_CLOUD_PROVIDER, "https://ollama.com/v1/", "qwen3.5:cloud")
+def test_non_deepseek_urls_keep_strict_json_schema_mode():
+    config = _provider("custom", "https://example.com/v1/", "custom-model")
 
     assert base._response_format("agent", {"type": "object"}, config)["type"] == "json_schema"
 
 
-def test_route_defaults_use_both_providers(monkeypatch):
-    monkeypatch.delenv("CHAT_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("PLANNER_AI_PROVIDER", raising=False)
-    monkeypatch.delenv("EXPLAINER_AI_PROVIDER", raising=False)
-
-    assert base._resolve_provider_name(base.CHAT_ROUTE) == base.OLLAMA_CLOUD_PROVIDER
+def test_all_routes_resolve_to_deepseek():
+    assert base._resolve_provider_name(base.CHAT_ROUTE) == base.DEEPSEEK_PROVIDER
     assert base._resolve_provider_name(base.PLANNER_ROUTE) == base.DEEPSEEK_PROVIDER
     assert base._resolve_provider_name(base.EXPLAINER_ROUTE) == base.DEEPSEEK_PROVIDER
 
 
-def test_route_env_can_override_provider(monkeypatch):
+def test_old_route_env_values_no_longer_reroute_runtime(monkeypatch):
     monkeypatch.setenv("CHAT_AI_PROVIDER", "deepseek")
-    monkeypatch.setenv("PLANNER_AI_PROVIDER", "ollama_cloud")
-    monkeypatch.setenv("EXPLAINER_AI_PROVIDER", "legacy")
+    monkeypatch.setenv("PLANNER_AI_PROVIDER", "some_old_provider")
+    monkeypatch.setenv("EXPLAINER_AI_PROVIDER", "something_else")
 
     assert base._resolve_provider_name(base.CHAT_ROUTE) == base.DEEPSEEK_PROVIDER
-    assert base._resolve_provider_name(base.PLANNER_ROUTE) == base.OLLAMA_CLOUD_PROVIDER
-    assert base._resolve_provider_name(base.EXPLAINER_ROUTE) == base.LEGACY_PROVIDER
+    assert base._resolve_provider_name(base.PLANNER_ROUTE) == base.DEEPSEEK_PROVIDER
+    assert base._resolve_provider_name(base.EXPLAINER_ROUTE) == base.DEEPSEEK_PROVIDER
 
 
-def test_provider_catalog_reads_dual_provider_configuration(monkeypatch):
+def test_provider_catalog_reads_deepseek_configuration(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-test")
     monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
-    monkeypatch.setenv("OLLAMA_CLOUD_API_KEY", "ollama-cloud-test")
-    monkeypatch.setenv("OLLAMA_CLOUD_BASE_URL", "https://ollama.com/v1/")
-    monkeypatch.setenv("OLLAMA_CLOUD_MODEL", "qwen3.5:cloud")
 
     catalog = base.provider_catalog()
 
+    assert set(catalog) == {base.DEEPSEEK_PROVIDER}
     assert catalog[base.DEEPSEEK_PROVIDER].api_key == "deepseek-test"
     assert catalog[base.DEEPSEEK_PROVIDER].base_url == "https://api.deepseek.com"
-    assert catalog[base.OLLAMA_CLOUD_PROVIDER].api_key == "ollama-cloud-test"
-    assert catalog[base.OLLAMA_CLOUD_PROVIDER].model == "qwen3.5:cloud"
+
+
+def test_provider_runtime_state_reports_only_deepseek(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-test")
+
+    state = base.provider_runtime_state()
+
+    assert set(state) == {base.DEEPSEEK_PROVIDER}
+    assert state[base.DEEPSEEK_PROVIDER]["has_api_key"] is True

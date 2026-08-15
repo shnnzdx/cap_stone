@@ -50,7 +50,7 @@ def _verdict(settledness=Settledness.LOOSE, hour=15.5, with_constraint=False):
 @pytest.fixture(autouse=True)
 def mocked(monkeypatch):
     monkeypatch.setenv("MOCK_AI", "1")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
 
 def test_it_explains_a_clean_change():
