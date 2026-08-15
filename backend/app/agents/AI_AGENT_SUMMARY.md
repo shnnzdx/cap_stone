@@ -1068,17 +1068,51 @@ Update Current Plan
 
 That is the core Cadensy AI Agent.
 
----
----
+<br />
+
+```text
+════════════════════════════════════════════════════════════════════
+                    END OF THE ORIGINAL DOCUMENT
+                         Sections 1 – 15
+════════════════════════════════════════════════════════════════════
+```
+
+<br />
+
+```text
+════════════════════════════════════════════════════════════════════
+
+                    ██  PART II  ██
+                    CURRENT STATE · updated 2026-08-15
+                    Sections 16 – 24
+
+    Everything above is the original document, unedited.
+    Everything below was appended later and describes the code
+    as it actually runs today.
+
+    Where the two disagree, PART II is the accurate one.
+    Start with section 16 — it lists exactly what Part I gets wrong.
+
+════════════════════════════════════════════════════════════════════
+```
+
+<br />
 
 # Part II — Current State (updated 2026-08-15)
 
-Everything above documents the design as it stood earlier. This part records what
-the code does **now**. Where the two disagree, this part is the accurate one — it
-was written by reading the code and running it, not from memory.
+## How to read this document
 
-Nothing above has been edited, so read the corrections in section 16 before
-following any setup or demo instructions from Part I.
+| If you want | Read |
+|---|---|
+| The product story, the problem, the demo script, the classroom pitch | **Part I** (1–15) — still the best material for presenting |
+| What the code does now: model, architecture, tools, decision paths | **Part II** (16–24) |
+| To set up or run anything | **Section 16 first.** Part I's setup and demo steps are out of date |
+
+Part I was not edited. Nothing in it was deleted or rewritten — the corrections
+live in section 16 instead, so the original stays intact as a record of the
+earlier design.
+
+Part II was written by reading the code and running it, not from memory.
 
 ---
 
