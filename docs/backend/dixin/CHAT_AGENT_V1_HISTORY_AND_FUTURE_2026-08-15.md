@@ -13,6 +13,32 @@ It is a baseline handoff document tied to the current repository state.
 
 Chat Agent V1 is functionally complete for the current capstone scope.
 
+### 2.1 Main branch restoration note on August 15, 2026
+
+This needs to be stated explicitly because the repository history can otherwise look misleading:
+
+- commit `d30cad3c1e5dc202754364a8ba590cde168f9f96` completed the Chat Agent V1 backend baseline
+- later, commit `127ef9196cbda8a1238c37c8d11727e8df40af2c` kept many valid repo updates, but it also replaced the active chat-agent runtime path with a simplified branch
+- commit `6e2197e04f605b7178fae0f310b36d7806d5b952` added backend handoff docs only
+- commit `4b5b44bff6110c929572308c506bf32019918449` refreshed Trip workspace UI and handoff docs, and was not the backend chat-agent overwrite
+- commit `9b69a44` on `main` restored the missing Chat Agent V1 runtime behavior while preserving the rest of the already-landed `127ef91` repository baseline outside the chat-runtime files
+
+Practical meaning:
+
+- `main` should now be understood as: keep the broader repo state that exists after `127ef91`, but restore the Chat Agent V1 backend behavior that had existed in `d30cad3`
+- future sync work must not treat the simplified post-`127ef91` chat path as the intended source of truth
+- if Chat Agent code is compared again in a future merge, use `d30cad3` and `9b69a44` as the behavioral reference points, not only the immediate pre-restore state
+
+The restoration on `main` specifically re-established these V1 backend capabilities:
+
+- `base.call_agent(...)` as the active read-only chat agent harness
+- chat history flowing back into the backend agent branch
+- `candidate_options` round-tripping through the API contract
+- follow-up option selection from prior assistant-provided options
+- deterministic degraded fallback when the agent/tool branch fails
+- the "Current Plan has not changed until Apply" safety contract
+- replacement validation tied to supported tool-produced candidates
+
 Completed and validated:
 
 - P0 Core Product Contract
