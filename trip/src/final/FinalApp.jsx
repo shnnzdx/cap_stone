@@ -492,7 +492,7 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
           : <Link className="brandBack" to={navigation.contextHref}><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
       </div>
       <div className="tripUnifiedCenter">
-        <div className="tripUnifiedTitleRow"><nav className="tripUnifiedTabs" aria-label="Trip workspace">
+        <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
           {navigation.entries.map(entry => <Link key={entry.id} className={entry.active ? 'active' : ''} to={entry.href}>
             {tripNavigationLabels[entry.id] || entry.id}
             {entry.id === 'updates' && pending > 0 && <i>{pending}</i>}
@@ -504,32 +504,28 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
       </div>
     </header>
     <main className="workspaceContent">
-      <TripContextMasthead trip={currentTrip} role={currentUser.role}/>
+      <TripPill trip={currentTrip} role={currentUser.role}/>
       {children}
     </main>
   </div>
 }
 
-function roleLabel(role) {
-  return role === 'guest' ? 'Guest' : role === 'organizer' ? 'Organizer' : 'Participant'
-}
-
-function TripContextMasthead({ trip: t, role }) {
+/* Trip metadata capsule. It used to sit at the top bar with long fragmented text; move it into the content area as a compact dark capsule. */
+function TripPill({ trip: t, role }) {
   const city = (t.destination || '').split(',')[0].trim()
   const dates = (t.dates || '').replace(/,?\s*\d{4}$/, '')
-  return <section className="tripContextMasthead" aria-label="Trip context">
-    <div>
-      <span className="tripContextKicker">Current workspace</span>
-      <h1>{t.name}</h1>
-    </div>
-    <dl className="tripContextMeta">
-      <div><dt>Destination</dt><dd>{city || t.destination}</dd></div>
-      <div><dt>Dates</dt><dd>{dates || 'Dates not set'}</dd></div>
-      <div><dt>Group</dt><dd>{t.people} travelers</dd></div>
-      <div><dt>Role</dt><dd>{roleLabel(role)}</dd></div>
-      <div><dt>Status</dt><dd>{t.status}</dd></div>
-    </dl>
-  </section>
+  return <div className="tripPill">
+    <span className="pillDot" aria-hidden="true"/>
+    <span className="pillStatus">{t.status}</span>
+    <i/>
+    <span>{city}</span>
+    <i/>
+    <span>{dates}</span>
+    <i/>
+    <span>{t.people}</span>
+    {/* Show all three roles. If participant has no marker, it can look role-less even though it is the default full-rights role. */}
+    <><i/><span className={`pillRole role-${role}`}>{role === 'guest' ? 'Guest' : role === 'organizer' ? 'Organizer' : 'Participant'}</span></>
+  </div>
 }
 
 // Guest account binding: keep the existing membership, do not create a member, and keep submitted preferences.
@@ -757,30 +753,6 @@ function PersonalThread() {
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState([])
   const [sending, setSending] = useState(false)
-
-  const formatCandidateSummary = candidateOptions => candidateOptions
-    .map((option, index) => `${index + 1}. ${option.title}${option.tradeoff ? ` — ${option.tradeoff}` : ''}`)
-    .join('\n')
-
-  const historyTurnFromMessage = message => {
-    const turn = {
-      role: message.from === 'you' ? 'user' : 'assistant',
-      text: message.text,
-    }
-    if (message.from !== 'you' && Array.isArray(message.candidateOptions) && message.candidateOptions.length) {
-      turn.candidate_options = message.candidateOptions.map(option => ({
-        id: option.id,
-        label: option.label || '',
-        title: option.title || '',
-        body: option.body || '',
-        tradeoff: option.tradeoff || '',
-        item_id: option.item_id,
-        patch: option.patch || {},
-      }))
-    }
-    return turn
-  }
-
   const send = async () => {
     const text = draft.trim()
     if (!text || sending) return
@@ -791,19 +763,18 @@ function PersonalThread() {
     try {
       const history = messages
         .filter(message => !message.loading && message.text)
-        .map(historyTurnFromMessage)
+        .map(message => ({
+          role: message.from === 'you' ? 'user' : 'assistant',
+          text: message.text,
+        }))
       const result = await app.chatWithTrip({ message: text, itemId: null, history })
-      const candidateOptions = Array.isArray(result.candidate_options) ? result.candidate_options : []
       setMessages(current => current.map(message => message.id === loadingId ? {
         ...message,
         loading: false,
         from: 'tripSync',
         text: result.proposed_change
           ? `${result.reply} I matched this to ${result.proposed_change.item_title}. Open that item in the plan to review and submit the change.`
-          : candidateOptions.length
-            ? `${result.reply}\n\nOptions:\n${formatCandidateSummary(candidateOptions)}\n\nReply with the option number or tell me how to adjust it.`
-            : result.reply,
-        candidateOptions,
+          : result.reply,
       } : message))
     } catch (err) {
       const text = err.status === 409
@@ -891,18 +862,17 @@ function UpdatesPage() {
   const pendingProposals = (app.activeProposals || []).filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
   const hasActions = openRounds.length > 0 || pendingProposals.length > 0
   return <TripShell>
-    <div className="pageHeading editorialPageHeading updatesHeading"><div><h1>Updates</h1><p>Decisions first, trip notes after.</p></div></div>
-    <div className="updateFilters editorialUpdateTabs updatesTabs">
-      <button className={app.updateFilter === 'actions' ? 'active' : ''} onClick={() => app.setUpdateFilter('actions')}>Needs decision {hasActions && <i>{openRounds.length + pendingProposals.length}</i>}</button>
-      <button className={app.updateFilter === 'all' ? 'active' : ''} onClick={() => app.setUpdateFilter('all')}>Informational</button>
+    <div className="pageHeading editorialPageHeading"><div><h1>Trip notes</h1></div></div>
+    <div className="updateFilters editorialUpdateTabs">
+      <button className={app.updateFilter === 'all' ? 'active' : ''} onClick={() => app.setUpdateFilter('all')}>All</button>
       <button className={app.updateFilter === 'forYou' ? 'active' : ''} onClick={() => app.setUpdateFilter('forYou')}>For you</button>
+      <button className={app.updateFilter === 'actions' ? 'active' : ''} onClick={() => app.setUpdateFilter('actions')}>Actions {hasActions && <i>{openRounds.length + pendingProposals.length}</i>}</button>
     </div>
     {app.loading.initial && <div className="planNotice"><span>…</span><div><strong>Loading updates</strong><p>Fetching actions and notices from the backend.</p></div></div>}
     {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
     <section className="updatesList">
-      {app.updateFilter === 'actions' && <div className="updatesSection updatesDecisionSection">
-        <div className="updatesSectionHead"><span>Needs your decision</span><h2>{hasActions ? 'Review before the plan changes' : 'Resolved'}</h2>{!hasActions && <p>No votes or confirmations are waiting on you right now.</p>}</div>
-        {!hasActions && <div className="emptyState quietEmptyState updatesResolvedState"><span></span><h2>No actions right now</h2><p>The Current Plan can keep moving.</p></div>}
+      {app.updateFilter === 'actions' && <>
+        {!hasActions && <div className="emptyState quietEmptyState"><span></span><h2>No actions right now</h2></div>}
         {openRounds.map(round => <DecisionRoundCard key={round.id} round={round}/>)}
         {pendingProposals.map(proposal => <article className="decisionCard" key={proposal.id}>
           <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can split or clear this block.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
@@ -910,19 +880,16 @@ function UpdatesPage() {
           <div className="impactRow">{proposal.affectedMembers.map(member => <span key={member.id}>{member.label}: {member.status === 'accepted' ? 'accepted' : 'needs decision'}</span>)}<span>Names hidden</span></div>
           <div className="decisionActions"><Button onClick={() => navigate(tripHref(currentTrip.id, 'conflict'))}>Open the conversation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
         </article>)}
-        <div className="updatesResolvedLane"><span>Resolved</span><p>Completed decisions are reflected in the Current Plan and no longer need attention here.</p></div>
-      </div>}
-      {app.updateFilter === 'all' && <div className="updatesSection updatesInfoSection">
-        <div className="updatesSectionHead"><span>Informational updates</span><h2>What changed around the trip</h2><p>Notes stay light unless they need a decision.</p></div>
+      </>}
+      {app.updateFilter === 'all' && <>
         {(app.baseUpdates || []).length ? (app.baseUpdates || []).map(item => <article className="updateRow" key={item.id}><span className={`updateIcon ${item.kind}`}>{item.icon}</span><div><h3>{item.title}</h3><p>{item.body}</p>{item.canObject && <button className="objectLink" onClick={async () => { await app.objectToNotice(item); app.setUpdateFilter('actions'); app.notify('Escalated to a group round') }}>I have a different idea →</button>}</div><time>{item.time}</time></article>)
           : <div className="emptyState quietEmptyState"><span></span><h2>No updates yet</h2><p>Activity for this trip will appear here once members join and preferences arrive.</p></div>}
-      </div>}
-      {app.updateFilter === 'forYou' && <div className="updatesSection updatesInfoSection">
-        <div className="updatesSectionHead"><span>For you</span><h2>Mentions and personal notes</h2><p>Private nudges and replies that involve your part of the plan.</p></div>
+      </>}
+      {app.updateFilter === 'forYou' && <>
         {(app.personalUpdates || []).length ? <>
           {app.personalUpdates.map(item => <article className="updateRow" key={item.id}><span className={`updateIcon ${item.kind}`}>{item.icon}</span><div><h3>{item.title}</h3><p>{item.body}</p></div><time>{item.time}</time></article>)}
         </> : <div className="emptyState quietEmptyState"><span></span><h2>Nothing for you yet</h2><p>Mentions and replies that involve you will appear here.</p></div>}
-      </div>}
+      </>}
     </section>
   </TripShell>
 }
