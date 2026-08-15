@@ -13,12 +13,14 @@ The main product goal was to improve DeepSeek Planner quality and stability with
 Provider routing was intentionally kept unchanged:
 
 ```text
-Chat Agent      -> Ollama Cloud / qwen3.5
-Planner Agent   -> DeepSeek / deepseek-v4-flash
-Explainer Agent -> DeepSeek / deepseek-v4-flash
+Chat Agent      -> DeepSeek
+Planner Agent   -> DeepSeek
+Explainer Agent -> DeepSeek
 ```
 
-No new provider, fallback provider, or agent was added.
+No new provider, fallback provider, or agent was added. This document should be
+read against the current main-branch backend, where the active real-provider path
+is DeepSeek-only.
 
 ## 3. Candidate Id Contract
 

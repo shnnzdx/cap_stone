@@ -27,12 +27,13 @@ The completed work focused on improving itinerary quality, place-data correctnes
 Current intended AI routing remains:
 
 ```text
-Chat Agent      -> Ollama Cloud / qwen3.5
-Planner Agent   -> DeepSeek / deepseek-v4-flash
-Explainer Agent -> DeepSeek / deepseek-v4-flash
+Chat Agent      -> DeepSeek
+Planner Agent   -> DeepSeek
+Explainer Agent -> DeepSeek
 ```
 
-No new provider fallback was added.
+No new provider fallback was added. The route names still describe usage
+scenarios, but the active backend provider path on `main` is now DeepSeek-only.
 
 ## 4. Main Outcomes
 
