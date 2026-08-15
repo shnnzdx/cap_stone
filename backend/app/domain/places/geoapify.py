@@ -24,7 +24,16 @@ PLACE_CATEGORY_GROUPS = (
         "parks",
         ("leisure.park", "leisure.park.garden", "natural.protected_area", "national_park"),
     ),
-    ("food", ("catering.restaurant", "catering.cafe")),
+    (
+        "food",
+        (
+            "catering.restaurant",
+            "catering.cafe",
+            "catering.fast_food",
+            "catering.food_court",
+            "commercial.food_and_drink.bakery",
+        ),
+    ),
     (
         "leisure",
         ("entertainment.aquarium", "entertainment.planetarium", "entertainment.zoo"),
@@ -83,32 +92,39 @@ def fetch_places(destination: str, *, limit: int = 72) -> tuple[GeoapifyPlace, .
             for _group, categories in PLACE_CATEGORY_GROUPS:
                 per_category_limit = max(3, ceil(per_group_limit / len(categories)))
                 for category in categories:
-                    try:
-                        response = client.get(
-                            PLACES_URL,
-                            params={
-                                # Geoapify accepts one category hierarchy per
-                                # request; a comma-joined union is rejected.
-                                "categories": category,
-                                "filter": f"place:{city['place_id']}",
-                                "bias": biases[request_index % len(biases)],
-                                "limit": per_category_limit,
-                                "lang": "en",
-                                "apiKey": api_key,
-                            },
-                        )
-                        response.raise_for_status()
-                        payload = response.json()
-                    except (httpx.HTTPError, ValueError, TypeError):
-                        request_index += 1
-                        continue
-                    request_index += 1
-                    successful_requests += 1
-                    features.extend(
-                        (feature, (category,))
-                        for feature in payload.get("features") or ()
-                        if isinstance(feature, dict)
+                    # Restaurants are route anchors and need neighborhood coverage.
+                    # Other categories keep one rotating bias so candidate diversity
+                    # does not multiply provider calls or collapse into one category.
+                    query_biases = biases if category == "catering.restaurant" else (
+                        biases[request_index % len(biases)],
                     )
+                    for bias in query_biases:
+                        try:
+                            response = client.get(
+                                PLACES_URL,
+                                params={
+                                    # Geoapify accepts one category hierarchy per
+                                    # request; a comma-joined union is rejected.
+                                    "categories": category,
+                                    "filter": f"place:{city['place_id']}",
+                                    "bias": bias,
+                                    "limit": per_category_limit,
+                                    "lang": "en",
+                                    "apiKey": api_key,
+                                },
+                            )
+                            response.raise_for_status()
+                            payload = response.json()
+                        except (httpx.HTTPError, ValueError, TypeError):
+                            request_index += 1
+                            continue
+                        request_index += 1
+                        successful_requests += 1
+                        features.extend(
+                            (feature, (category,))
+                            for feature in payload.get("features") or ()
+                            if isinstance(feature, dict)
+                        )
             if successful_requests == 0:
                 raise GeoapifyUnavailable("Geoapify Places requests failed")
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:

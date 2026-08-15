@@ -28,8 +28,15 @@ def init_schema() -> dict:
                 "ALTER TABLE plan_item ALTER COLUMN place TYPE VARCHAR(500)",
                 "ALTER TABLE plan_item ALTER COLUMN photo_url TYPE VARCHAR(1000)",
                 "ALTER TABLE plan_item ADD COLUMN IF NOT EXISTS local_title VARCHAR(300)",
+                "ALTER TABLE plan ADD COLUMN IF NOT EXISTS needs_refresh BOOLEAN NOT NULL DEFAULT FALSE",
                 "ALTER TABLE place ADD COLUMN IF NOT EXISTS english_name VARCHAR(300)",
                 "ALTER TABLE place ADD COLUMN IF NOT EXISTS local_name VARCHAR(300)",
+                "ALTER TABLE trip ADD COLUMN IF NOT EXISTS cover_image_url VARCHAR(1500)",
+                "ALTER TABLE trip ADD COLUMN IF NOT EXISTS cover_image_source VARCHAR(30)",
+                "ALTER TABLE trip ADD COLUMN IF NOT EXISTS cover_attribution_name VARCHAR(200)",
+                "ALTER TABLE trip ADD COLUMN IF NOT EXISTS cover_attribution_url VARCHAR(1000)",
+                "ALTER TABLE trip ADD COLUMN IF NOT EXISTS cover_source_url VARCHAR(1000)",
+                "ALTER TABLE trip ADD COLUMN IF NOT EXISTS cover_image_fetched_at TIMESTAMPTZ",
             )
             for statement in statements:
                 connection.execute(text(statement))

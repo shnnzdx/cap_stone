@@ -210,12 +210,12 @@ def _planner_result(
 ) -> planner.PlanDayResult:
     morning, afternoon, late_afternoon = _candidate_triplet(payload)
     picks = [
-        planner.Pick(poi_name=morning.name, start_hour=10.0),
-        planner.Pick(poi_name=afternoon.name, start_hour=14.0),
-        planner.Pick(poi_name=late_afternoon.name, start_hour=16.0),
+        planner.Pick(candidate_id=morning.candidate_id, start_hour=10.0),
+        planner.Pick(candidate_id=afternoon.candidate_id, start_hour=14.0),
+        planner.Pick(candidate_id=late_afternoon.candidate_id, start_hour=16.0),
     ]
     if leading_invalid_name is not None:
-        picks.insert(0, planner.Pick(poi_name=leading_invalid_name, start_hour=10.0))
+        picks.insert(0, planner.Pick(candidate_id=leading_invalid_name, start_hour=10.0))
     return planner.PlanDayResult(
         picks=tuple(picks),
         used_ai=used_ai,
@@ -362,6 +362,69 @@ def test_generated_items_have_coordinates(db: Session):
     )
 
 
+def test_daily_candidate_pool_clusters_by_coordinate_but_changes_anchor_by_day():
+    places = tuple(
+        PlannerPlace(
+            candidate_id=f"north-{index}", name=f"North Museum {index}",
+            location="North", latitude=41.90 + index / 10000, longitude=-87.63,
+            category="entertainment.museum", address="North",
+            image_url=None, opening_hours=None, tags=("museum", "culture"),
+        )
+        for index in range(30)
+    ) + tuple(
+        PlannerPlace(
+            candidate_id=f"south-{index}", name=f"South Park {index}",
+            location="South", latitude=41.70 + index / 10000, longitude=-87.63,
+            category="leisure.park", address="South",
+            image_url=None, opening_hours=None, tags=("park", "nature"),
+        )
+        for index in range(30)
+    )
+    pois = tuple(generator._as_poi(place) for place in places)
+
+    day_one = generator._clustered_candidate_pool(
+        pois, day_index=1, attempt=0, interests=("museums",)
+    )
+    day_two = generator._clustered_candidate_pool(
+        pois, day_index=2, attempt=0, interests=("museums",)
+    )
+
+    assert len(day_one) == generator.DAY_SIGHTSEEING_CANDIDATE_LIMIT
+    assert len(day_two) == generator.DAY_SIGHTSEEING_CANDIDATE_LIMIT
+    assert {poi.place for poi in day_one} == {"North"}
+    assert {poi.place for poi in day_two} == {"South"}
+
+
+def test_dinner_candidates_exclude_cafe_only_and_large_detours():
+    route = generator._as_poi(PlannerPlace(
+        candidate_id="museum", name="Museum", location="Center",
+        latitude=41.88, longitude=-87.63, category="entertainment.museum",
+        address="Center", image_url=None, opening_hours=None, tags=("museum",),
+    ))
+    cafe = generator._as_poi(PlannerPlace(
+        candidate_id="cafe", name="Corner Coffee", location="Center",
+        latitude=41.881, longitude=-87.63, category="catering.cafe",
+        address="Center", image_url=None, opening_hours=None, tags=("catering", "cafe", "coffee"),
+    ))
+    restaurant = generator._as_poi(PlannerPlace(
+        candidate_id="restaurant", name="Neighborhood Bistro", location="Center",
+        latitude=41.882, longitude=-87.63, category="catering.restaurant",
+        address="Center", image_url=None, opening_hours=None, tags=("catering", "restaurant"),
+    ))
+    far_restaurant = generator._as_poi(PlannerPlace(
+        candidate_id="far", name="Far Restaurant", location="Far",
+        latitude=42.1, longitude=-87.63, category="catering.restaurant",
+        address="Far", image_url=None, opening_hours=None, tags=("catering", "restaurant"),
+    ))
+    day_item = generator.DraftItem(1, date(2026, 8, 14), 14.0, route, "rules")
+
+    candidates = generator._meal_candidates_for_day(
+        (cafe, restaurant, far_restaurant), window="dinner", day_items=(day_item,)
+    )
+
+    assert [poi.candidate_id for poi in candidates] == ["restaurant"]
+
+
 def test_global_places_generate_without_fabricating_unknown_metadata(
     db: Session, monkeypatch
 ):
@@ -464,6 +527,36 @@ def test_rules_activity_counts_follow_soft_pattern_without_becoming_a_hard_gate(
     ] == [3, 2, 4, 3, 2]
 
 
+def test_rules_can_place_a_high_value_evening_activity_after_dinner(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=3, budget_ceiling=800.0)
+    monkeypatch.setattr(
+        planner,
+        "plan_day",
+        lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+    day_three = sorted(
+        (item for item in result.items if item.day_index == 3),
+        key=lambda item: item.start_hour,
+    )
+    evening = [
+        item for item in day_three
+        if not item.is_meal and planner.time_window(item.start_hour) == "evening"
+    ]
+    dinners = [
+        item for item in day_three
+        if item.is_meal and planner.time_window(item.start_hour) == "dinner"
+    ]
+
+    assert len(evening) == 1
+    assert len(dinners) == 1
+    assert dinners[0].start_hour < evening[0].start_hour
+    assert planner.category_allows_window(tuple(evening[0].tags or ()), "evening")
+
+
 def test_saved_limited_availability_is_read_as_a_soft_lighter_day_signal(
     db: Session, monkeypatch
 ):
@@ -550,11 +643,11 @@ def test_invalid_second_ai_day_output_hands_control_back_to_rules_fallback(
         [
             {
                 "note": "bad first pass",
-                "picks": [{"poi_name": "Imaginary Rooftop", "start_hour": 10.0}],
+                "picks": [{"candidate_id": "invented_id", "start_hour": 10.0}],
             },
             {
                 "note": "still bad",
-                "picks": [{"poi_name": "Still Imaginary", "start_hour": 14.0}],
+                "picks": [{"candidate_id": "still_invented", "start_hour": 14.0}],
             },
         ]
     )
@@ -584,14 +677,14 @@ def test_canonical_generation_retries_one_invalid_ai_day_and_persists_repaired_p
         [
             {
                 "note": "bad first pass",
-                "picks": [{"poi_name": "Imaginary Rooftop", "start_hour": 10.0}],
+                "picks": [{"candidate_id": "invented_id", "start_hour": 10.0}],
             },
             {
                 "note": "Repaired canonical planner day.",
                 "picks": [
-                    {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
-                    {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
-                    {"poi_name": "Chicago Riverwalk", "start_hour": 16.0},
+                    {"candidate_id": "curated_chicago:16", "start_hour": 10.0},
+                    {"candidate_id": "curated_chicago:6", "start_hour": 14.0},
+                    {"candidate_id": "curated_chicago:13", "start_hour": 16.0},
                 ],
             },
         ]
@@ -826,6 +919,20 @@ def test_unsolvable_budget_blocks_without_writing_items(db: Session, monkeypatch
     assert db.query(PlanItem).count() == 0
 
 
+def test_missing_place_candidates_reports_the_actual_blocker(db: Session, monkeypatch):
+    setup = _make_trip(db, days=2)
+    monkeypatch.setattr(
+        generator.place_service, "places_for_planner", lambda *_args: ()
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "blocked"
+    assert result.blocked_reason == generator.NO_PLACES_BLOCKED_REASON
+    assert "date range" not in result.blocked_reason.lower()
+    assert db.query(PlanItem).count() == 0
+
+
 def test_single_member_budget_ceiling_does_not_block_initial_generation(db: Session):
     setup = _make_trip(db, days=4, budget_ceiling=1.0)
     participant_constraints = db.scalars(
@@ -955,3 +1062,155 @@ def test_non_organizer_cannot_generate_plan(client: TestClient, api_session: Ses
     )
 
     assert response.status_code == 403
+
+
+def _meal_test_poi(
+    candidate_id: str,
+    title: str,
+    *,
+    category: str,
+    lat: float,
+    lng: float,
+    diet: tuple[str, ...] = (),
+    opening_hours: str | None = None,
+) -> generator.Poi:
+    return generator.Poi(
+        candidate_id=candidate_id,
+        title=title,
+        category=category,
+        place="Test City",
+        lat=lat,
+        lng=lng,
+        price=25.0,
+        duration_min=60,
+        opens=None,
+        closes=None,
+        walk=None,
+        access=(),
+        diet=diet,
+        tags=tuple(category.split(".")),
+        opening_hours=opening_hours,
+    )
+
+
+def _route_item(poi: generator.Poi, start_hour: float) -> generator.DraftItem:
+    return generator.DraftItem(
+        day_index=1,
+        day_date=date(2026, 8, 17),
+        start_hour=start_hour,
+        poi=poi,
+        generated_by="rules",
+    )
+
+
+def test_lunch_expands_radius_for_restaurant_before_relaxing_to_nearby_cafe():
+    route = _meal_test_poi(
+        "museum", "Route Museum", category="entertainment.museum", lat=40.75, lng=-73.99
+    )
+    cafe = _meal_test_poi(
+        "cafe", "Nearby Coffee", category="catering.cafe", lat=40.751, lng=-73.99
+    )
+    restaurant = _meal_test_poi(
+        "restaurant", "Neighborhood Kitchen", category="catering.restaurant",
+        lat=40.768, lng=-73.99,
+    )
+
+    picked = generator._pick_meal_candidate(
+        (cafe, restaurant),
+        window="lunch",
+        start_hour=12.25,
+        day_index=1,
+        day_date=date(2026, 8, 17),
+        constraints=(),
+        organizer_id="organizer",
+        trip_total_before=0.0,
+        day_walk_before=0.0,
+        already_used=set(),
+        day_items=(_route_item(route, 10.0),),
+        meal_budget_cap=None,
+    )
+
+    assert picked is restaurant
+
+
+def test_dinner_rejects_cafe_and_honors_required_dietary_tags():
+    route = _meal_test_poi(
+        "gallery", "Route Gallery", category="entertainment.culture.gallery",
+        lat=40.75, lng=-73.99,
+    )
+    cafe = _meal_test_poi(
+        "cafe", "Late Cafe", category="catering.cafe", lat=40.7505, lng=-73.99
+    )
+    incompatible = _meal_test_poi(
+        "steak", "Steak House", category="catering.restaurant", lat=40.751, lng=-73.99
+    )
+    vegetarian = _meal_test_poi(
+        "vegetarian", "Garden Table", category="catering.restaurant",
+        lat=40.752, lng=-73.99, diet=("vegetarian",),
+    )
+    dietary = Constraint(
+        id="diet",
+        membership_id="member",
+        kind=ConstraintKind.DIETARY,
+        importance=Importance.REQUIRED,
+        params={"required_tags": ["vegetarian"]},
+    )
+
+    picked = generator._pick_meal_candidate(
+        (cafe, incompatible, vegetarian),
+        window="dinner",
+        start_hour=18.5,
+        day_index=1,
+        day_date=date(2026, 8, 17),
+        constraints=(dietary,),
+        organizer_id="organizer",
+        trip_total_before=0.0,
+        day_walk_before=0.0,
+        already_used=set(),
+        day_items=(_route_item(route, 16.0),),
+        meal_budget_cap=None,
+    )
+
+    assert picked is vegetarian
+
+
+def test_known_closed_restaurant_is_not_scheduled_for_dinner():
+    route = _meal_test_poi(
+        "park", "Route Park", category="leisure.park", lat=40.75, lng=-73.99
+    )
+    closed = _meal_test_poi(
+        "closed", "Early Restaurant", category="catering.restaurant",
+        lat=40.7505, lng=-73.99, opening_hours="Mo-Su 09:00-17:00",
+    )
+    open_place = _meal_test_poi(
+        "open", "Evening Restaurant", category="catering.restaurant",
+        lat=40.751, lng=-73.99, opening_hours="Mo-Su 17:00-22:00",
+    )
+
+    picked = generator._pick_meal_candidate(
+        (closed, open_place),
+        window="dinner",
+        start_hour=18.5,
+        day_index=1,
+        day_date=date(2026, 8, 17),
+        constraints=(),
+        organizer_id="organizer",
+        trip_total_before=0.0,
+        day_walk_before=0.0,
+        already_used=set(),
+        day_items=(_route_item(route, 16.0),),
+        meal_budget_cap=None,
+    )
+
+    assert generator._opening_status(closed, date(2026, 8, 17), 18.5) is False
+    assert generator._opening_status(open_place, date(2026, 8, 17), 18.5) is True
+    assert picked is open_place
+
+
+def test_unknown_opening_hours_remain_unknown_instead_of_assuming_all_day():
+    place = _meal_test_poi(
+        "unknown", "Unknown Hours", category="catering.restaurant",
+        lat=40.75, lng=-73.99, opening_hours="call for hours",
+    )
+
+    assert generator._opening_status(place, date(2026, 8, 17), 18.5) is None

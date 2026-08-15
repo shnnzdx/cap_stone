@@ -111,6 +111,11 @@ def test_opening_invite_does_not_create_membership(client: TestClient, api_sessi
 
 def test_invite_preview_excludes_plan_items_and_preferences(client: TestClient, api_session: Session):
     trip, organizer, _ = _trip(api_session)
+    trip.cover_image_url = "https://images.unsplash.com/chicago?ixid=test"
+    trip.cover_image_source = "unsplash"
+    trip.cover_attribution_name = "Trip Photographer"
+    trip.cover_attribution_url = "https://unsplash.com/@trip-photo?utm_source=cadensy"
+    trip.cover_source_url = "https://unsplash.com/photos/trip-cover?utm_source=cadensy"
     plan = Plan(trip_id=trip.id)
     api_session.add(plan)
     api_session.flush()
@@ -150,6 +155,11 @@ def test_invite_preview_excludes_plan_items_and_preferences(client: TestClient, 
         "preferred_end_date": "2026-08-17",
         "member_count": 2,
         "organizer_name": "Mia",
+        "cover_image_url": "https://images.unsplash.com/chicago?ixid=test",
+        "cover_image_source": "unsplash",
+        "cover_attribution_name": "Trip Photographer",
+        "cover_attribution_url": "https://unsplash.com/@trip-photo?utm_source=cadensy",
+        "cover_source_url": "https://unsplash.com/photos/trip-cover?utm_source=cadensy",
     }
     assert "Art Institute" not in str(body)
     assert "preference" not in str(body).lower()

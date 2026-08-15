@@ -10,8 +10,14 @@ def _day_payload() -> planner.PlanDayInput:
         day_index=1,
         candidates=(
             planner.PoiOption(
+                candidate_id="poi_park",
                 name="Millennium Park & Cloud Gate",
+                local_name=None,
                 place="Loop",
+                category="tourism.attraction",
+                latitude=41.8826,
+                longitude=-87.6226,
+                opening_hours="Mo-Su 09:00-20:00",
                 price=0.0,
                 duration_min=90,
                 opens=9.0,
@@ -19,8 +25,14 @@ def _day_payload() -> planner.PlanDayInput:
                 tags=("culture",),
             ),
             planner.PoiOption(
+                candidate_id="poi_cultural_center",
                 name="Chicago Cultural Center",
+                local_name=None,
                 place="Loop",
+                category="entertainment.culture",
+                latitude=41.8837,
+                longitude=-87.625,
+                opening_hours="Mo-Su 10:00-18:00",
                 price=0.0,
                 duration_min=90,
                 opens=10.0,
@@ -28,11 +40,17 @@ def _day_payload() -> planner.PlanDayInput:
                 tags=("culture",),
             ),
             planner.PoiOption(
+                candidate_id="poi_restaurant",
                 name="Girl & the Goat",
+                local_name=None,
                 place="West Loop",
+                category="catering.restaurant",
+                latitude=41.8844,
+                longitude=-87.6486,
+                opening_hours="Mo-Su 11:00-22:00",
                 price=45.0,
                 duration_min=120,
-                opens=16.0,
+                opens=11.0,
                 closes=22.0,
                 tags=("food",),
             ),
@@ -50,9 +68,9 @@ def test_plan_day_accepts_valid_ai_output_and_preserves_day_metadata(monkeypatch
         return {
             "note": "Balanced art-first day with dinner in the evening.",
             "picks": [
-                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
-                {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
-                {"poi_name": "Girl & the Goat", "start_hour": 19.0},
+                {"candidate_id": "poi_park", "start_hour": 10.0},
+                {"candidate_id": "poi_cultural_center", "start_hour": 14.0},
+                {"candidate_id": "poi_restaurant", "start_hour": 19.0},
             ],
         }
 
@@ -63,9 +81,9 @@ def test_plan_day_accepts_valid_ai_output_and_preserves_day_metadata(monkeypatch
     assert result.used_ai is True
     assert result.planner_note == "Balanced art-first day with dinner in the evening."
     assert result.picks == (
-        planner.Pick(poi_name="Millennium Park & Cloud Gate", start_hour=10.0),
-        planner.Pick(poi_name="Chicago Cultural Center", start_hour=14.0),
-        planner.Pick(poi_name="Girl & the Goat", start_hour=19.0),
+        planner.Pick(candidate_id="poi_park", start_hour=10.0),
+        planner.Pick(candidate_id="poi_cultural_center", start_hour=14.0),
+        planner.Pick(candidate_id="poi_restaurant", start_hour=19.0),
     )
 
 
@@ -76,6 +94,36 @@ def test_day_prompt_exposes_activity_count_as_a_soft_target():
 
     assert "Soft target for this day: 3 sightseeing activities" in prompt
     assert "never fail the day merely to hit this target" in prompt
+    assert "Decision priority, highest first" in prompt
+    assert "Lunch is added separately in the 11.5-14.0 window" in prompt
+    assert "dinner in the 17.5-20.0 window" in prompt
+    assert "candidate_id" in prompt
+    assert "do not return any name field" in prompt
+
+
+def test_day_schema_returns_candidate_id_without_place_names():
+    pick_properties = planner._day_schema()["properties"]["picks"]["items"]["properties"]
+
+    assert set(pick_properties) == {"candidate_id", "start_hour"}
+
+
+def test_parser_rejects_model_returned_place_name_fields():
+    with pytest.raises(planner.PlannerDayInvalid, match="only candidate_id and start_hour"):
+        planner._parse_day_result(
+            {
+                "note": "Invalid attempt to rewrite a canonical name.",
+                "picks": [
+                    {
+                        "candidate_id": "poi_park",
+                        "start_hour": 10.0,
+                        "english_name": "Rewritten Park Name",
+                    },
+                    {"candidate_id": "poi_cultural_center", "start_hour": 14.0},
+                ],
+            },
+            payload=_day_payload(),
+            used_ai=True,
+        )
 
 
 def test_plan_day_retries_once_after_invalid_ai_output_and_accepts_repaired_result(
@@ -87,17 +135,17 @@ def test_plan_day_retries_once_after_invalid_ai_output_and_accepts_repaired_resu
             {
                 "note": "bad first pass",
                 "picks": [
-                    {"poi_name": "Imaginary Rooftop", "start_hour": 10.0},
-                    {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
-                    {"poi_name": "Girl & the Goat", "start_hour": 19.0},
+                    {"candidate_id": "invented_id", "start_hour": 10.0},
+                    {"candidate_id": "poi_cultural_center", "start_hour": 14.0},
+                    {"candidate_id": "poi_restaurant", "start_hour": 19.0},
                 ],
             },
             {
                 "note": "Repaired to use only provided candidates.",
                 "picks": [
-                    {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
-                    {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
-                    {"poi_name": "Girl & the Goat", "start_hour": 19.0},
+                    {"candidate_id": "poi_park", "start_hour": 10.0},
+                    {"candidate_id": "poi_cultural_center", "start_hour": 14.0},
+                    {"candidate_id": "poi_restaurant", "start_hour": 19.0},
                 ],
             },
         ]
@@ -117,8 +165,8 @@ def test_plan_day_retries_once_after_invalid_ai_output_and_accepts_repaired_resu
     assert len(calls) == 2
     assert "The previous day plan failed deterministic validation" in calls[1]["user"]
     assert {
-        pick.poi_name for pick in result.picks
-    } <= {candidate.name for candidate in _day_payload().candidates}
+        pick.candidate_id for pick in result.picks
+    } <= {candidate.candidate_id for candidate in _day_payload().candidates}
 
 
 def test_plan_day_raises_unusable_after_second_invalid_ai_output(monkeypatch):
@@ -127,11 +175,11 @@ def test_plan_day_raises_unusable_after_second_invalid_ai_output(monkeypatch):
         [
             {
                 "note": "bad first pass",
-                "picks": [{"poi_name": "Imaginary Rooftop", "start_hour": 10.0}],
+                "picks": [{"candidate_id": "invented_id", "start_hour": 10.0}],
             },
             {
                 "note": "still bad",
-                "picks": [{"poi_name": "Still Imaginary", "start_hour": 14.0}],
+                "picks": [{"candidate_id": "still_invented", "start_hour": 14.0}],
             },
         ]
     )
@@ -157,8 +205,8 @@ def test_mocked_plan_day_accepted_output_never_sets_used_ai(monkeypatch):
         {
             "note": "Mock planner day.",
             "picks": [
-                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 10.0},
-                {"poi_name": "Chicago Cultural Center", "start_hour": 14.0},
+                {"candidate_id": "poi_park", "start_hour": 10.0},
+                {"candidate_id": "poi_cultural_center", "start_hour": 14.0},
             ],
         },
     )
@@ -177,9 +225,9 @@ def test_plan_day_accepts_natural_lunch_time_for_food(monkeypatch):
         lambda **_kwargs: {
             "note": "Morning landmark, lunch, and a later cultural stop.",
             "picks": [
-                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 9.5},
-                {"poi_name": "Girl & the Goat", "start_hour": 12.25},
-                {"poi_name": "Chicago Cultural Center", "start_hour": 15.25},
+                {"candidate_id": "poi_park", "start_hour": 9.5},
+                {"candidate_id": "poi_restaurant", "start_hour": 12.25},
+                {"candidate_id": "poi_cultural_center", "start_hour": 15.25},
             ],
         },
     )
@@ -197,14 +245,20 @@ def test_plan_day_rejects_food_in_afternoon_attraction_window(monkeypatch):
         lambda **_kwargs: {
             "note": "Invalid food placement.",
             "picks": [
-                {"poi_name": "Millennium Park & Cloud Gate", "start_hour": 9.5},
-                {"poi_name": "Girl & the Goat", "start_hour": 15.0},
+                {"candidate_id": "poi_park", "start_hour": 9.5},
+                {"candidate_id": "poi_restaurant", "start_hour": 15.0},
             ],
         },
     )
 
     with pytest.raises(planner.PlannerDayUnusable, match="not suitable for the afternoon"):
         planner.plan_day(_day_payload())
+
+
+def test_evening_window_requires_explicit_evening_suitability():
+    assert planner.category_allows_window(("tourism", "views", "sunset"), "evening")
+    assert planner.category_allows_window(("entertainment", "music"), "evening")
+    assert not planner.category_allows_window(("tourism", "museum"), "evening")
 
 
 def test_plan_day_propagates_model_unavailable_without_retry(monkeypatch):

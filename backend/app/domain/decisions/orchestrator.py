@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import re
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from data.poi_chicago import POIS
@@ -103,106 +103,6 @@ def _view(item: PlanItem, **overrides) -> ItemView:
     return ItemView(**base)
 
 
-DAY_START_HOUR = 9.0
-DAY_END_HOUR = 21.0
-
-
-def schedule_alternatives(db: Session, item: PlanItem) -> list[dict]:
-    """Concrete alternatives for one item, built from its own day.
-
-    Used when a round has to be opened without anyone having proposed a change,
-    so the group is given something it can actually vote between.
-    """
-    peers = list(
-        db.scalars(
-            select(PlanItem)
-            .where(
-                PlanItem.plan_id == item.plan_id,
-                PlanItem.id != item.id,
-                PlanItem.day_date == item.day_date,
-            )
-            .order_by(PlanItem.start_hour)
-        ).all()
-    )
-    alternatives: list[dict] = []
-
-    free_hour = _first_free_hour(item, peers)
-    if free_hour is not None:
-        alternatives.append(
-            {
-                "label": "Different time",
-                "title": f"Move to {_option_time_label(free_hour)}",
-                "body": (
-                    f"Move {item.title} from {_option_time_label(item.start_hour)} to "
-                    f"{_option_time_label(free_hour)} on the same day."
-                ),
-                "patch": {"start_hour": free_hour},
-            }
-        )
-
-    if item.duration_min and item.duration_min > 60:
-        shorter = max(60, item.duration_min - 60)
-        alternatives.append(
-            {
-                "label": "Shorter stop",
-                "title": f"Shorten to {shorter} minutes",
-                "body": f"Reduce {item.title} from {item.duration_min} to {shorter} minutes.",
-                "patch": {"duration_min": shorter},
-            }
-        )
-
-    return alternatives
-
-
-def _first_free_hour(item: PlanItem, peers: list[PlanItem]) -> float | None:
-    """Earliest start on the same day where this item would not overlap a peer.
-
-    Peers with an unknown duration cannot be checked, so they are skipped here
-    the same way the conflict detector skips them.
-    """
-    duration = (item.duration_min or 60) / 60
-    busy = [
-        (peer.start_hour, peer.start_hour + peer.duration_min / 60)
-        for peer in peers
-        if peer.duration_min is not None
-    ]
-    hour = DAY_START_HOUR
-    while hour + duration <= DAY_END_HOUR:
-        clear = all(hour >= end or hour + duration <= start for start, end in busy)
-        if clear and abs(hour - item.start_hour) >= 0.25:
-            return hour
-        hour += 0.25
-    return None
-
-
-def _joined_member_count(db: Session, trip_id: str) -> int:
-    """How many people this trip belongs to.
-
-    Counts every membership, not only accepted ones. An invited member who has
-    not opened the link is still someone whose plan this is, and getting this
-    wrong in that direction would skip a round that should have happened.
-    """
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(TripMembership)
-            .where(TripMembership.trip_id == trip_id)
-        )
-        or 0
-    )
-
-
-def _last_actor_on_item(db: Session, plan_item_id: str) -> str | None:
-    """Who last changed this item, so "someone else" can exclude the requester."""
-    return db.scalar(
-        select(PlanChange.actor_membership_id)
-        .where(PlanChange.plan_item_id == plan_item_id)
-        .where(PlanChange.origin.in_(("notice", "round", "reopen_round", "confirm")))
-        .order_by(PlanChange.applied_at.desc(), PlanChange.id.desc())
-        .limit(1)
-    )
-
-
 def _load_constraints(db: Session, trip_id: str) -> list[Constraint]:
     """Read the group's hard constraints. This does **not** touch the raw private wording table."""
     rows = db.scalars(
@@ -250,67 +150,27 @@ def _option_time_label(hour: float) -> str:
     return f"{display_hour}:{minute:02d} {suffix}"
 
 
-def _options_for(
-    item: PlanItem,
-    request: str,
-    patch: dict | None = None,
-    alternatives: list[dict] | None = None,
-) -> list[dict]:
-    """Build what the group votes between.
-
-    Keep-current is always first so there is always a way to change nothing.
-    Everything after it comes from the caller: the assistant's own options when
-    the change came from chat, otherwise alternatives computed from the day.
-    """
-    seen_patches: set[tuple] = set()
-    options = [
+def _options_for(item: PlanItem, request: str, patch: dict | None = None) -> list[dict]:
+    """Options **must include split-up**. This is a product rule, not optional."""
+    requested = {
+        "id": "requested",
+        "label": "Suggested change",
+        "title": request[:60] or "Suggested change",
+        "body": "Apply the most recent suggestion to this block.",
+    }
+    if patch:
+        requested["patch"] = _json_patch(_patch_with_poi_metadata(item, patch))
+    return [
         {
             "id": KEEP_CURRENT,
             "label": "Keep current",
             "title": item.title,
             "body": f"Keep this card as it is: {item.place} at {_option_time_label(item.start_hour)}.",
-        }
+        },
+        requested,
+        {"id": SPLIT_UP, "label": "Split up", "title": "Split for this block",
+         "body": "Both options run in parallel and the group regroups afterwards."},
     ]
-
-    # Only offer the requested change when there is a change to apply. An option
-    # with no patch cannot do anything a voter would recognise from its label.
-    if patch:
-        requested_patch = _json_patch(_patch_with_poi_metadata(item, patch))
-        seen_patches.add(_patch_signature(requested_patch))
-        options.append(
-            {
-                "id": "requested",
-                "label": "Suggested change",
-                "title": request[:60] or "Suggested change",
-                "body": "Apply the most recent suggestion to this block.",
-                "patch": requested_patch,
-            }
-        )
-
-    alternative_index = 1
-    for alternative in alternatives or ():
-        if not alternative.get("patch"):
-            continue
-        alternative_patch = _json_patch(
-            _patch_with_poi_metadata(item, alternative["patch"])
-        )
-        signature = _patch_signature(alternative_patch)
-        if signature in seen_patches:
-            continue
-        seen_patches.add(signature)
-        options.append(
-            {
-                "id": f"alternative-{alternative_index}",
-                "label": alternative.get("label") or "Alternative",
-                "title": alternative.get("title") or "Alternative",
-                "body": alternative.get("body") or "",
-                "tradeoff": alternative.get("tradeoff") or "",
-                "patch": alternative_patch,
-            }
-        )
-        alternative_index += 1
-
-    return options
 
 
 def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None:
@@ -416,10 +276,6 @@ def _json_patch(patch: dict) -> dict:
     }
 
 
-def _patch_signature(patch: dict) -> tuple:
-    return tuple(sorted(patch.items()))
-
-
 def _patch_from_json(patch: dict | None) -> dict:
     converted = dict(patch or {})
     if isinstance(converted.get("day_date"), str):
@@ -507,7 +363,6 @@ def propose_change(
     reason: str | None = None,
     trip_total_after: float | None = None,
     day_walk_km_after: float = 0.0,
-    alternatives: list[dict] | None = None,
 ) -> Outcome:
     """Someone wants to change an item. Classify and execute in one step."""
     _guard_not_pending(db, item)
@@ -524,8 +379,6 @@ def propose_change(
             else plan.estimated_total_per_person
         ),
         requested_by_membership_id=actor_membership_id,
-        member_count=_joined_member_count(db, trip.id),
-        last_touched_by_membership_id=_last_actor_on_item(db, item.id),
     )
     constraints = _load_constraints(db, trip.id)
     verdict = classify(change, constraints)
@@ -537,32 +390,13 @@ def propose_change(
     if verdict.path is Path.NOTICE:
         return _do_notice(db, item, patch, actor_membership_id, verdict)
     if verdict.path is Path.ROUND:
-        return _do_round(
-            db,
-            item,
-            trip,
-            request,
-            verdict,
-            kind="normal",
-            patch=patch,
-            alternatives=alternatives,
-        )
+        return _do_round(db, item, trip, request, verdict, kind="normal", patch=patch)
     if verdict.path is Path.REOPEN_ROUND:
         if not (reason or "").strip():
             raise ReasonRequired(
                 "Reopening a settled block needs a written reason."
             )
-        return _do_round(
-            db,
-            item,
-            trip,
-            request,
-            verdict,
-            kind="reopen",
-            reason=reason,
-            patch=patch,
-            alternatives=alternatives,
-        )
+        return _do_round(db, item, trip, request, verdict, kind="reopen", reason=reason, patch=patch)
     return _do_confirm(
         db, item, patch, actor_membership_id, trip, verdict,
         affected=affected_membership_ids(change, constraints),
@@ -595,8 +429,6 @@ def classify_change(
             else plan.estimated_total_per_person
         ),
         requested_by_membership_id=actor_membership_id,
-        member_count=_joined_member_count(db, trip.id),
-        last_touched_by_membership_id=_last_actor_on_item(db, item.id),
     )
     verdict = classify(change, _load_constraints(db, trip.id))
     if verdict.path is Path.NOTICE:
@@ -690,30 +522,17 @@ def object_to_notice(db: Session, notice: UpdateNotice, request: str = "") -> Ou
         headline="Someone already has a different idea for this slot",
         detail="Everyone weighs in at once and the slot is settled in a single round.",
     )
-    # Nobody proposed a concrete change here: the objection is the whole input.
-    # Without alternatives the round would offer keep-current and split-up only,
-    # which is not a decision the group can make.
-    return _do_round(
-        db,
-        item,
-        trip,
-        request,
-        verdict,
-        kind="normal",
-        alternatives=schedule_alternatives(db, item),
-    )
+    return _do_round(db, item, trip, request, verdict, kind="normal")
 
 
 # -------------------- Path B: voting --------------------
 
 
-def _do_round(
-    db, item, trip, request, verdict, *, kind, reason=None, patch=None, alternatives=None
-) -> Outcome:
+def _do_round(db, item, trip, request, verdict, *, kind, reason=None, patch=None) -> Outcome:
     round_ = DecisionRound(
         plan_item_id=item.id,
         kind=kind,
-        options=_options_for(item, request, patch, alternatives),
+        options=_options_for(item, request, patch),
         reason=reason,
         deadline=_deadline_for(trip),
         status="open",
@@ -764,20 +583,6 @@ def _winner(round_: DecisionRound, votes: list[Vote], member_count: int) -> str:
     return ranked[0][0]
 
 
-def _winning_patch(winner: str, option: dict | None) -> dict:
-    """What the winning option actually changes.
-
-    Every votable option carries its own patch. A patchless one is treated as no
-    change at all: falling back to the option title would rename the itinerary
-    item to a piece of UI copy.
-    """
-    if option is None or winner == KEEP_CURRENT:
-        return {}
-    if option.get("patch"):
-        return _patch_from_json(option["patch"])
-    return {}
-
-
 def settle_round(db: Session, round_: DecisionRound) -> str:
     """Settle one round. Repeated calls are idempotent."""
     if round_.status == "closed":
@@ -789,7 +594,7 @@ def settle_round(db: Session, round_: DecisionRound) -> str:
     winner = _winner(round_, votes, _member_count(db, trip_id))
 
     option = next((o for o in round_.options if o["id"] == winner), None)
-    patch = _winning_patch(winner, option)
+    patch = {} if winner == KEEP_CURRENT else _patch_from_json(option.get("patch") or {"title": option["title"]})
     if patch:
         patch = _apply(db, item, patch)
 

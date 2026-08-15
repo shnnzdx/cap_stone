@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import MemberConstraint, MemberConstraintPrivate, PlanItem
+from app.db.models import MemberConstraint, MemberConstraintPrivate, Plan, PlanItem
 from app.domain.preferences import service as pref
 
 
@@ -85,6 +85,27 @@ def test_saving_preferences_marks_you_as_submitted(db, full_trip):
     roster = pref.list_members(db, full_trip["me"])
     assert roster["submitted"] == 1
     assert roster["total"] == 6
+
+
+def test_saving_preferences_flags_but_does_not_rewrite_the_current_plan(db, full_trip):
+    plan = db.get(Plan, full_trip["plan"].id)
+    before = {
+        item.id: (item.title, item.start_hour, item.day_date)
+        for item in db.scalars(select(PlanItem).where(PlanItem.plan_id == plan.id))
+    }
+
+    pref.save_mine(
+        db,
+        full_trip["me"],
+        pref.PreferenceData(top_interests=("nature", "history")),
+    )
+
+    after = {
+        item.id: (item.title, item.start_hour, item.day_date)
+        for item in db.scalars(select(PlanItem).where(PlanItem.plan_id == plan.id))
+    }
+    assert plan.needs_refresh is True
+    assert after == before
 
 
 def test_top_interests_are_capped_at_three(db, full_trip):

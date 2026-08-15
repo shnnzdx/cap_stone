@@ -54,9 +54,10 @@ const formatDayDate = value => {
 const parseISODate = value => value ? new Date(`${value}T00:00:00`) : null
 
 const titleForDay = items => {
-  if (!items.length) return 'Open day'
-  if (items.length === 1) return items[0].title
-  return `${items[0].title} and ${items[items.length - 1].title}`
+  const sightseeing = items.filter(item => !item.isMeal)
+  if (!sightseeing.length) return 'Open day'
+  if (sightseeing.length === 1) return sightseeing[0].title
+  return `${sightseeing[0].title} and ${sightseeing[sightseeing.length - 1].title}`
 }
 
 const formatTripDateRange = raw => {
@@ -76,6 +77,10 @@ const normalizeTrip = raw => ({
   status: raw.status?.replace(/^\w/, c => c.toUpperCase()) || 'Planning',
   people: raw.member_count || 1,
   coverImageUrl: raw.cover_image_url || raw.coverImageUrl || null,
+  coverImageSource: raw.cover_image_source || raw.coverImageSource || null,
+  coverAttributionName: raw.cover_attribution_name || raw.coverAttributionName || null,
+  coverAttributionUrl: raw.cover_attribution_url || raw.coverAttributionUrl || null,
+  coverSourceUrl: raw.cover_source_url || raw.coverSourceUrl || null,
   onboarding: raw.onboarding || {},
   organizerPreference: raw.organizerPreference || raw.organizer_preference || null,
 })
@@ -100,6 +105,8 @@ const normalizeItem = item => ({
   settledness: item.settledness,
   photoUrl: item.photoUrl,
   tags: item.tags || [],
+  isMeal: Boolean(item.is_meal),
+  mealType: item.meal_type || null,
 })
 
 const normalizePlan = raw => {
@@ -112,7 +119,7 @@ const normalizePlan = raw => {
       label: `Day ${day.day_index}`,
       date: formatDayDate(dayDate),
       title: titleForDay(items),
-      summary: `${items.length} activities`,
+      summary: `${items.filter(item => !item.isMeal).length} activities · ${items.filter(item => item.isMeal).length} meals`,
       items,
     }
   })
@@ -297,6 +304,7 @@ export function TripAppProvider({ children }) {
   const [days, setDays] = useState(fallbackDays)
   const [planId, setPlanId] = useState(null)
   const [planBlockedReason, setPlanBlockedReason] = useState('')
+  const [planNeedsRefresh, setPlanNeedsRefresh] = useState(false)
   const [notices, setNotices] = useState([])
   const [baseUpdates, setBaseUpdates] = useState(fallbackBaseUpdates)
   const [personalUpdates] = useState(fallbackPersonalUpdates)
@@ -403,11 +411,6 @@ export function TripAppProvider({ children }) {
     setActiveTripId(nextFacts.kind === 'none' ? '' : (nextFacts.activeTripId || ''))
     setCurrentUser(null)
     setError(message)
-
-    if (cause === SESSION_RUNTIME_CODES.invalidation.ACCOUNT_CREDENTIALS_INVALID) {
-      window.top.location.replace(loginUrl())
-    }
-
     return invalidated
   }, [sessionRuntime, technicalSessionFacts])
 
@@ -477,12 +480,14 @@ export function TripAppProvider({ children }) {
       const raw = await requestJson(`/api/trips/${activeTripId}/plans/current`)
       setPlanId(raw.plan_id)
       setPlanBlockedReason(raw.blocked_reason || '')
+      setPlanNeedsRefresh(Boolean(raw.needs_refresh))
       setDays(normalizePlan(raw))
       return raw
     } catch (err) {
       if (err.status === 404) {
         setPlanId(null)
         setPlanBlockedReason('')
+        setPlanNeedsRefresh(false)
         setDays([])
         return null
       }
@@ -516,11 +521,17 @@ export function TripAppProvider({ children }) {
       return []
     }
     setTripSummariesStatus('loading')
-    const raw = await accountRequestJson('/api/trips')
+    const priorityQuery = activeTripId ? `?priority_trip_id=${encodeURIComponent(activeTripId)}` : ''
+    const raw = await accountRequestJson(`/api/trips${priorityQuery}`)
     setTripSummaries(raw)
+    setTrip(current => {
+      if (!current) return current
+      const summary = raw.find(candidate => candidate.id === current.id)
+      return summary ? { ...current, ...normalizeTrip(summary) } : current
+    })
     setTripSummariesStatus('ready')
     return raw
-  }, [accountRequestJson, hasAccountSession])
+  }, [accountRequestJson, activeTripId, hasAccountSession])
 
   const refreshAll = useCallback(async ({ background = false } = {}) => {
     if (!hasAccountSession && (!membershipId || !activeTripId)) {
@@ -750,11 +761,11 @@ export function TripAppProvider({ children }) {
     return normalized
   }, [requestJson])
 
-  const classify = useCallback(async ({ item, actionType, request, patch = null }) => {
+  const classify = useCallback(async ({ item, actionType, request }) => {
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
-      const body = patch ? { ...patch, request } : { ...requestPatch(actionType, item, request), request }
+      const body = { ...requestPatch(actionType, item, request), request }
       return await requestJson(`/api/plans/items/${item.id}/classify`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -828,21 +839,28 @@ export function TripAppProvider({ children }) {
   // Backend reports only and does not auto-edit; the user may prefer relaxing the requirement.
   const addConstraint = useCallback(async payload => {
     const tripId = resolveActiveTripId()
-    return requestJson(`/api/trips/${tripId}/constraints`, {
+    const result = await requestJson(`/api/trips/${tripId}/constraints`, {
       method: 'POST',
       body: JSON.stringify(payload),
     })
-  }, [requestJson, resolveActiveTripId])
+    await refreshPlan()
+    return result
+  }, [refreshPlan, requestJson, resolveActiveTripId])
 
-  const updateConstraint = useCallback(async (constraintId, payload) =>
-    requestJson(`/api/constraints/${constraintId}`, {
+  const updateConstraint = useCallback(async (constraintId, payload) => {
+    const result = await requestJson(`/api/constraints/${constraintId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
-    }), [requestJson])
+    })
+    await refreshPlan()
+    return result
+  }, [refreshPlan, requestJson])
 
-  const deleteConstraint = useCallback(async constraintId =>
-    requestJson(`/api/constraints/${constraintId}`, { method: 'DELETE' }),
-    [requestJson])
+  const deleteConstraint = useCallback(async constraintId => {
+    const result = await requestJson(`/api/constraints/${constraintId}`, { method: 'DELETE' })
+    await refreshPlan()
+    return result
+  }, [refreshPlan, requestJson])
 
   const loadMembers = useCallback(async () => {
     const tripId = resolveActiveTripId()
@@ -1003,7 +1021,7 @@ export function TripAppProvider({ children }) {
     return outcome
   }, [fetchProposal, fetchRound, refreshPlan, refreshUpdates])
 
-  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch, options }) => {
+  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch }) => {
     let reason = null
     if (verdict?.needs_reason) {
       reason = window.prompt('Please write a reason for reopening this settled block:')
@@ -1015,11 +1033,7 @@ export function TripAppProvider({ children }) {
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
-      // `options` carries the assistant's other compromise ideas so a vote can be
-      // held between them instead of a single generic "Suggested change". The
-      // backend revalidates every one of them and drops whatever it cannot execute.
       const body = { ...(patch || requestPatch(actionType, item, request)), request, reason }
-      if (options?.length) body.options = options
       const outcome = await requestJson(`/api/plans/items/${item.id}/changes`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -1114,7 +1128,7 @@ export function TripAppProvider({ children }) {
   const activeProposal = activeProposals.find(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status)) || activeProposals[0] || null
 
   const value = useMemo(() => ({
-    trip, currentUser, days, planId, planBlockedReason,
+    trip, currentUser, days, planId, planBlockedReason, planNeedsRefresh,
     hasAccountSession,
     membershipId,
     activeTripId,
@@ -1177,7 +1191,7 @@ export function TripAppProvider({ children }) {
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planNeedsRefresh, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')

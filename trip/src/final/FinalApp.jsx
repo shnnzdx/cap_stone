@@ -11,7 +11,7 @@ import {
   resolveInviteJoinRoute,
   resolveRestoredWorkspaceDestination,
 } from './workspace-navigation-model.js'
-import { resolveTripCover } from './trip-cover.js'
+import { resolveTripCover, tripCoverImageUrlForVariant } from './trip-cover.js'
 
 const dayKey = date => date ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : ''
 const sameDay = (a, b) => a && b && dayKey(a) === dayKey(b)
@@ -250,24 +250,38 @@ function ProfileMenu() {
   </div>
 }
 
-function DashboardCard({ title, location, dates, status, tone, coverImageUrl, detail, to, onOpen, variant = 'compact', action = 'Open trip' }) {
+function DashboardCard({ title, location, dates, status, tone, tripCover, detail, to, onOpen, variant = 'compact', action = 'Open trip' }) {
   const app = useTripApp()
   const currentTrip = app.trip || trip || null
-  const cover = resolveTripCover({ destination: location, coverImageUrl })
-  const coverStyle = cover.imageUrl
-    ? { backgroundImage: `linear-gradient(rgba(10,25,45,.10),rgba(10,25,45,.20)),url(${JSON.stringify(cover.imageUrl)})` }
-    : undefined
-  return <Link className={`dashboardTripCard dashboardTripCard--${variant}`} to={to || (currentTrip ? tripHref(currentTrip.id, 'plan') : workspaceHomeHref())} onClick={onOpen}>
-    <div className={cx('tripPhoto', `tripPhoto--${cover.kind}`)} style={coverStyle} aria-label={cover.label}>
-      <Badge tone={tone}>{status}</Badge>
-      {!cover.imageUrl && <span className="tripCoverPlaceholder" aria-hidden="true"><i>✦</i><small>Travel cover</small></span>}
-    </div>
-    <div className="dashboardTripBody">
-      <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
-      <p>{location} · {dates}</p>
-      <div className="cardFooter"><span>{detail || 'No action needed'}</span><strong>{action} →</strong></div>
-    </div>
-  </Link>
+  const cover = resolveTripCover({ destination: location, ...(tripCover || {}) })
+  const imageUrl = tripCoverImageUrlForVariant(cover.imageUrl, variant)
+  const destinationHref = to || (currentTrip ? tripHref(currentTrip.id, 'plan') : workspaceHomeHref())
+  return <article className={`dashboardTripCard dashboardTripCard--${variant}`}>
+      <div className={cx('tripPhoto', `tripPhoto--${cover.kind}`)} aria-label={cover.label}>
+        <Link className="dashboardTripCoverLink" to={destinationHref} onClick={onOpen} aria-label={`Open ${title}`}>
+        {imageUrl && <img className="tripCoverImage" src={imageUrl} alt="" loading={variant === 'featured' ? 'eager' : 'lazy'} fetchPriority={variant === 'featured' ? 'high' : 'auto'} decoding="async"/>}
+        <Badge tone={tone}>{status}</Badge>
+        {!imageUrl && <span className="tripCoverPlaceholder" aria-hidden="true"><i>✦</i><small>Travel cover</small></span>}
+        </Link>
+        {cover.attribution && <small className="tripCoverAttribution">Photo by <a href={cover.attribution.photographerUrl} target="_blank" rel="noreferrer">{cover.attribution.name}</a> on <a href={cover.attribution.sourceUrl} target="_blank" rel="noreferrer">Unsplash</a></small>}
+      </div>
+      <Link className="dashboardTripBody dashboardTripBodyLink" to={destinationHref} onClick={onOpen} aria-label={`Open ${title}`}>
+        <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
+        <p>{location} · {dates}</p>
+        <div className="cardFooter"><span>{detail || 'No action needed'}</span><strong>{action} →</strong></div>
+      </Link>
+  </article>
+}
+
+function TripCoverHero({ trip: coverTrip, className, children }) {
+  const cover = resolveTripCover(coverTrip || {})
+  const imageUrl = tripCoverImageUrlForVariant(cover.imageUrl, 'featured')
+  return <section className={cx(className, `tripPhoto--${cover.kind}`)} aria-label={cover.label}>
+    {imageUrl && <img className="tripCoverImage" src={imageUrl} alt="" loading="eager" fetchPriority="high" decoding="async"/>}
+    {!imageUrl && <span className="tripCoverPlaceholder" aria-hidden="true"><i>✦</i><small>Travel cover</small></span>}
+    <div className="tripCoverHeroContent">{children}</div>
+    {cover.attribution && <small className="inviteCoverAttribution">Photo by <a href={cover.attribution.photographerUrl} target="_blank" rel="noreferrer">{cover.attribution.name}</a> on <a href={cover.attribution.sourceUrl} target="_blank" rel="noreferrer">Unsplash</a></small>}
+  </section>
 }
 
 function WorkspaceRouteGuard() {
@@ -394,7 +408,7 @@ function Home() {
       </div>
       {currentTrip && <section className="dashboardSection dashboardContinue">
         <div className="dashboardSectionHead"><span>Continue planning</span><small>Current workspace</small></div>
-        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Dates not set'} status={currentTrip.status} tone="purple" coverImageUrl={currentTrip.coverImageUrl || currentTrip.cover_image_url} detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
+        <DashboardCard title={currentTrip.name} location={currentTrip.destination} dates={currentTrip.dates || 'Dates not set'} status={currentTrip.status} tone="purple" tripCover={currentTrip} detail={roundOpen ? 'Round open' : proposalPending ? 'Confirmation needed' : 'Current plan'} action={roundOpen ? 'Choose an option' : proposalPending ? 'Review change' : 'Review current plan'} variant="featured" to={tripHref(currentTrip.id, 'plan')} />
       </section>}
       {currentTrip && (roundOpen || proposalPending) && <section className="dashboardSection dashboardAttention">
         <div className="dashboardSectionHead"><span>Needs your attention</span><small>Open decisions</small></div>
@@ -414,7 +428,7 @@ function Home() {
               dates={created.dates || 'Dates not set'}
               status={created.status || 'Planning'}
               tone="orange"
-              coverImageUrl={created.coverImageUrl || created.cover_image_url}
+              tripCover={created}
               detail={created.next_item_title || 'Open workspace'}
               action="View trip"
               to={tripHref(created.id, 'plan')}
@@ -892,7 +906,7 @@ const CONSTRAINT_KINDS = [
 ]
 
 const DIET_TAGS = ['vegetarian', 'vegan', 'halal', 'gluten_free']
-const AVOID_TAGS = ['nightlife', 'outdoor', 'shopping', 'family', 'music']
+const AVOID_TAGS = ['nightlife', 'outdoor', 'shopping', 'family', 'music', 'seafood']
 const VISIBILITY_OPTIONS = [
   { value: 'planning_only', label: 'Only Cadensy' },
   { value: 'organizer', label: 'Organizer too' },
@@ -1304,10 +1318,10 @@ function InvitePage() {
   }
   return <TripShell>
     <div className="inviteManager">
-      <section className="shareHero">
+      <TripCoverHero className="shareHero" trip={currentTrip}>
         <span className="eyebrow">Invite link</span>
         <h1>Share this trip with the group.</h1>
-      </section>
+      </TripCoverHero>
       <section className="linkPanel">
         <div><span className="roleChip">{app.inviteCopied ? 'Link copied' : 'Ready to share'}</span><h2>{currentTrip.name}</h2><p>{currentTrip.destination} · {currentTrip.dates}</p></div>
         <label>Invite link<input readOnly value={loadingInvite ? 'Creating link...' : inviteError || inviteUrl}/></label>
@@ -1453,7 +1467,7 @@ function JoinInvitePage() {
   return <div className="invitePage">
     <header className="inviteGlass"><Logo/><div><strong>{preview?.name || 'Cadensy invite'}</strong></div></header>
     <main className="inviteLayout">
-      <section className="invitePhoto"><div><Badge tone="blue">{dateText || 'Trip invite'}</Badge><h1>{preview?.destination || 'Join the group trip'} with the group.</h1></div></section>
+      <TripCoverHero className="invitePhoto" trip={preview || {}}><Badge tone="blue">{dateText || 'Trip invite'}</Badge><h1>{preview?.destination || 'Join the group trip'} with the group.</h1></TripCoverHero>
       <section className="invitePanel">
         <span className="eyebrow">Join Cadensy</span><h2>{loadingInvite ? 'Loading invite' : preview?.name || 'You have been invited'}</h2>
         {preview && <p>{preview.destination} · {dateText || 'Dates to be confirmed'} · {preview.member_count} members · Organized by {preview.organizer_name}</p>}

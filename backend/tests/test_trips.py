@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.agents import planner
@@ -169,41 +169,6 @@ def _invite(db: Session, trip: Trip) -> InviteLink:
     return invite
 
 
-def _round_target(
-    db: Session, *, settledness: str = "touched"
-) -> tuple[User, Trip, TripMembership, PlanItem]:
-    user = _user(db, "Mia")
-    trip, membership = _trip_with_member(db, user)
-    _add_member(db, trip, "Sam")
-    _, item = _plan_item(db, trip)
-    item.settledness = settledness
-    db.flush()
-    return user, trip, membership, item
-
-
-def _submit_round_change(
-    client: TestClient,
-    membership: TripMembership,
-    item: PlanItem,
-    options: list[dict] | None = None,
-    *,
-    patch: dict | None = None,
-) -> dict:
-    payload = {
-        "request": "Replace this with shopping",
-        **(patch if patch is not None else {"title": "Shopping"}),
-    }
-    if options is not None:
-        payload["options"] = options
-    response = client.post(
-        f"/api/plans/items/{item.id}/changes",
-        headers={"X-Membership-Id": membership.id},
-        json=payload,
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
 def test_create_trip_makes_creator_organizer_and_empty_plan(
     client: TestClient, api_session: Session
 ):
@@ -260,6 +225,11 @@ def test_list_trips_returns_only_current_users_trips(
     )
     second_trip, _ = _trip_with_member(api_session, user, name="Mine empty")
     _trip_with_member(api_session, other_user, name="Someone else's")
+    first_trip.cover_image_url = "https://images.unsplash.com/chicago?ixid=test"
+    first_trip.cover_image_source = "unsplash"
+    first_trip.cover_attribution_name = "A Photographer"
+    first_trip.cover_attribution_url = "https://unsplash.com/@photographer?utm_source=cadensy&utm_medium=referral"
+    first_trip.cover_source_url = "https://unsplash.com/photos/chicago?utm_source=cadensy&utm_medium=referral"
 
     plan = Plan(trip_id=first_trip.id)
     api_session.add(plan)
@@ -297,6 +267,9 @@ def test_list_trips_returns_only_current_users_trips(
     assert set(trips) == {first_trip.id, second_trip.id}
     assert trips[first_trip.id]["next_item_title"] == "Morning coffee"
     assert trips[first_trip.id]["my_role"] == "organizer"
+    assert trips[first_trip.id]["cover_image_url"].startswith("https://images.unsplash.com/")
+    assert trips[first_trip.id]["cover_attribution_name"] == "A Photographer"
+    assert trips[first_trip.id]["cover_image_source"] == "unsplash"
     assert trips[second_trip.id]["next_item_title"] is None
 
 
@@ -554,6 +527,33 @@ def test_current_plan_now_requires_authenticated_trip_membership(
     assert response.json()["plan_id"] == plan.id
 
 
+def test_current_plan_exposes_meal_semantics_and_refresh_state(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    plan = Plan(trip_id=trip.id, needs_refresh=True)
+    api_session.add(plan)
+    api_session.flush()
+    api_session.add(PlanItem(
+        plan_id=plan.id, day_index=1, day_date=date(2026, 8, 19),
+        start_hour=12.5, title="Flexible lunch break", place="Choose nearby",
+        is_meal=True,
+    ))
+    api_session.flush()
+
+    response = client.get(
+        f"/api/trips/{trip.id}/plans/current",
+        headers={"X-Membership-Id": membership.id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["needs_refresh"] is True
+    assert body["days"][0]["items"][0]["is_meal"] is True
+    assert body["days"][0]["items"][0]["meal_type"] == "lunch"
+
+
 def test_current_plan_rejects_foreign_trip_path(
     client: TestClient, api_session: Session
 ):
@@ -678,229 +678,6 @@ def test_submit_change_access_is_scoped_to_plan_item(
     assert api_session.query(ChangeProposal).count() == 0
     api_session.refresh(item_b)
     assert item_b.start_hour == 14.0
-
-
-def test_submit_change_options_become_round_alternatives(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [
-            {
-                "item_id": item.id,
-                "label": "Later",
-                "title": "Move later",
-                "body": "Try this after lunch.",
-                "tradeoff": "Less downtime.",
-                "start_hour": 16.0,
-            }
-        ],
-    )
-
-    assert body["path"] == "round"
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    alternative = next(option for option in round_.options if option["id"] == "alternative-1")
-    assert alternative["label"] == "Later"
-    assert alternative["title"] == "Move later"
-    assert alternative["body"] == "Try this after lunch."
-    assert alternative["tradeoff"] == "Less downtime."
-    assert alternative["patch"] == {"start_hour": 16.0}
-
-
-def test_submit_change_options_reject_foreign_trip_item(
-    client: TestClient, api_session: Session
-):
-    user, _, membership, item = _round_target(api_session)
-    foreign_trip, _ = _trip_with_member(api_session, user, name="Other trip")
-    _, foreign_item = _plan_item(api_session, foreign_trip)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [{"item_id": foreign_item.id, "title": "Foreign", "start_hour": 16.0}],
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    assert all(option["id"] != "alternative-1" for option in round_.options)
-
-
-def test_submit_change_options_only_allow_schedule_patch_fields(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [
-            {
-                "item_id": item.id,
-                "title": "Display title only",
-                "place": "Injected place",
-                "price_per_person": 999,
-                "lat": 1,
-                "lng": 2,
-                "start_hour": 16.0,
-            }
-        ],
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    alternative = next(option for option in round_.options if option["id"] == "alternative-1")
-    assert alternative["patch"] == {"start_hour": 16.0}
-    assert {"title", "place", "price_per_person", "lat", "lng"}.isdisjoint(
-        alternative["patch"]
-    )
-
-
-def test_submit_change_options_reject_empty_patch(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [{"item_id": item.id, "title": "Display only"}],
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    assert all(not option["id"].startswith("alternative-") for option in round_.options)
-
-
-def test_submit_change_options_reject_start_hour_outside_day_window(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [{"item_id": item.id, "title": "Too late", "start_hour": 22.0}],
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    assert all(not option["id"].startswith("alternative-") for option in round_.options)
-
-
-def test_submit_change_options_accept_at_most_five(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-    options = [
-        {"item_id": item.id, "title": f"Option {index}", "start_hour": 9.0 + index}
-        for index in range(6)
-    ]
-
-    body = _submit_round_change(client, membership, item, options)
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    alternatives = [
-        option for option in round_.options if option["id"].startswith("alternative-")
-    ]
-    assert [option["patch"] for option in alternatives] == [
-        {"start_hour": 9.0},
-        {"start_hour": 10.0},
-        {"start_hour": 11.0},
-        {"start_hour": 12.0},
-        {"start_hour": 13.0},
-    ]
-
-
-def test_submit_change_options_savepoint_isolates_failed_validation(
-    client: TestClient, api_session: Session, monkeypatch
-):
-    _, _, membership, item = _round_target(api_session)
-    real_classify_change = api.orch.classify_change
-    calls = {"count": 0}
-
-    def fail_first_validation(*args, **kwargs):
-        calls["count"] += 1
-        if calls["count"] == 1:
-            api_session.execute(text("select * from missing_candidate_validation_table"))
-        return real_classify_change(*args, **kwargs)
-
-    monkeypatch.setattr(api.orch, "classify_change", fail_first_validation)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [
-            {"item_id": item.id, "title": "Broken", "start_hour": 16.0},
-            {"item_id": item.id, "title": "Still works", "start_hour": 17.0},
-        ],
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    alternatives = [
-        option for option in round_.options if option["id"].startswith("alternative-")
-    ]
-    assert [option["patch"] for option in alternatives] == [{"start_hour": 17.0}]
-    assert api_session.scalar(select(DecisionRound).where(DecisionRound.id == round_.id))
-
-
-def test_submit_change_options_deduplicate_requested_patch(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [{"item_id": item.id, "title": "Same time", "start_hour": 16.0}],
-        patch={"start_hour": 16.0},
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    assert [option["id"] for option in round_.options].count("requested") == 1
-    assert all(not option["id"].startswith("alternative-") for option in round_.options)
-
-
-def test_submit_change_without_options_keeps_existing_round_template(
-    client: TestClient, api_session: Session
-):
-    _, _, membership, item = _round_target(api_session)
-
-    body = _submit_round_change(client, membership, item)
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    assert [option["id"] for option in round_.options] == ["keep", "requested"]
-
-
-def test_submit_change_notice_path_ignores_options(
-    client: TestClient, api_session: Session
-):
-    user = _user(api_session, "Mia")
-    trip, membership = _trip_with_member(api_session, user)
-    _, item = _plan_item(api_session, trip)
-
-    response = client.post(
-        f"/api/plans/items/{item.id}/changes",
-        headers={"X-Membership-Id": membership.id},
-        json={
-            "start_hour": 15.5,
-            "request": "Move this later",
-            "options": [
-                {"item_id": item.id, "title": "Alternative", "start_hour": 16.0}
-            ],
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["path"] == "notice"
-    assert api_session.query(DecisionRound).count() == 0
-    api_session.refresh(item)
-    assert item.start_hour == 15.5
 
 
 def test_submit_change_with_day_date_writes_json_safe_plan_change(
@@ -1853,41 +1630,3 @@ def test_revoke_invite_route_is_trip_scoped_and_keeps_organizer_policy(
     api_session.refresh(invite_b)
     assert invite_a.revoked_at is not None
     assert invite_b.revoked_at is None
-
-
-def test_submit_change_options_reject_a_sibling_item_in_the_same_trip(
-    client: TestClient, api_session: Session
-):
-    """一个 round 只结算一个条目。
-
-    指向同行程另一个条目的选项,校验时拿 A 校验、结算时却写到 B 上,
-    所以只能拒掉,不能"看起来通过了"就收下。
-    """
-    _, trip, membership, item = _round_target(api_session)
-    sibling = PlanItem(
-        plan_id=item.plan_id,
-        day_index=1,
-        day_date=item.day_date,
-        start_hour=12.0,
-        duration_min=60,
-        title="Lunch near the Loop",
-        place="The Loop",
-        settledness="loose",
-    )
-    api_session.add(sibling)
-    api_session.flush()
-
-    body = _submit_round_change(
-        client,
-        membership,
-        item,
-        [{"item_id": sibling.id, "title": "Move lunch later", "start_hour": 13.0}],
-    )
-
-    round_ = api_session.get(DecisionRound, body["round_id"])
-    assert round_.plan_item_id == item.id
-    assert all(option["id"] != "alternative-1" for option in round_.options)
-    # 更要紧的是:结算时不能有任何 patch 把 13:00 写到被投票的那个条目上。
-    assert all(
-        option.get("patch", {}).get("start_hour") != 13.0 for option in round_.options
-    )

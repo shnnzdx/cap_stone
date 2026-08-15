@@ -90,6 +90,14 @@ class Trip(Base, TimestampMixin):
     # planning | upcoming | traveling | completed —— 按日期自动流转,没有 locked
     status: Mapped[str] = mapped_column(String(20), default="planning")
     created_by_user_id: Mapped[str] = mapped_column(ForeignKey("user_account.id"))
+    # Trip-level city cover presentation. This must never be populated from a
+    # Place or PlanItem image because those represent a specific activity.
+    cover_image_url: Mapped[str | None] = mapped_column(String(1500))
+    cover_image_source: Mapped[str | None] = mapped_column(String(30))
+    cover_attribution_name: Mapped[str | None] = mapped_column(String(200))
+    cover_attribution_url: Mapped[str | None] = mapped_column(String(1000))
+    cover_source_url: Mapped[str | None] = mapped_column(String(1000))
+    cover_image_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     memberships: Mapped[list["TripMembership"]] = relationship(back_populates="trip")
 
@@ -207,6 +215,9 @@ class Plan(Base, TimestampMixin):
     # presented as a free itinerary.
     estimated_total_per_person: Mapped[float | None] = mapped_column(Float, nullable=True)
     currency: Mapped[str] = mapped_column(String(8), default="USD")
+    # Planning inputs can change after an itinerary exists. Keep the current
+    # plan intact, but make that mismatch explicit to clients.
+    needs_refresh: Mapped[bool] = mapped_column(Boolean, default=False)
 
     items: Mapped[list["PlanItem"]] = relationship(back_populates="plan")
 

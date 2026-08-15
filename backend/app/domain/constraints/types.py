@@ -96,10 +96,6 @@ class ProposedChange:
     day_walk_km_after: float | None
     trip_total_after: float | None
     requested_by_membership_id: str
-    # 这两个是"有没有别人"的依据。None = 调用方没查,引擎按有别人处理,
-    # 也就是保持原来的严格行为。只有确知是一个人时才会放宽。
-    member_count: int | None = None
-    last_touched_by_membership_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -129,11 +129,41 @@ Current behavior includes:
 - deterministic validation around constraints and schedule legality
 - planner fallback behavior
 - blocked-state reporting
+- Planner model output identifies Place Library candidates by `candidate_id`; the backend,
+  not the model, resolves canonical English/local names into `PlanItem`
+- normal full-day planning prioritizes hard constraints, fixed/locked events, availability,
+  opening hours, geography, transitions, meal timing, interests, and variety in that order
+- lunch and dinner remain backend-added anchors; route-aware selection tries restaurants at
+  progressively wider bounded radii, then meal-specific relaxed categories, and uses an honest
+  flexible break only as the final fallback; dinner excludes café-only venues
+- `PlanItem.is_meal` and derived `meal_type` are returned by the current-plan API so Trip renders
+  `LUNCH` and `DINNER` separately from the sightseeing sequence
+- each day receives a distance-aware candidate neighborhood; ordering uses straight-line
+  coordinate distance only and does not claim provider routing or walking time
+- Place Service ranks clear, category-specific, travel-relevant names inside the existing
+  category round-robin and spatial-spread structure, with reliable address information as an
+  additional within-category signal
+- safely parseable provider opening hours reject known-closed candidates; missing or unsupported
+  hours stay unknown, and optional evening stops require explicit evening suitability
+- saving a preference or constraint never rewrites current items; an existing plan is marked
+  `needs_refresh`, which the current-plan API exposes for a lightweight UI notice
 
 Current merged behavior also includes:
 
 - single-member trips do not treat budget ceiling as a group-blocking constraint
 - blocked reasons are no longer always mislabeled as budget failures
+
+## Trip city covers
+
+- My Trips requests city covers through `backend/app/domain/trips/cover_service.py`; the browser
+  never receives `UNSPLASH_ACCESS_KEY`
+- a selected landscape result is persisted on `Trip` with photographer and Unsplash attribution
+- successful covers are reused without another API search; unsuccessful provider attempts are
+  retried only after seven days, while missing local key configuration is not negatively cached
+- the current workspace is requested first, uses eager/high-priority image loading, and requests a
+  1000×560 CDN rendition; Other Trips use native lazy loading and 360×220 renditions
+- provider failure, unsafe/incomplete attribution, or no result leaves the existing neutral
+  `Travel cover`; Trip covers never fall back to `Place.image_url` or `PlanItem.photo_url`
 
 ## Backend Behaviors Already Reflected In `New`
 

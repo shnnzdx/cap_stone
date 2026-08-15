@@ -37,6 +37,12 @@ def ensure_cloud_schema() -> None:
                 "ADD COLUMN IF NOT EXISTS extended_at TIMESTAMPTZ"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE plan ADD COLUMN IF NOT EXISTS "
+                "needs_refresh BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        )
 
 
 def upsert_demo_login() -> dict:

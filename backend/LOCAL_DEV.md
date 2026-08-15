@@ -100,6 +100,7 @@ Current mixed example:
 ```env
 DATABASE_URL=postgresql+psycopg://<RDS_USER>:<URL_ENCODED_PASSWORD>@<RDS_HOST>:5432/tripsync
 TEST_DATABASE_URL=postgresql+psycopg://postgres:<URL_ENCODED_PASSWORD>@localhost:5432/tripsync_test
+UNSPLASH_ACCESS_KEY=
 DEEPSEEK_API_KEY=
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-flash

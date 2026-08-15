@@ -30,21 +30,42 @@ class ItemContext:
 
 
 @dataclass(frozen=True)
-class HistoryCandidateOption:
-    id: str
-    label: str
-    title: str
-    body: str
-    tradeoff: str
-    item_id: str
-    patch: dict[str, Any]
-
-
-@dataclass(frozen=True)
 class HistoryTurn:
     role: Literal["user", "assistant"]
     text: str
-    candidate_options: tuple[HistoryCandidateOption, ...] = ()
+
+
+@dataclass(frozen=True)
+class CandidateContext:
+    title: str
+    place: str
+    price_per_person: float
+    lat: float
+    lng: float
+    opens: float
+    closes: float
+    tags: tuple[str, ...]
+
+    def prompt_line(self) -> str:
+        return (
+            f"- {self.title} | {self.place} | ${self.price_per_person:.0f} | "
+            f"hours {self.opens:g}-{self.closes:g} | tags: {', '.join(self.tags)}"
+        )
+
+
+@dataclass(frozen=True)
+class UnderstandInput:
+    message: str
+    item: ItemContext | None = None
+    history: tuple[HistoryTurn, ...] = ()
+    candidates: tuple[CandidateContext, ...] = ()
+
+
+@dataclass(frozen=True)
+class Understanding:
+    intent: str
+    item_hint: str | None
+    patch: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -67,6 +88,32 @@ class Reply:
     text: str
 
 
+UNDERSTAND_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "intent": {"type": "string", "enum": ["change", "question", "unclear"]},
+        "item_hint": {"type": ["string", "null"]},
+        "patch": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "title": {"type": ["string", "null"]},
+                "place": {"type": ["string", "null"]},
+                "start_hour": {"type": ["number", "null"], "minimum": 0, "maximum": 24},
+                "day_date": {"type": ["string", "null"]},
+                "price_per_person": {"type": ["number", "null"], "minimum": 0},
+                "lat": {"type": ["number", "null"], "minimum": -90, "maximum": 90},
+                "lng": {"type": ["number", "null"], "minimum": -180, "maximum": 180},
+            },
+            "required": [
+                "title", "place", "start_hour", "day_date", "price_per_person", "lat", "lng"
+            ],
+        },
+    },
+    "required": ["intent", "item_hint", "patch"],
+}
+
 REPLY_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -77,6 +124,44 @@ REPLY_SCHEMA = {
 }
 
 
+def understand(request: UnderstandInput) -> Understanding:
+    result = base.call_model(
+        system=(
+            "You turn a trip-planning chat message into a structured intent. "
+            "Resolve short follow-ups using the conversation history. If the traveler "
+            "delegates a choice (for example: choose one, any, 随便, 你选, 可以), choose "
+            "one concrete eligible candidate instead of asking again. For a replacement, "
+            "never keep the old title while merely changing its area. Use candidate values "
+            "exactly and never invent a venue. "
+            "Return only JSON. Do not decide whether the change is allowed."
+        ),
+        user=_understand_prompt(request),
+        schema=UNDERSTAND_SCHEMA,
+        schema_name="chat_understanding",
+        mock=_mock_understanding(request),
+        max_tokens=220,
+        provider=base.CHAT_ROUTE,
+    )
+    result_patch = result.get("patch") or {}
+
+    # Exact time values are deterministic. Do not rely on the LLM to calculate
+    # "3:30 PM" -> 15.5 correctly.
+    exact_hour = _hour_from_text(request.message.lower())
+    if exact_hour is not None:
+        result_patch["start_hour"] = exact_hour
+
+    patch = {
+        key: value
+        for key, value in result_patch.items()
+        if value is not None
+    }
+    return Understanding(
+        intent=result["intent"],
+        item_hint=result.get("item_hint"),
+        patch=patch,
+    )
+
+
 def explain(request: ReplyInput) -> Reply:
     safe = base.safe_context(request.verdict)
     result = base.call_model(
@@ -85,10 +170,7 @@ def explain(request: ReplyInput) -> Reply:
             "Reply in the same language as the traveler's latest message, in no more "
             "than two short sentences. Use only the supplied item, patch, and verdict. "
             "Do not invent a weekday, availability, opening hours, or other facts. "
-            "Never say or imply that the Current Plan has changed, been applied, "
-            "been submitted, been completed, or taken effect. The change is only a "
-            "prepared proposal/check result until the traveler clicks Apply. Always "
-            "make clear that the traveler must click Apply before anything is submitted."
+            "Do not pressure anyone or claim the change has been submitted."
         ),
         user=_reply_prompt(request, safe),
         schema=REPLY_SCHEMA,
@@ -97,10 +179,7 @@ def explain(request: ReplyInput) -> Reply:
         max_tokens=260,
         provider=base.CHAT_ROUTE,
     )
-    reply = str(result["reply"])
-    if _claims_change_completed(reply):
-        reply = _safe_pending_explanation(request)
-    return Reply(text=reply)
+    return Reply(text=result["reply"])
 
 
 def answer_question(request: QuestionInput) -> Reply:
@@ -129,6 +208,10 @@ def fallback_unavailable() -> str:
     )
 
 
+def ask_which_item() -> str:
+    return "Which itinerary item should I change? Pick the item, then send the change again."
+
+
 def ask_for_change() -> str:
     return "What would you like to change about that item?"
 
@@ -137,91 +220,59 @@ def no_change_reply() -> str:
     return "I can help with that, but I do not see a specific trip change to check yet."
 
 
-
-def failure_reply(request: QuestionInput) -> str:
-    if request.item:
-        return (
-            f"I could not check that reliably right now. {request.item.title} is currently "
-            f"scheduled at {request.item.start_hour:g}:00 at {request.item.place}. "
-            "The Current Plan has not changed."
-        )
-    return (
-        "I could not check that reliably right now. I can still answer questions "
-        "about the shared itinerary or help prepare a change to a specific block."
-    )
-
 def fallback_explanation(verdict: Classification) -> str:
     return f"{verdict.headline}. {verdict.detail}"
 
 
-def _claims_change_completed(text: str) -> bool:
-    lowered = text.lower()
-    unsafe_english = (
-        "has been submitted",
-        "was submitted",
-        "is submitted",
-        "has been applied",
-        "was applied",
-        "is applied",
-        "has been changed",
-        "was changed",
-        "is changed",
-        "has been updated",
-        "was updated",
-        "is updated",
-        "change is live",
-        "takes effect",
-        "took effect",
-        "completed",
-        "all set",
-    )
-    unsafe_chinese = (
-        "已生效",
-        "已经生效",
-        "生效了",
-        "已提交",
-        "已经提交",
-        "提交了",
-        "已完成",
-        "已经完成",
-        "完成了",
-        "已更改",
-        "已经更改",
-        "已修改",
-        "已经修改",
-        "已更新",
-        "已经更新",
-        "已经改",
-        "改好了",
-    )
-    return any(phrase in lowered for phrase in unsafe_english) or any(
-        phrase in text for phrase in unsafe_chinese
-    )
-
-
-def _safe_pending_explanation(request: ReplyInput) -> str:
+def replacement_explanation(request: ReplyInput) -> str:
+    title = str(request.patch["title"])
+    place = str(request.patch.get("place") or "").strip()
+    destination = f"{title} ({place})" if place else title
     chinese = bool(re.search(r"[\u4e00-\u9fff]", request.message))
-    path = request.verdict.path.value
+    if request.verdict.path.value == "notice":
+        if chinese:
+            return f"我建议把 {request.item.title} 换成 {destination}，时间保持不变。检查通过；点击 Apply 后才会提交。"
+        return f"I suggest replacing {request.item.title} with {destination} at the same time. It passes the checks; it will only be submitted after you click Apply."
+    if request.verdict.path.value in {"round", "reopen_round"}:
+        if chinese:
+            return f"我建议把 {request.item.title} 换成 {destination}。这个调整需要小组投票，点击 Apply 后才会发起。"
+        return f"I suggest replacing {request.item.title} with {destination}. This needs a group round, which starts only after you click Apply."
     if chinese:
-        if path == "notice":
-            return "我可以准备这个改动；检查通过。需要你点击 Apply 后才会提交，当前行程还没有改变。"
-        if path in {"round", "reopen_round"}:
-            return "我可以准备这个改动；它需要小组投票。需要你点击 Apply 后才会发起，当前行程还没有改变。"
-        return "我可以准备这个改动；相关成员需要确认。需要你点击 Apply 后才会提交，当前行程还没有改变。"
-    if path == "notice":
-        return (
-            "I can prepare this change. It passes the checks, and it will only be "
-            "submitted after you click Apply; the Current Plan has not changed yet."
-        )
-    if path in {"round", "reopen_round"}:
-        return (
-            "I can prepare this change. It needs a group round, which starts only "
-            "after you click Apply; the Current Plan has not changed yet."
-        )
-    return (
-        "I can prepare this change. Affected members need to confirm, and it will "
-        "only be submitted after you click Apply; the Current Plan has not changed yet."
+        return f"我建议把 {request.item.title} 换成 {destination}。这个调整需要相关成员确认，点击 Apply 后才会提交。"
+    return f"I suggest replacing {request.item.title} with {destination}. Affected members must confirm, and it will only be submitted after you click Apply."
+
+
+def _understand_prompt(request: UnderstandInput) -> str:
+    parts = [
+        "Recent conversation (oldest to newest):",
+        *(
+            [f"{turn.role}: {turn.text}" for turn in request.history[-10:]]
+            or ["None"]
+        ),
+        "",
+        "Message:",
+        request.message,
+        "",
+        "Allowed patch fields: title, place, start_hour, day_date, price_per_person.",
+    ]
+    if request.item:
+        parts.extend(["", "Current itinerary item:", request.item.prompt_block()])
+    else:
+        parts.extend(["", "No specific item was selected. If the message does not name an item, item_hint must be null."])
+    parts.extend(
+        [
+            "",
+            "Eligible catalog replacements at the current time:",
+            *(
+                [candidate.prompt_line() for candidate in request.candidates]
+                or ["None"]
+            ),
+            "",
+            "A generic area such as downtown is a preference, not a venue title. "
+            "When choosing a candidate, copy its title, place, price, lat, and lng exactly.",
+        ]
     )
+    return "\n".join(parts)
 
 
 def _reply_prompt(request: ReplyInput, safe: base.SafeContext) -> str:
@@ -261,23 +312,42 @@ def _question_prompt(request: QuestionInput) -> str:
     return "\n".join(parts).strip()
 
 
-def _hour_from_text(message: str) -> float | None:
-    message = message.lower()
-    chinese = re.search(
-        r"(凌晨|上午|早上|中午|下午|晚上)\s*(\d{1,2})(?:\s*点(?:半|:(\d{2}))?|:(\d{2}))",
-        message,
+def _mock_understanding(request: UnderstandInput) -> dict[str, Any]:
+    message = request.message.lower()
+    patch = {
+        "title": None,
+        "place": None,
+        "start_hour": _hour_from_text(message),
+        "day_date": None,
+        "price_per_person": None,
+        "lat": None,
+        "lng": None,
+    }
+    if "shopping" in message or "shop" in message:
+        patch["title"] = "Magnificent Mile shopping"
+        patch["place"] = "Magnificent Mile"
+    elif "dinner" in message and "move" not in message:
+        patch["title"] = "Dinner"
+
+    history_text = " ".join(turn.text.lower() for turn in request.history)
+    combined = f"{history_text} {message}".strip()
+    has_change = any(value is not None for value in patch.values()) or any(
+        word in combined
+        for word in ("move", "replace", "change", "switch", "go to", "换", "改", "替换")
     )
-    if chinese:
-        prefix = chinese.group(1) or ""
-        hour = int(chinese.group(2))
-        minute = 30 if "半" in chinese.group(0) else int(chinese.group(3) or chinese.group(4) or 0)
-        if prefix in {"下午", "晚上"} and hour < 12:
-            hour += 12
-        if prefix == "凌晨" and hour == 12:
-            hour = 0
-        if prefix in {"上午", "早上"} and hour == 12:
-            hour = 0
-        return hour + minute / 60
+    if not has_change:
+        return {"intent": "question", "item_hint": None, "patch": patch}
+
+    item_hint = request.item.title if request.item else None
+    if item_hint is None:
+        if "art institute" in message or "museum" in message:
+            item_hint = "Art Institute"
+        elif "birthday dinner" in message:
+            item_hint = "Birthday dinner"
+    return {"intent": "change", "item_hint": item_hint, "patch": patch}
+
+
+def _hour_from_text(message: str) -> float | None:
     match = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", message)
     if match:
         hour = int(match.group(1))

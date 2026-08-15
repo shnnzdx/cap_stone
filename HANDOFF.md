@@ -134,8 +134,8 @@ AI 可以解释或辅助生成，但不能选择 change path，不能读取其�
 
 当前策略：
 
-1. Chicago 继续使用 `backend/data/poi_chicago.py` 的原有 curated 数据。
-2. 其他 destination 先查询 PostgreSQL `place` cache。
+1. 所有 destination（包括 Chicago）都先查询 PostgreSQL `place` cache。
+2. `backend/data/poi_chicago.py` 保留用于 legacy reference、tests、demo fixtures 和 compatibility，但不再作为正式 Planner candidate source。
 3. cache 数量或类别覆盖不足时才调用 Geoapify。
 4. Geoapify 先 geocode city，再调用官方 endpoint：
 
@@ -219,6 +219,15 @@ Chat 默认走 Ollama Cloud 的 `qwen3.5:cloud`。本地 Ollama 只通过 legacy
 
 当前日程生成把 sightseeing 与 meals 分开处理：
 
+### Candidate identity / place names
+
+- DeepSeek Planner 只返回 `candidate_id + start_hour`，不返回地点名称。
+- 候选中的 `english_name`、`local_name`、category、坐标和营业信息都是只读事实。
+- 后端用 `candidate_id` 查回本次 Place Library 候选，并把候选中的规范
+  `english_name / local_name` 写入 `PlanItem.title / PlanItem.local_title`。
+- Planner 不得创造、翻译、改写或拼接地点名称；无可靠英文名的非拉丁地点继续在
+  Place Service 阶段过滤。
+
 ### Sightseeing
 
 - 每天约 2–4 个 sightseeing activities
@@ -226,13 +235,28 @@ Chat 默认走 Ollama Cloud 的 `qwen3.5:cloud`。本地 Ollama 只通过 legacy
 - morning / afternoon / late-afternoon 时间会按日期自然变化
 - 尽量在 16:00 后安排至少一个 meaningful sightseeing item
 - 避免固定使用每天同一组 `10:00 / 14:00 / 19:00`
+- 正常完整日通常 09:00–10:30 开始，并在 Dinner anchor 计入后持续到约 18:00 或更晚
+- 规划优先级依次为 hard constraints、fixed/locked events、dates/availability、
+  opening hours、geographic feasibility、timing/transition、meals、soft interests、variety
+- 已知营业时间和活动时长必须遵守；优先同一区域并为交通和余量留出空间
+- 每天先从全城候选中选择一个 spatially-diverse anchor，再以 Haversine 直线距离形成
+  当天的 neighborhood candidate pool；不同日期轮换 anchor，避免所有天集中到同一区域
+- rules fallback 会按上一站坐标、interest relevance 和候选质量排序，并拒绝已知时长重叠
+- 这里只使用坐标距离做 clustering，不把它描述成真实 walking route/time
 
 ### Meal anchors
 
 - Lunch 约 11:30–13:30
 - Dinner 约 17:30–20:00
 - meal slots 不计入 2–4 个 sightseeing 数量
-- 只有可靠 restaurant/cafe/catering candidate 才能作为 meal venue
+- Lunch 优先 restaurant/casual dining，并可在放宽阶段接受有实质食物的 café、bakery、
+  food hall；Dinner 优先 restaurant/dining/regional cuisine，并排除 café-only 候选
+- meal selection 以上午/下午路线交界选择 Lunch，以最后 sightseeing area（及可选 evening
+  stop）选择 Dinner；依次尝试约 1.5km、3km、6km 的坐标半径，再放宽 meal-specific
+  category，最后才使用 honest flexible meal break
+- required dietary constraints 会继续通过 constraint engine 过滤真实餐厅；Preferences 的
+  maximum budget 会对已知餐价做上限筛选，未知餐价保持 unknown，不会伪造
+- meal start 会在当天的可用 lunch/dinner 选项中轮换，并避开已知活动时长重叠
 - food-themed walk、museum 或 attraction 不能仅凭 `food` tag 被当作餐厅
 - 没有可靠 restaurant 时使用：
   - `Flexible lunch break`
@@ -240,6 +264,11 @@ Chat 默认走 Ollama Cloud 的 `qwen3.5:cloud`。本地 Ollama 只通过 legacy
 - flexible break 不伪造 place、coordinates、price、duration、opening hours 或 walking data
 
 这些都是 soft scheduling rules。Meal anchor 缺失或无法安全验证时，不应单独导致 complete-plan validation blocked。
+
+Provider opening hours 仅在能可靠解析 `24/7` 或常见 weekday/time-range 格式时作为
+known-open/known-closed 验证；缺失或无法解析时保持 unknown。Dinner 后只有显式带有
+nightlife/evening/show/music/sunset/views 等信号、质量足够且仍在当天 cluster 内的地点，
+才可能作为 optional evening activity。
 
 当前模型没有 arrival/departure time，因此生成范围内的每一天暂时都被当作 full travel day。将来若增加抵达/离开时间，首尾日需要再单独适配。
 
@@ -256,6 +285,9 @@ Chat 默认走 Ollama Cloud 的 `qwen3.5:cloud`。本地 Ollama 只通过 legacy
 - UI 主语言为英文
 - Day title 使用英文区域/主题，不直接拼接多个 POI 名称
 - route summary 只显示简洁英文景点名称
+- API 传递 `is_meal` 和派生的 `meal_type`；PlanFeature 将 meal stop 明确显示为
+  `LUNCH` / `DINNER` 独立紧凑 schedule section，
+  sightseeing 编号和 route summary 不再把 meal 算作普通 activity
 - activity card 以英文名称为主标题
 - 有必要且可靠的 local name 时，在英文标题下方以更小、更浅文字显示
 - local name 已是相同英文/Latin 名称时不重复显示
@@ -289,7 +321,27 @@ trip.coverImageUrl / trip.cover_image_url
 → 没有则显示 neutral travel cover
 ```
 
-Trip cover 绝对不能 fallback 到某个 activity/place image，否则 Paris 可能再次显示 Chicago Theatre。当前没有接入新的 city-cover provider，也没有 hardcode Paris/Tokyo 城市图片。
+Trip cover 绝对不能 fallback 到某个 activity/place image，否则 Paris 可能再次显示 Chicago Theatre。
+当前已接入 backend-only Unsplash Trip Cover service：
+
+- `backend/.env` 使用 `UNSPLASH_ACCESS_KEY`，前端不接触 key
+- `Trip` 保存 cover URL、source、photographer attribution 和 fetch timestamp
+- 成功结果永久复用；provider 失败七天后才重试；未配置 key 不写 negative cache
+- My Trips 当前 workspace 优先请求并 eager/high-priority 加载，Other Trips 使用 lazy loading
+- CDN rendition 分别约为 1000×560 和 360×220，不加载原始大图
+- 无结果、API 不可用或 attribution 不完整时继续显示 neutral `Travel cover`
+- Place `image_url` / PlanItem `photo_url` 与 Trip cover 保持完全分离
+
+真实 provider smoke test：
+
+```bash
+cd /Users/jiayichen/Desktop/cap_stone-main/backend
+.venv/bin/python scripts/validate_unsplash_covers.py
+```
+
+脚本依次验证 Saint Louis、Paris、Tokyo，且不会输出 access key。当前本机
+`backend/.env` 尚未配置 `UNSPLASH_ACCESS_KEY`，因此本轮只完成 mock/provider-contract
+测试，不能把 neutral fallback 冒充为真实 Unsplash 验收结果。
 
 ## 11. Create Trip 与 Preferences 最新行为
 
@@ -339,6 +391,14 @@ Preferences 直接展示继承的 Trip Dates，不再让成员重新定义整个
 
 Planner/constraint conversion 已能读取成员 availability。不要另外创建第二套日期系统。
 
+Plan 已存在时保存 Preferences 或增删改 constraint：
+
+- 不修改任何现有 `PlanItem`
+- 将 `Plan.needs_refresh` 标为 true
+- Current Plan 显示轻量提示，说明 shared plan 仍保持原样
+- 后续 generation/replan 继续从数据库读取最新 Preferences/constraints；change proposal 的
+  deterministic classification 也继续读取最新 constraints
+
 ## 12. Database 与 schema
 
 后端使用 FastAPI + SQLAlchemy + PostgreSQL。运行时数据库由 `backend/.env` 的 `DATABASE_URL` 决定；测试数据库由 `TEST_DATABASE_URL` 决定。
@@ -377,7 +437,7 @@ http://127.0.0.1:8000/api/health
 ### Main frontend
 
 ```bash
-cd /Users/jiayichen/Desktop/cap_stone/frontend
+cd /Users/jiayichen/Desktop/cap_stone-main/frontend
 npm run dev
 ```
 
@@ -409,21 +469,40 @@ npm run build:trip-preview
 
 ### 最近 Planner / Place 定向测试
 
-2026-08-14 最后一次结果：
+2026-08-14 本轮最后一次相关回归结果：
 
 ```bash
-cd /Users/jiayichen/Desktop/cap_stone/backend
-.venv/bin/pytest -q -p no:cacheprovider \
-  tests/test_plan_generation.py \
-  tests/test_planner.py \
-  tests/test_places.py
+cd /Users/jiayichen/Desktop/cap_stone-main
+backend/.venv/bin/pytest -q -p no:cacheprovider \
+  backend/tests/test_plan_generation.py \
+  backend/tests/test_planner.py \
+  backend/tests/test_places.py \
+  backend/tests/test_preferences.py \
+  backend/tests/test_trips.py
 ```
 
 结果：
 
 ```text
-46 passed in 0.96s
+119 passed in 1.95s
 ```
+
+同一轮使用项目配置的真实 Geoapify key 对 `New York, USA` 做了 provider/runtime 验证：
+
+```text
+96+ provider candidates（restaurant neighborhood sampling 后 115）
+day pool: 24 sightseeing + 18 food
+09:30 Frieda and Roy Furman Gallery
+12:00 LUNCH — Sushi Yasaka
+14:45 Clark Studio Theater
+16:45 Merkin Concert Hall
+18:30 DINNER — Ashford & Simpson's Sugar Bar
+transition coordinate distances: 0.61 / 0.61 / 0.16 / 0.47 km
+flexible meals: 0
+```
+
+这只是 Haversine 坐标距离验证，不代表真实 walking time。已知午间关闭的 restaurant 被
+排除；营业时间缺失的候选仍保持 unknown。
 
 ### 完整 backend tests
 

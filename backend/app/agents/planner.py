@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,10 +10,14 @@ from . import base
 
 
 SYSTEM = (
-    "You are a day planner for a trip itinerary. Choose sightseeing activities only "
-    "from the provided candidate POIs and assign natural start times. Lunch and dinner "
-    "are added separately as schedule anchors. "
-    "Do not invent places, times, prices, or constraints."
+    "You are the Planner for a trip itinerary. Select sightseeing activities only from "
+    "the supplied candidate records. Each candidate_id is an opaque, immutable reference. "
+    "Return candidate_id values exactly as supplied. Never create, translate, rewrite, "
+    "combine, or return place names; never derive a title from a category. The backend, "
+    "not you, owns english_name and local_name and resolves the selected candidate_id to "
+    "the canonical place record. Lunch and dinner are added separately as schedule anchors. "
+    "Do not invent places, place metadata, prices, opening hours, or constraints. Assign "
+    "start times only within the supplied scheduling rules and candidate facts."
 )
 
 # Empty picks exercise the canonical generator's deterministic rules fallback
@@ -29,13 +34,20 @@ TIME_WINDOWS = {
     "lunch": (11.5, 13.25),
     "afternoon": (13.5, 17.0),
     "dinner": (17.5, 20.0),
+    "evening": (20.25, 22.5),
 }
 
 
 @dataclass(frozen=True)
 class PoiOption:
+    candidate_id: str
     name: str
+    local_name: str | None
     place: str
+    category: str | None
+    latitude: float | None
+    longitude: float | None
+    opening_hours: str | None
     price: float | None
     duration_min: int | None
     opens: float | None
@@ -50,12 +62,13 @@ class PlanDayInput:
     already_used: tuple[str, ...]
     budget_left: float | None
     interests: tuple[str, ...]
+    hard_constraints: tuple[str, ...] = ()
     preferred_activity_count: int = 3
 
 
 @dataclass(frozen=True)
 class Pick:
-    poi_name: str
+    candidate_id: str
     start_hour: float
 
 
@@ -101,7 +114,7 @@ def _call_day_model(
         user += (
             "\n\nThe previous day plan failed deterministic validation:\n"
             f"{repair_error}\n"
-            "Return a corrected full day plan using only the provided candidate names "
+            "Return a corrected full day plan using only the provided candidate_id values "
             "and valid category-aware time windows."
         )
     return base.call_model(
@@ -128,10 +141,10 @@ def _day_schema() -> dict[str, Any]:
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
-                        "poi_name": {"type": "string"},
+                        "candidate_id": {"type": "string"},
                         "start_hour": {"type": "number"},
                     },
-                    "required": ["poi_name", "start_hour"],
+                    "required": ["candidate_id", "start_hour"],
                 },
             },
         },
@@ -141,34 +154,71 @@ def _day_schema() -> dict[str, Any]:
 
 def _day_prompt(payload: PlanDayInput) -> str:
     candidate_lines = [
-        f'- poi_name="{candidate.name}"; place={candidate.place}; '
-        f"price={_known(candidate.price)}; duration_min={_known(candidate.duration_min)}; "
-        f"open={_known(candidate.opens)}; close={_known(candidate.closes)}; "
-        f"tags={','.join(candidate.tags)}"
+        json.dumps(
+            {
+                "candidate_id": candidate.candidate_id,
+                "english_name": candidate.name,
+                "local_name": candidate.local_name,
+                "category": candidate.category,
+                "place": candidate.place,
+                "latitude": candidate.latitude,
+                "longitude": candidate.longitude,
+                "price": candidate.price,
+                "duration_min": candidate.duration_min,
+                "opens": candidate.opens,
+                "closes": candidate.closes,
+                "opening_hours": candidate.opening_hours,
+                "tags": candidate.tags,
+            },
+            ensure_ascii=False,
+        )
         for candidate in payload.candidates
     ]
     return "\n".join(
         [
             f"Plan Day {payload.day_index}.",
-            "Choose 2 to 4 sightseeing POIs and give each a start_hour in 15-minute increments.",
-            f"Soft target for this day: {payload.preferred_activity_count} sightseeing activities. "
+            "Choose 2 to 4 sightseeing candidates and give each a start_hour in "
+            "15-minute increments.",
+            f"Soft target for this day: {payload.preferred_activity_count} sightseeing "
+            "activities. "
             "Use fewer or more when the candidates and constraints make that more natural; "
             "never fail the day merely to hit this target.",
-            "Use morning 9.0-11.0 and afternoon 13.5-17.0 for sightseeing. "
-            "Lunch and dinner are handled outside this selection.",
-            "Prefer at least one meaningful sightseeing item at or after 16.0 on a full day.",
-            "Avoid unexplained gaps: use a natural morning, lunch-gap, afternoon, "
-            "late-afternoon rhythm.",
-            "Use each POI and exact start time at most once.",
+            "Decision priority, highest first: (1) hard constraints, (2) fixed or locked "
+            "events, (3) trip dates and user availability, (4) opening hours, "
+            "(5) geographic feasibility, (6) reasonable timing and transition, "
+            "(7) meal timing, (8) soft preferences and interests, (9) daily variety. "
+            "Never violate a higher-priority rule to make the itinerary look richer.",
+            "This input represents a normal full travel day. Normally start sightseeing "
+            "between 9.0 and 10.5. Obey any later required earliest time exactly.",
+            "Use morning 9.0-11.0 and afternoon 13.5-17.0 for sightseeing. Lunch is added "
+            "separately in the 11.5-14.0 window and dinner in the 17.5-20.0 window; leave "
+            "natural space for both and do not schedule sightseeing that obviously conflicts.",
+            "An optional evening activity may start from 20.25-22.5 only when the candidate "
+            "is explicitly suitable for evenings (for example a show, viewpoint, night market, "
+            "river walk, or night attraction), is near the dinner area, and adds real value. "
+            "Do not add a weak evening stop merely to lengthen the day.",
+            "A normal full day should usually remain active until about 18.0 or later once "
+            "the separate dinner anchor is included. Avoid ending the meaningful itinerary "
+            "at 14.0-16.0 when legal, worthwhile candidates remain.",
+            "Across sightseeing and the separate meal anchors, a full day usually has about "
+            "3 to 5 meaningful blocks. Do not force an extra place merely to hit a count, and "
+            "do not mechanically use the same count every day.",
+            "Respect each candidate's opens, closes, opening_hours, and known duration. If "
+            "hours are unknown, do not invent them. A closed museum never outranks an interest.",
+            "Allow realistic transition time between activities. Prefer nearby coordinates "
+            "and coherent areas; avoid obvious backtracking. Do not fill every minute.",
+            "Use each candidate_id and exact start time at most once.",
             "Vary exact start times naturally between days; do not repeat 10.0, "
             "14.0, 19.0 every day.",
-            "Prefer a geographically coherent area for this day and varied themes across the trip.",
             f"Budget left per person: {_known(payload.budget_left)}.",
+            "Required planning constraints (sanitized structured facts only): "
+            + ("; ".join(payload.hard_constraints) or "none supplied"),
             "Traveler interests: " + (", ".join(payload.interests) or "not specified"),
-            "Already used POIs elsewhere in the trip: "
+            "Already used canonical place names elsewhere in the trip (read-only context): "
             + (", ".join(payload.already_used) or "none"),
             "",
-            "Candidate POIs. Copy only the exact poi_name values:",
+            "Candidate records. Names and categories are read-only facts. In picks, return only "
+            "the exact candidate_id and start_hour; do not return any name field:",
             *candidate_lines,
         ]
     )
@@ -187,18 +237,22 @@ def _parse_day_result(
     if not MIN_DAY_ACTIVITIES <= len(raw_picks) <= MAX_DAY_ACTIVITIES:
         raise PlannerDayInvalid("Expected between 2 and 4 picks")
 
-    candidates_by_name = {candidate.name: candidate for candidate in payload.candidates}
-    seen_names: set[str] = set()
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in payload.candidates}
+    seen_candidate_ids: set[str] = set()
     seen_times: set[float] = set()
     picks: list[Pick] = []
 
     for raw_pick in raw_picks:
         if not isinstance(raw_pick, dict):
             raise PlannerDayInvalid("Each pick must be an object")
-        poi_name = raw_pick.get("poi_name")
+        if set(raw_pick) != {"candidate_id", "start_hour"}:
+            raise PlannerDayInvalid(
+                "Each pick must contain only candidate_id and start_hour"
+            )
+        candidate_id = raw_pick.get("candidate_id")
         start_hour = raw_pick.get("start_hour")
-        if poi_name not in candidates_by_name:
-            raise PlannerDayInvalid(f"Unknown candidate POI: {poi_name}")
+        if candidate_id not in candidates_by_id:
+            raise PlannerDayInvalid(f"Unknown candidate_id: {candidate_id}")
         if not isinstance(start_hour, int | float) or isinstance(start_hour, bool):
             raise PlannerDayInvalid(f"Unsupported start_hour: {start_hour}")
         start_hour = float(start_hour)
@@ -209,15 +263,28 @@ def _parse_day_result(
         window = time_window(start_hour)
         if window is None:
             raise PlannerDayInvalid(f"Unsupported start_hour: {start_hour}")
-        if not category_allows_window(candidates_by_name[poi_name].tags, window):
-            raise PlannerDayInvalid(f"{poi_name} is not suitable for the {window} window")
-        if poi_name in seen_names:
-            raise PlannerDayInvalid(f"Repeated POI: {poi_name}")
+        candidate = candidates_by_id[candidate_id]
+        if not category_allows_window(candidate.tags, window):
+            raise PlannerDayInvalid(
+                f"candidate_id {candidate_id} is not suitable for the {window} window"
+            )
+        if candidate.opens is not None and start_hour < candidate.opens:
+            raise PlannerDayInvalid(f"candidate_id {candidate_id} is not open yet")
+        if candidate.closes is not None:
+            end_hour = (
+                start_hour + candidate.duration_min / 60
+                if candidate.duration_min is not None
+                else start_hour
+            )
+            if end_hour > candidate.closes:
+                raise PlannerDayInvalid(f"candidate_id {candidate_id} closes too early")
+        if candidate_id in seen_candidate_ids:
+            raise PlannerDayInvalid(f"Repeated candidate_id: {candidate_id}")
         if start_hour in seen_times:
             raise PlannerDayInvalid(f"Repeated start time: {start_hour}")
-        seen_names.add(poi_name)
+        seen_candidate_ids.add(candidate_id)
         seen_times.add(start_hour)
-        picks.append(Pick(poi_name=poi_name, start_hour=start_hour))
+        picks.append(Pick(candidate_id=candidate_id, start_hour=start_hour))
 
     note = result.get("note")
     if not isinstance(note, str) or not note.strip():
@@ -240,11 +307,16 @@ def time_window(start_hour: float) -> str | None:
 def category_allows_window(tags: tuple[str, ...], window: str) -> bool:
     is_food = is_reliable_meal_candidate(tags)
     normalized = {tag.casefold() for tag in tags}
+    evening_markers = {
+        "nightlife", "evening", "night", "show", "music", "sunset", "views",
+    }
     is_nightlife = "nightlife" in normalized
     if is_food:
         return window in {"lunch", "dinner"}
+    if window == "evening":
+        return bool(normalized & evening_markers)
     if is_nightlife:
-        return window == "dinner"
+        return window in {"dinner", "evening"}
     return window in {"morning", "afternoon"}
 
 

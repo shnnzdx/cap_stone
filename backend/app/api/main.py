@@ -42,6 +42,7 @@ from ..domain.decisions import organizer as org_actions
 from ..domain.plans import generator as plan_generator
 from ..domain.preferences import service as pref_service
 from ..domain.trips import service as trip_service
+from ..domain.trips import cover_service as trip_cover_service
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173",
@@ -161,35 +162,22 @@ def _bearer_token(authorization: str | None) -> str | None:
 # -------------------- Request and response shapes --------------------
 
 
-class ChangeOptionIn(BaseModel):
-    item_id: str
-    label: str | None = None
-    title: str
-    body: str | None = None
-    tradeoff: str | None = None
-    start_hour: float | None = None
-    day_date: date | None = None
-    duration_min: int | None = None
-
-
 class ChangeRequest(BaseModel):
     title: str | None = None
     place: str | None = None
     start_hour: float | None = Field(default=None, ge=0, le=24)
     day_date: date | None = None
-    duration_min: int | None = Field(default=None, gt=0)
     price_per_person: float | None = Field(default=None, ge=0)
     # Include new coordinates when replacing a place so the map moves with it.
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
     request: str = ""
     reason: str | None = None
-    options: list[ChangeOptionIn] = Field(default_factory=list)
 
     def patch(self) -> dict:
         return {
             k: v
-            for k, v in self.model_dump(exclude={"request", "reason", "options"}).items()
+            for k, v in self.model_dump(exclude={"request", "reason"}).items()
             if v is not None
         }
 
@@ -248,20 +236,9 @@ class TripCreateRequest(BaseModel):
     currency: str = Field(default="USD", min_length=1, max_length=8)
 
 
-class ChatTurnCandidateOptionRequest(BaseModel):
-    id: str = Field(min_length=1, max_length=120)
-    label: str = Field(default="", max_length=120)
-    title: str = Field(default="", max_length=200)
-    body: str = Field(default="", max_length=1000)
-    tradeoff: str = Field(default="", max_length=1000)
-    item_id: str = Field(min_length=1, max_length=120)
-    patch: dict = Field(default_factory=dict)
-
-
 class ChatTurnRequest(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     text: str = Field(min_length=1, max_length=1000)
-    candidate_options: list[ChatTurnCandidateOptionRequest] = Field(default_factory=list, max_length=10)
 
 
 class ChatRequest(BaseModel):
@@ -304,6 +281,12 @@ def _item_out(item: PlanItem) -> dict:
         "source": item.source,
         "settledness": item.settledness,
         "tags": item.tags or [],
+        "is_meal": item.is_meal,
+        "meal_type": (
+            "lunch" if item.is_meal and item.start_hour < 14.0
+            else "dinner" if item.is_meal
+            else None
+        ),
         # The map draws directly from these two numbers; they change when the place changes.
         "coords": [item.lat, item.lng] if item.lat is not None else None,
         # Use null when no image exists; the frontend has a placeholder. Do not invent one here.
@@ -364,6 +347,7 @@ def _plan_out(db: Session, trip_id: str) -> dict:
         "plan_id": plan.id,
         "status": plan.status,
         "blocked_reason": plan.blocked_reason,
+        "needs_refresh": plan.needs_refresh,
         "estimated_total_per_person": plan.estimated_total_per_person,
         "days": [
             {
@@ -583,13 +567,18 @@ def get_me(
 
 @app.get("/api/trips")
 def list_trips(
+    priority_trip_id: str | None = None,
     db: Session = Depends(get_session),
     user: User = Depends(current_account_user),
 ) -> list[dict]:
     try:
-        return trip_service.list_user_trips(db, user)
+        trips = trip_service.list_user_trips(
+            db, user, priority_trip_id=priority_trip_id
+        )
     except trip_service.GuestTripAccessDenied as exc:
         raise HTTPException(403, str(exc)) from exc
+    db.commit()
+    return trips
 
 
 @app.get("/api/trips/{trip_id}")
@@ -599,7 +588,7 @@ def get_trip(
     me: TripMembership = Depends(current_membership),
 ) -> dict:
     trip = _require_scoped_trip(db, me, trip_id)
-    return {
+    result = {
         "id": trip.id,
         "name": trip.name,
         "destination": trip.destination,
@@ -614,6 +603,8 @@ def get_trip(
             db.scalars(select(TripMembership).where(TripMembership.trip_id == trip_id)).all()
         ),
     }
+    result.update(trip_cover_service.trip_cover_out(trip))
+    return result
 
 
 @app.get("/api/trips/{trip_id}/plans/current")
@@ -745,22 +736,7 @@ def chat_with_trip(
             message=body.message,
             item_id=body.item_id,
             history=tuple(
-                chat_agent.HistoryTurn(
-                    role=turn.role,
-                    text=turn.text,
-                    candidate_options=tuple(
-                        chat_agent.HistoryCandidateOption(
-                            id=option.id,
-                            label=option.label,
-                            title=option.title,
-                            body=option.body,
-                            tradeoff=option.tradeoff,
-                            item_id=option.item_id,
-                            patch=option.patch,
-                        )
-                        for option in turn.candidate_options
-                    ),
-                )
+                chat_agent.HistoryTurn(role=turn.role, text=turn.text)
                 for turn in body.history
             ),
         )
@@ -777,23 +753,7 @@ def chat_with_trip(
             "patch": result.proposed_change.patch,
             "verdict": _classification_out(result.proposed_change.verdict),
         }
-    candidate_options = [
-        {
-            "id": option.id,
-            "label": option.label,
-            "title": option.title,
-            "body": option.body,
-            "tradeoff": option.tradeoff,
-            "item_id": option.item_id,
-            "patch": option.patch,
-        }
-        for option in result.candidate_options
-    ]
-    return {
-        "reply": result.reply,
-        "proposed_change": proposed,
-        "candidate_options": candidate_options,
-    }
+    return {"reply": result.reply, "proposed_change": proposed}
 
 
 def _require_scoped_plan(
@@ -861,71 +821,6 @@ def _require_scoped_membership_in_trip(
         raise HTTPException(403, "This identity belongs to a different trip") from exc
     except ScopedResourceNotFound as exc:
         raise HTTPException(404, "Member not found") from exc
-
-
-def _validated_change_options(
-    db: Session,
-    current_item: PlanItem,
-    actor_membership_id: str,
-    options: list[ChangeOptionIn],
-) -> list[dict]:
-    accepted: list[dict] = []
-    trip_id = current_item.plan.trip_id
-    for option in options[:5]:
-        option_item = db.scalar(
-            select(PlanItem)
-            .join(Plan, Plan.id == PlanItem.plan_id)
-            .where(PlanItem.id == option.item_id, Plan.trip_id == trip_id)
-        )
-        if option_item is None:
-            continue
-        # A round settles exactly one item, and settle_round applies the winning
-        # patch to that item. An option about a different item would be validated
-        # against one item and executed against another, so it cannot be honored.
-        if option_item.id != current_item.id:
-            continue
-
-        patch = {
-            key: value
-            for key, value in {
-                "start_hour": option.start_hour,
-                "day_date": option.day_date,
-                "duration_min": option.duration_min,
-            }.items()
-            if value is not None
-        }
-        if not patch:
-            continue
-        if "start_hour" in patch and not (
-            orch.DAY_START_HOUR <= patch["start_hour"] <= orch.DAY_END_HOUR
-        ):
-            continue
-        if "duration_min" in patch and patch["duration_min"] <= 0:
-            continue
-
-        savepoint = db.begin_nested()
-        try:
-            orch.classify_change(db, option_item, patch, actor_membership_id)
-        except Exception:
-            savepoint.rollback()
-            continue
-        else:
-            savepoint.rollback()
-
-        accepted.append(
-            {
-                "label": _truncate(option.label, 60),
-                "title": _truncate(option.title, 60) or "Alternative",
-                "body": _truncate(option.body, 200),
-                "tradeoff": _truncate(option.tradeoff, 200),
-                "patch": patch,
-            }
-        )
-    return accepted
-
-
-def _truncate(value: str | None, max_length: int) -> str:
-    return (value or "")[:max_length]
 
 
 @app.get("/api/rounds/{round_id}")
@@ -1002,6 +897,7 @@ def create_trip(
         # Otherwise every later call for this trip is rejected because the identity belongs to another trip.
         "membership_id": created.membership.id,
         "member": trip_service.describe_me(db, created.membership),
+        **trip_cover_service.trip_cover_out(created.trip),
     }
 
 
@@ -1135,16 +1031,9 @@ def submit_change(
 ) -> dict:
     """Submit a real change. Classification and execution happen together."""
     item = _require_scoped_plan_item(db, me, item_id)
-    alternatives = _validated_change_options(db, item, me.id, body.options)
     try:
         outcome = orch.propose_change(
-            db,
-            item,
-            body.patch(),
-            me.id,
-            request=body.request,
-            reason=body.reason,
-            alternatives=alternatives,
+            db, item, body.patch(), me.id, request=body.request, reason=body.reason
         )
     except orch.ReasonRequired as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -1357,7 +1246,7 @@ def list_members(
     return pref_service.list_members(db, me)
 
 
-# ————————————————————�?Organizer actions ————————————————————�?
+# ————————————————————— Organizer actions —————————————————————
 #
 # All three maintain the shared frame. None of them decides for anyone else.
 

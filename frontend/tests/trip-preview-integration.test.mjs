@@ -21,7 +21,7 @@ import {
   planningFlowSteps,
   productPrinciples,
 } from "../../shared/tripsync-product-content.js";
-import { resolveTripCover } from "../../trip/src/final/trip-cover.js";
+import { resolveTripCover, tripCoverImageUrlForVariant } from "../../trip/src/final/trip-cover.js";
 
 test("shares one preview routing contract across frontend and trip", async () => {
   const [previewConfig, tripViteConfig, tripFinalApp] = await Promise.all([
@@ -97,6 +97,7 @@ test("resolves trip covers independently from place photos", () => {
     imageUrl: null,
     kind: "neutral",
     label: "Travel cover",
+    attribution: null,
   });
   assert.deepEqual(resolveTripCover({
     destination: "Paris",
@@ -105,8 +106,65 @@ test("resolves trip covers independently from place photos", () => {
     imageUrl: "https://cdn.example.com/cities/paris.jpg",
     kind: "image",
     label: "Paris cover",
+    attribution: null,
+  });
+  assert.deepEqual(resolveTripCover({
+    destination: "Paris",
+    cover_image_url: "https://images.unsplash.com/paris",
+    cover_attribution_name: "A Photographer",
+    cover_attribution_url: "https://unsplash.com/@photographer?utm_source=cadensy",
+    cover_source_url: "https://unsplash.com/photos/paris?utm_source=cadensy",
+  }).attribution, {
+    name: "A Photographer",
+    photographerUrl: "https://unsplash.com/@photographer?utm_source=cadensy",
+    sourceUrl: "https://unsplash.com/photos/paris?utm_source=cadensy",
   });
   assert.equal(resolveTripCover({ cover_image_url: "javascript:alert(1)" }).kind, "neutral");
+  assert.match(tripCoverImageUrlForVariant("https://images.unsplash.com/paris", "featured"), /w=1000/);
+  assert.match(tripCoverImageUrlForVariant("https://images.unsplash.com/paris", "compact"), /w=360/);
+});
+
+test("invite surfaces reuse the persisted Trip cover instead of demo city images", async () => {
+  const [finalApp, finalCss] = await Promise.all([
+    readFile(new URL("../../trip/src/final/FinalApp.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(finalApp, /<TripCoverHero className="shareHero" trip=\{currentTrip\}>/);
+  assert.match(finalApp, /<TripCoverHero className="invitePhoto" trip=\{preview \|\| \{\}\}>/);
+  assert.doesNotMatch(finalApp, /shareHero[^\n]*(photoChicago|photoLake|photoMountain|photoNight)/);
+  assert.doesNotMatch(finalCss, /\.shareHero\{[^}]*url\(/);
+  assert.doesNotMatch(finalCss, /\.invitePhoto\{[^}]*url\(/);
+});
+
+test("dashboard cover attribution stays inside the fixed-size image container", async () => {
+  const [finalApp, finalCss] = await Promise.all([
+    readFile(new URL("../../trip/src/final/FinalApp.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(finalApp, /className="dashboardTripCoverLink"/);
+  assert.match(finalApp, /tripCoverAttribution[\s\S]*<\/div>[\s\S]*dashboardTripBody dashboardTripBodyLink/);
+  assert.match(finalCss, /\.tripCoverAttribution\{[\s\S]*position:absolute;/);
+  assert.match(finalCss, /\.tripPhoto\{[\s\S]*width:100%;[\s\S]*overflow:hidden;/);
+  assert.doesNotMatch(finalCss, /\.dashboardTripCardLink\{display:contents/);
+});
+
+test("plan stop cards use compact category icons instead of activity photos", async () => {
+  const [planFeature, finalCss, builtHtml] = await Promise.all([
+    readFile(new URL("../../trip/src/final/plan-feature/PlanFeature.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8"),
+    readFile(new URL("../public/trip-app/index.html", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(planFeature, /function StopCategoryIcon/);
+  assert.match(planFeature, /categoryPresentation\(item\)\.label/);
+  assert.match(planFeature, /className="activityStartTime"/);
+  assert.doesNotMatch(planFeature, /ActivityPhoto|activityPhoto|>Photo</);
+  assert.match(finalCss, /\.stopCategoryIcon/);
+  assert.match(finalCss, /\.activityStartTime/);
+  assert.match(finalCss, /\.activityPhoto,[\s\S]*display:none!important/);
+  assert.match(builtHtml, /index-.*\.js/);
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {

@@ -177,6 +177,7 @@ def save_mine(
     # 组织者要看得到"6 个人里几个交了",没有这一行系统根本不知道谁交了。
     membership.status = "preferences_submitted"
     db.flush()
+    _mark_existing_plan_for_refresh(db, membership.trip_id)
     return read_mine(db, membership)
 
 
@@ -250,6 +251,7 @@ def add_constraint(
         )
     )
     db.flush()
+    _mark_existing_plan_for_refresh(db, membership.trip_id)
     return row, scan_conflicts(db, membership, only=row)
 
 
@@ -267,6 +269,7 @@ def update_constraint(
     if importance is not None:
         row.importance = importance
     db.flush()
+    _mark_existing_plan_for_refresh(db, membership.trip_id)
     return row, scan_conflicts(db, membership, only=row)
 
 
@@ -285,6 +288,20 @@ def delete_constraint(db: Session, membership: TripMembership, constraint_id: st
         db.flush()
     db.delete(row)
     db.flush()
+    _mark_existing_plan_for_refresh(db, membership.trip_id)
+
+
+def _mark_existing_plan_for_refresh(db: Session, trip_id: str) -> None:
+    """Flag stale planning inputs without silently rewriting shared decisions."""
+    plan = db.scalar(select(Plan).where(Plan.trip_id == trip_id))
+    if plan is None:
+        return
+    has_items = db.scalar(
+        select(PlanItem.id).where(PlanItem.plan_id == plan.id).limit(1)
+    )
+    if has_items is not None:
+        plan.needs_refresh = True
+        db.flush()
 
 
 # ————————————————————— 扫描:我这条要求撞到了什么 —————————————————————

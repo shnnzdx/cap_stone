@@ -208,23 +208,11 @@ def classify(
     settledness = change.before.settledness
     findings = _collect_findings(constraints, change)
 
-    # 一个人的行程没有"小组"可以表决,自己跟自己也不存在抢时段。
-    # member_count 为 None 时按有别人处理,保持原来的严格行为。
-    solo_trip = change.member_count is not None and change.member_count <= 1
-    touched_by_requester = (
-        change.last_touched_by_membership_id is not None
-        and change.last_touched_by_membership_id == change.requested_by_membership_id
-    )
-
     hits = {
         "booking": settledness is Settledness.BOOKED,
         "required": bool(findings),
-        "settled": settledness is Settledness.SETTLED and not solo_trip,
-        "contested": (
-            settledness is Settledness.TOUCHED
-            and not solo_trip
-            and not touched_by_requester
-        ),
+        "settled": settledness is Settledness.SETTLED,
+        "contested": settledness is Settledness.TOUCHED,
     }
 
     # 四条判据每次都全部返回,不只返回命中的那条 ——

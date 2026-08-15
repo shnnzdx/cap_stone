@@ -2,22 +2,35 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from data.poi_chicago import POIS
 
 from ...db.models import Place
 from . import geoapify
 
 DEFAULT_MINIMUM_PLACES = 36
 MAX_PLACES_PER_CATEGORY = 12
+MAX_FOOD_PLACES = 24
 
 DISPLAY_NAME_ALIASES = {
     "charlemagne et ses leudes": "Charlemagne Monument",
 }
+DESTINATION_ALIASES = {
+    "washingtondc": "Washington, DC",
+}
+
+VAGUE_NAME_WORDS = frozenset({
+    "building", "business", "center", "cafe", "coffee", "office", "place",
+    "restaurant", "shop", "store", "unnamed", "unknown",
+})
+HIGH_VALUE_CATEGORY_MARKERS = (
+    "tourism", "museum", "heritage", "monument", "aquarium", "planetarium",
+    "zoo", "park", "garden", "gallery", "sights",
+)
 
 
 @dataclass(frozen=True)
@@ -30,6 +43,7 @@ class PlannerPlace:
     address: str | None
     image_url: str | None
     opening_hours: str | None
+    candidate_id: str = ""
     price: float | None = None
     duration_min: int | None = None
     opens: float | None = None
@@ -48,9 +62,8 @@ def places_for_planner(
     *,
     minimum: int = DEFAULT_MINIMUM_PLACES,
 ) -> tuple[PlannerPlace, ...]:
-    """Return curated Chicago data or cached/provider-backed global places."""
-    if _is_chicago(destination):
-        return _chicago_places()
+    """Return cached/provider-backed global places for Planner."""
+    destination = _canonical_destination(destination)
 
     cached = _cached_places(db, destination)
     if not _cache_needs_refresh(cached, minimum=minimum):
@@ -76,12 +89,13 @@ def places_for_planner(
     return tuple(_database_place(row) for row in _balanced_places(cached))
 
 
+def _canonical_destination(destination: str) -> str:
+    compact = re.sub(r"[^a-z0-9]", "", destination.casefold())
+    return DESTINATION_ALIASES.get(compact, destination.strip())
+
+
 def _destination_city(destination: str) -> str:
     return destination.split(",", 1)[0].strip()
-
-
-def _is_chicago(destination: str) -> bool:
-    return _destination_city(destination).casefold() == "chicago"
 
 
 def _cached_places(db: Session, destination: str) -> list[Place]:
@@ -157,7 +171,11 @@ def _balanced_places(rows: list[Place]) -> list[Place]:
         group_order.append("other")
     queues = {
         group: _spatially_spread(grouped.get(group, []))[
-            : (6 if group == "other" else MAX_PLACES_PER_CATEGORY)
+            : (
+                6 if group == "other"
+                else MAX_FOOD_PLACES if group == "food"
+                else MAX_PLACES_PER_CATEGORY
+            )
         ]
         for group in group_order
     }
@@ -170,24 +188,35 @@ def _balanced_places(rows: list[Place]) -> list[Place]:
 
 
 def _spatially_spread(rows: list[Place]) -> list[Place]:
+    """Farthest-point diversity with a quality-aware, deterministic seed.
+
+    Category round-robin remains outside this function, so improving names and
+    relevance cannot collapse the complete candidate set into one category.
+    """
     if len(rows) < 3:
-        return sorted(rows, key=lambda row: row.name.casefold())
+        return sorted(
+            rows,
+            key=lambda row: (-_place_quality_score(row), row.name.casefold()),
+        )
     remaining = sorted(rows, key=lambda row: row.name.casefold())
-    center_lat = sum(row.latitude for row in remaining) / len(remaining)
-    center_lon = sum(row.longitude for row in remaining) / len(remaining)
-    first = min(
+    first = max(
         remaining,
-        key=lambda row: (row.latitude - center_lat) ** 2 + (row.longitude - center_lon) ** 2,
+        key=lambda row: (_place_quality_score(row), row.name.casefold()),
     )
     ordered = [first]
     remaining.remove(first)
     while remaining:
         next_row = max(
             remaining,
-            key=lambda row: min(
-                (row.latitude - selected.latitude) ** 2
-                + (row.longitude - selected.longitude) ** 2
-                for selected in ordered
+            key=lambda row: (
+                min(
+                    ((row.latitude - selected.latitude) ** 2
+                    + (row.longitude - selected.longitude) ** 2) ** 0.5
+                    for selected in ordered
+                )
+                + 0.002 * _place_quality_score(row),
+                _place_quality_score(row),
+                row.name.casefold(),
             ),
         )
         ordered.append(next_row)
@@ -195,9 +224,56 @@ def _spatially_spread(rows: list[Place]) -> list[Place]:
     return ordered
 
 
+def _place_quality_score(row: Place) -> float:
+    """Rank provider facts, never invent or translate them."""
+    display_name = (row.english_name or row.name or "").strip()
+    words = re.findall(r"[a-z0-9]+", display_name.casefold())
+    category = (row.category or "").casefold()
+    score = 0.0
+    if len(display_name) >= 4 and any(char.isalpha() for char in display_name):
+        score += 2.0
+    if len(words) >= 2:
+        score += 1.5
+    if row.category and geoapify.category_group(row.category) != "other":
+        score += 2.0
+    if any(marker in category for marker in HIGH_VALUE_CATEGORY_MARKERS):
+        score += 2.0
+    score += _address_quality_score(row)
+    if row.opening_hours:
+        score += 0.5
+    if row.image_url:
+        score += 0.5
+    if not words or set(words).issubset(VAGUE_NAME_WORDS):
+        score -= 5.0
+    if display_name.casefold().startswith(("unnamed", "unknown")):
+        score -= 4.0
+    if display_name.isdigit():
+        score -= 6.0
+    return score
+
+
+def _address_quality_score(row: Place) -> float:
+    """Prefer usable provider addresses without rejecting landmark-style addresses."""
+    if not row.address:
+        return -1.5
+    address = row.address.strip().casefold()
+    if address in {
+        (row.city or "").strip().casefold(),
+        (row.country or "").strip().casefold(),
+    }:
+        return -2.0
+    parts = [part.strip() for part in row.address.split(",") if part.strip()]
+    if len(parts) >= 3:
+        return 1.0
+    if len(parts) >= 2:
+        return 0.5
+    return -0.5
+
+
 def _database_place(row: Place) -> PlannerPlace:
     tags = tuple(part for part in (row.category or "").split(".") if part)
     return PlannerPlace(
+        candidate_id=f"{row.provider}:{row.provider_place_id}",
         name=_display_name(row.english_name or row.name),
         local_name=_useful_local_name(row.local_name, row.english_name or row.name),
         location=_short_address(row) or row.city or row.country or "Location unavailable",
@@ -239,29 +315,3 @@ def _short_address(row: Place) -> str | None:
     ):
         parts.pop()
     return ", ".join(parts[:2]) or row.city or row.country
-
-
-def _chicago_places() -> tuple[PlannerPlace, ...]:
-    return tuple(
-        PlannerPlace(
-            name=raw[0],
-            local_name=None,
-            location=raw[1],
-            latitude=float(raw[2]),
-            longitude=float(raw[3]),
-            category=(raw[11] or [None])[0],
-            address=raw[1],
-            image_url=raw[12] if len(raw) > 12 else None,
-            opening_hours=None,
-            price=float(raw[4]),
-            duration_min=int(raw[5]),
-            opens=float(raw[6]),
-            closes=float(raw[7]),
-            walking_level=raw[8],
-            access=tuple(raw[9] or ()),
-            diet=tuple(raw[10] or ()),
-            tags=tuple(raw[11] or ()),
-            source="ai_estimate",
-        )
-        for raw in POIS
-    )

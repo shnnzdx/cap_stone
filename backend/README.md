@@ -140,6 +140,7 @@ Put runtime variables in `backend/.env`. Do not commit real secrets.
 | --- | --- | --- |
 | `DATABASE_URL` | runtime database | `postgresql+psycopg://localhost/tripsync` |
 | `TEST_DATABASE_URL` | pytest database | `.../tripsync_test` |
+| `UNSPLASH_ACCESS_KEY` | backend-only Trip city cover search | none |
 | `DEEPSEEK_API_KEY` | DeepSeek cloud API key | none |
 | `DEEPSEEK_BASE_URL` | DeepSeek base URL | `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | DeepSeek model name | `deepseek-v4-flash` |
@@ -313,9 +314,8 @@ Representative test areas:
 Planner gets candidate locations through `app/domain/places/service.py`; it does not
 call a third-party provider directly.
 
-- Chicago continues to use `data/poi_chicago.py`, including its curated/estimated
-  price, duration, opening-window, walking, accessibility, dietary, and interest data.
-- Other destinations first query the PostgreSQL `place` table.
+- All destinations, including Chicago, first query the PostgreSQL `place` table through the shared Place Service.
+- `data/poi_chicago.py` remains in the repository for legacy reference, tests, demo fixtures, and compatibility, but it is no longer the formal Planner candidate source.
 - Fewer than 12 cached city places triggers a Geoapify city geocode followed by a
   Geoapify Places request.
 - Results are normalized and upserted using the unique provider identity
@@ -329,6 +329,15 @@ Geoapify configuration belongs only in `backend/.env`:
 ```env
 GEOAPIFY_API_KEY=
 ```
+
+Trip city covers use a separate backend-only Unsplash key:
+
+```env
+UNSPLASH_ACCESS_KEY=
+```
+
+The dashboard persists the selected hotlinked image URL and attribution on `Trip`.
+Place and PlanItem photos remain separate. Provider failure keeps the neutral Travel cover.
 
 Before using an existing database, apply the additive schema setup:
 

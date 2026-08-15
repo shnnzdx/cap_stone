@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...db.models import InviteLink, Plan, PlanItem, Trip, TripMembership, User
+from . import cover_service
 
 
 class GuestTripAccessDenied(Exception):
@@ -28,6 +29,9 @@ class OrganizerRequired(Exception):
 
 class InviteNotFound(Exception):
     """Invalid, expired, or revoked invite token."""
+
+
+MAX_COVER_FETCHES_PER_DASHBOARD_REQUEST = 4
 
 
 def _initials(name: str) -> str:
@@ -127,7 +131,12 @@ def create_trip(
     return CreatedTrip(trip=trip, plan=plan, membership=membership)
 
 
-def list_user_trips(db: Session, account: User | TripMembership) -> list[dict]:
+def list_user_trips(
+    db: Session,
+    account: User | TripMembership,
+    *,
+    priority_trip_id: str | None = None,
+) -> list[dict]:
     user = _account_user(db, account)
 
     memberships = db.scalars(
@@ -135,12 +144,24 @@ def list_user_trips(db: Session, account: User | TripMembership) -> list[dict]:
         .where(TripMembership.user_id == user.id)
         .order_by(TripMembership.created_at)
     ).all()
+    if priority_trip_id:
+        memberships.sort(key=lambda row: row.trip_id != priority_trip_id)
 
     trips: list[dict] = []
+    cover_fetches = 0
     for my_membership in memberships:
         trip = db.get(Trip, my_membership.trip_id)
         if trip is None:
             continue
+        if cover_fetches < MAX_COVER_FETCHES_PER_DASHBOARD_REQUEST:
+            previous_fetch = trip.cover_image_fetched_at
+            previous_url = trip.cover_image_url
+            cover_service.ensure_trip_cover(db, trip)
+            if (
+                trip.cover_image_fetched_at != previous_fetch
+                or trip.cover_image_url != previous_url
+            ):
+                cover_fetches += 1
 
         member_count = db.scalar(
             select(func.count())
@@ -175,6 +196,7 @@ def list_user_trips(db: Session, account: User | TripMembership) -> list[dict]:
                 "next_item_title": next_item.title if next_item else None,
                 "membership_id": my_membership.id,
                 "my_role": my_membership.role,
+                **cover_service.trip_cover_out(trip),
             }
         )
     return trips
@@ -254,6 +276,7 @@ def invite_preview(db: Session, token: str) -> dict:
         "preferred_end_date": trip.preferred_end_date.isoformat() if trip.preferred_end_date else None,
         "member_count": member_count or 0,
         "organizer_name": organizer_user.name if organizer_user else "Organizer",
+        **cover_service.trip_cover_out(trip),
     }
 
 

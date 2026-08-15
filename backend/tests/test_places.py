@@ -24,22 +24,83 @@ def _tokyo_place(identifier: str, name: str) -> geoapify.GeoapifyPlace:
     )
 
 
-def test_chicago_keeps_curated_metadata_without_calling_geoapify(
+def test_chicago_uses_global_place_service_instead_of_curated_source(
     db: Session, monkeypatch
 ):
+    calls = []
+
+    def fetched(destination: str):
+        calls.append(destination)
+        return (
+            geoapify.GeoapifyPlace(
+                provider_place_id="chicago-art-institute",
+                name="Art Institute of Chicago",
+                city="Chicago",
+                country="United States",
+                latitude=41.8796,
+                longitude=-87.6237,
+                category="entertainment.museum",
+                address="111 S Michigan Ave, Chicago, Illinois, United States",
+                image_url=None,
+                opening_hours=None,
+                english_name="Art Institute of Chicago",
+            ),
+        )
+
+    monkeypatch.setattr(geoapify, "fetch_places", fetched)
+
+    places = service.places_for_planner(db, "Chicago, USA", minimum=1)
+
+    assert calls == ["Chicago, USA"]
+    assert [place.candidate_id for place in places] == ["geoapify:chicago-art-institute"]
+    assert places[0].source == "geoapify"
+    assert places[0].price is None
+    assert places[0].duration_min is None
+    assert places[0].opens is None
+    assert places[0].walking_level is None
+
+
+def test_chicago_reads_existing_geoapify_cache_without_fetching(
+    db: Session, monkeypatch
+):
+    db.add(
+        Place(
+            provider="geoapify",
+            provider_place_id="cached-chicago",
+            name="Chicago Cultural Center",
+            english_name="Chicago Cultural Center",
+            city="Chicago",
+            country="United States",
+            latitude=41.8837,
+            longitude=-87.625,
+            category="tourism.attraction",
+            address="78 E Washington St, Chicago, Illinois, United States",
+        )
+    )
+    db.flush()
+
     def unexpected(_destination: str):
-        raise AssertionError("Chicago must not call Geoapify")
+        raise AssertionError("Cached Chicago candidates should not call Geoapify")
 
     monkeypatch.setattr(geoapify, "fetch_places", unexpected)
 
-    places = service.places_for_planner(db, "Chicago, USA")
+    places = service.places_for_planner(db, "Chicago, USA", minimum=1)
 
-    assert places
-    assert places[0].source == "ai_estimate"
-    assert places[0].price is not None
-    assert places[0].duration_min is not None
-    assert places[0].opens is not None
-    assert places[0].walking_level in {"low", "medium", "high"}
+    assert [place.candidate_id for place in places] == ["geoapify:cached-chicago"]
+    assert places[0].name == "Chicago Cultural Center"
+
+
+def test_washingtondc_is_canonicalized_before_geoapify_lookup(db: Session, monkeypatch):
+    requested = []
+
+    def fetched(destination: str):
+        requested.append(destination)
+        return ()
+
+    monkeypatch.setattr(geoapify, "fetch_places", fetched)
+
+    assert service.places_for_planner(db, "washingtondc", minimum=1) == ()
+    assert requested == ["Washington, DC"]
 
 
 def test_geoapify_feature_normalization_preserves_only_real_values():
@@ -163,10 +224,17 @@ def test_geoapify_fetches_balanced_category_groups_with_spatial_biases(monkeypat
         for _group, categories in geoapify.PLACE_CATEGORY_GROUPS
         for category in categories
     }
-    assert len(place_calls) == len(expected_categories)
+    assert len(place_calls) == len(expected_categories) + 5
     assert {call[1]["categories"] for call in place_calls} == expected_categories
     assert all("," not in call[1]["categories"] for call in place_calls)
     assert len({call[1]["bias"] for call in place_calls}) == 6
+    assert sum(
+        call[1]["categories"] == "catering.restaurant" for call in place_calls
+    ) == 6
+    assert all(
+        sum(call[1]["categories"] == category for call in place_calls) == 1
+        for category in expected_categories - {"catering.restaurant"}
+    )
     assert all(call[1]["filter"] == "place:paris-boundary" for call in place_calls)
     assert {geoapify.category_group(place.category) for place in places} == {
         group for group, _categories in geoapify.PLACE_CATEGORY_GROUPS
@@ -214,6 +282,7 @@ def test_database_candidate_uses_english_primary_and_local_secondary_name():
     assert row.name == "南京海底世界"
     assert candidate.name == "Nanjing Seabed World"
     assert candidate.local_name == "南京海底世界"
+    assert candidate.candidate_id == "geoapify:nanjing-underwater-world"
 
 
 def test_non_latin_place_without_provider_english_name_is_not_sent_to_planner():
@@ -251,6 +320,24 @@ def test_candidate_order_round_robins_tourism_categories():
     assert [geoapify.category_group(row.category) for row in ordered] == [
         group for group, _categories in geoapify.PLACE_CATEGORY_GROUPS
     ]
+
+
+def test_quality_ranking_demotes_vague_provider_names_within_a_category():
+    clear = Place(
+        provider="geoapify", provider_place_id="museum", name="City History Museum",
+        city="Paris", country="France", latitude=48.85, longitude=2.35,
+        category="entertainment.museum", address="1 Museum Way",
+    )
+    vague = Place(
+        provider="geoapify", provider_place_id="unnamed", name="Unnamed building",
+        city="Paris", country="France", latitude=48.851, longitude=2.351,
+        category="entertainment.museum",
+    )
+
+    ordered = service._spatially_spread([vague, clear])
+
+    assert ordered[0] is clear
+    assert service._place_quality_score(clear) > service._place_quality_score(vague)
 
 
 def test_legacy_cache_without_language_fields_requests_one_provider_refresh():
@@ -336,3 +423,28 @@ def test_geoapify_failure_returns_existing_cache(db: Session, monkeypatch):
     places = service.places_for_planner(db, "Tokyo, Japan", minimum=2)
 
     assert [place.name for place in places] == ["Cached Tokyo Place"]
+
+
+def test_food_candidates_cover_restaurants_lunch_fallbacks_and_bakeries():
+    food_categories = dict(geoapify.PLACE_CATEGORY_GROUPS)["food"]
+
+    assert "catering.restaurant" in food_categories
+    assert "catering.cafe" in food_categories
+    assert "catering.fast_food" in food_categories
+    assert "catering.food_court" in food_categories
+    assert "commercial.food_and_drink.bakery" in food_categories
+
+
+def test_quality_ranking_rewards_reliable_address_information():
+    reliable = Place(
+        provider="geoapify", provider_place_id="reliable", name="City Art Museum",
+        city="Paris", country="France", latitude=48.85, longitude=2.35,
+        category="entertainment.museum", address="12 Rue de Rivoli, 75001 Paris, France",
+    )
+    missing = Place(
+        provider="geoapify", provider_place_id="missing", name="City Art Museum",
+        city="Paris", country="France", latitude=48.85, longitude=2.35,
+        category="entertainment.museum", address=None,
+    )
+
+    assert service._place_quality_score(reliable) > service._place_quality_score(missing)

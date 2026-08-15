@@ -197,10 +197,32 @@ function usePlanCurrentTrip() {
   return app.trips.find(item => item.id === tripId) || app.trip || trip || null
 }
 
-function ActivityPhoto({ item }) {
-  const [failed, setFailed] = useState(false)
-  if (!item.photoUrl || failed) return <div className="activityPhoto activityPhotoFallback"><span>Photo</span></div>
-  return <div className="activityPhoto"><img src={item.photoUrl} alt="" loading="lazy" onError={() => setFailed(true)}/></div>
+const categoryPresentation = item => {
+  if (item.isMeal) return { label: (item.mealType || 'meal').toUpperCase(), icon: 'utensils' }
+  const text = `${item.title || ''} ${item.place || ''} ${(item.tags || []).join(' ')}`.toLowerCase()
+  if (/aquarium|seabed/.test(text)) return { label: 'Aquarium', icon: 'wave' }
+  if (/water|river|waterfront|marina/.test(text)) return { label: 'Attraction', icon: 'wave' }
+  if (/museum/.test(text)) return { label: 'Museum', icon: 'museum' }
+  if (/park|garden|arboretum|botanic|nature|leaf/.test(text)) return { label: 'Park / Garden', icon: 'leaf' }
+  if (/gallery|art/.test(text)) return { label: 'Art / Gallery', icon: 'gallery' }
+  if (/historic|history|heritage|monument|memorial|landmark|cathedral|church|temple|palace|castle|shrine/.test(text)) return { label: 'Historic Site', icon: 'landmark' }
+  if (/tourism|attraction|sights|viewpoint|zoo|planetarium/.test(text)) return { label: 'Attraction', icon: 'landmark' }
+  return { label: 'Place', icon: 'pin' }
+}
+
+function CategoryGlyph({ icon }) {
+  if (icon === 'utensils') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3v7M4.8 3v7M9.2 3v7M4.8 10h4.4M7 10v11M16.5 3v18M14 3h5v8.5a2.5 2.5 0 0 1-2.5 2.5"/></svg>
+  if (icon === 'museum') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16M5 20h14M6 9l6-4 6 4M7 10v8M12 10v8M17 10v8"/></svg>
+  if (icon === 'leaf') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19c9 0 14-5 14-14-9 0-14 5-14 14Z"/><path d="M5 19c3-5 7-8 14-14"/></svg>
+  if (icon === 'gallery') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="m7 16 3.5-4 2.5 3 2-2.2 2.5 3.2"/><circle cx="9" cy="9" r="1.2"/></svg>
+  if (icon === 'wave') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2"/><path d="M3 19c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 4.4-2 2.2 2 4.4 2"/></svg>
+  if (icon === 'landmark') return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21h14M7 18h10M8 10v8M12 10v8M16 10v8M4 9h16l-8-5Z"/></svg>
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z"/><circle cx="12" cy="10" r="2"/></svg>
+}
+
+function StopCategoryIcon({ item }) {
+  const presentation = categoryPresentation(item)
+  return <div className={cx('stopCategoryIcon', item.isMeal && 'mealCategoryIcon')} aria-hidden="true"><CategoryGlyph icon={presentation.icon}/></div>
 }
 
 function NewTripPlan({ currentTrip }) {
@@ -239,12 +261,14 @@ function NewTripPlan({ currentTrip }) {
   const visibleBlockedReason = blockedReason || app.planBlockedReason || ''
   const generationBlocked = Boolean(visibleBlockedReason)
   const budgetBlocked = visibleBlockedReason.toLowerCase().includes('budget')
-  const dateBlocked = visibleBlockedReason.toLowerCase().includes('date')
+  const dateBlocked = visibleBlockedReason.toLowerCase().startsWith('trip dates are missing or invalid')
   const blockedHelp = budgetBlocked
     ? 'Raise the maximum budget, remove the budget ceiling, or choose cheaper places.'
     : dateBlocked
       ? 'Set a valid trip date range, then try generating again.'
-      : 'Edit preferences, remove or loosen required constraints, or shorten the trip window.'
+      : visibleBlockedReason.toLowerCase().includes('no usable places')
+        ? 'Check the destination name or try generating again when place data is available.'
+        : 'Review the required constraints and available places, then try generating again.'
   const headline = generationBlocked
     ? 'The requirements blocked this itinerary'
     : isOrganizer
@@ -330,9 +354,6 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
   const voteCount = round.responded || 0
   const closed = round.status === 'closed'
   const winner = closed ? round.options.find(option => option.id === round.winningOptionId) : null
-  // A tie, or an outright vote to keep, settles the block without touching the
-  // plan. Saying "Applied" there tells members something happened when nothing did.
-  const keptCurrent = closed && round.winningOptionId === 'keep'
   const tally = round.tally || {}
   const leading = Math.max(1, ...Object.values(tally))
   const isReopen = round.kind === 'reopen'
@@ -353,13 +374,11 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
         <Badge tone={closed ? 'green' : 'blue'}>{closed ? 'Round closed' : isReopen ? 'Reopen round' : 'Group round'}</Badge>
         <h3>{closed ? `Settled: ${winner?.title}` : `This block is contested: ${round.itemTitle}`}</h3>
         <p>{closed
-          ? keptCurrent
-            ? 'No change was applied. The group kept this block as it was, either by choosing to or because the vote was tied.'
-            : 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
+          ? 'Applied to the Current Plan. Members who did not respond are recorded as no preference, never as agreement.'
           : isReopen ? 'No response counts as keeping the current decision, so a change needs a clear majority.' : 'Vote on the option, not the person. Ideas stay anonymous while the group chooses what happens to this block.'}</p>
         {isReopen && round.reason && <p><strong>Reason:</strong> {round.reason}</p>}
       </div>
-      <DeadlineRing round={round} closed={closed} keptCurrent={keptCurrent}/>
+      <DeadlineRing round={round} closed={closed}/>
     </div>
     <div className="roundTally">
       <div className="voterDots" aria-label={`${voteCount} of ${round.totalMembers} responded`}>
@@ -393,7 +412,7 @@ function PlanDecisionRoundCard({ round, compact, onCommand }) {
   </article>
 }
 
-function DeadlineRing({ round, closed, keptCurrent }) {
+function DeadlineRing({ round, closed }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (closed) return
@@ -404,7 +423,7 @@ function DeadlineRing({ round, closed, keptCurrent }) {
   const fraction = closed ? 0 : Math.max(0, Math.min(1, remaining / round.windowMs))
   const hours = Math.floor(remaining / 3600000)
   const minutes = Math.floor((remaining % 3600000) / 60000)
-  const label = closed ? (keptCurrent ? 'Kept' : 'Applied') : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+  const label = closed ? 'Applied' : hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
   const radius = 15
   const circumference = 2 * Math.PI * radius
   return <div className={cx('deadlineRing', closed && 'done')}>
@@ -427,92 +446,49 @@ function PlanChatBubble({ from, children }) {
   </div>
 }
 
-function CandidateOptionList({ options = [], selectedId, disabled = false, onSelect }) {
-  if (!options.length) return null
-  return <div className="candidateOptions">
-    <div className="candidateOptionsHead"><span>Options</span><p>Selecting one only prepares the change. Apply submits it.</p></div>
-    <div className="candidateOptionList">
-      {options.map(option => <button
-        key={option.id}
-        type="button"
-        className={cx('candidateOption', selectedId === option.id && 'selected')}
-        disabled={disabled}
-        onClick={() => onSelect(option)}
-      >
-        <span>{option.label || 'Option'}</span>
-        <strong>{option.title}</strong>
-        {option.body && <p>{option.body}</p>}
-        {option.tradeoff && <small>{option.tradeoff}</small>}
-      </button>)}
-    </div>
-  </div>
-}
-
-function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss, onSelectCandidate }) {
-  const verdict = proposedChange?.verdict || { path: 'notice' }
-  const patch = proposedChange?.patch || {}
+function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss }) {
+  const verdict = proposedChange.verdict
+  const patch = proposedChange.patch || {}
   const before = {
-    title: currentItem?.title || proposedChange?.item_title || '',
+    title: currentItem?.title || proposedChange.item_title,
     place: currentItem?.place || '',
     time: currentItem?.time || formatPlanHour(currentItem?.startHour),
     day: formatChangeDay(currentItem?.dayDate),
-    duration: currentItem?.durationMin ? `${currentItem.durationMin} min` : '—',
   }
   const after = {
     title: patch.title || before.title,
     place: patch.place || before.place,
     time: patch.start_hour !== undefined ? formatPlanHour(patch.start_hour) : before.time,
     day: formatChangeDay(patch.day_date || currentItem?.dayDate),
-    duration: patch.duration_min !== undefined ? `${patch.duration_min} min` : before.duration,
   }
   const presentation = decisionPresentation[verdict.path] || decisionPresentation.notice
   const changedField = patch.start_hour !== undefined
     ? { label: 'Time', before: before.time, after: after.time }
     : patch.day_date
       ? { label: 'Day', before: before.day || 'Current day', after: after.day || 'Proposed day' }
-      : patch.duration_min !== undefined
-        ? { label: 'Duration', before: before.duration, after: after.duration }
-        : patch.title
-          ? { label: 'Activity', before: before.title, after: after.title }
-          : patch.place
-            ? { label: 'Place', before: before.place || before.title, after: after.place || after.title }
-            : { label: 'Change', before: before.time, after: after.time }
+      : patch.title
+        ? { label: 'Activity', before: before.title, after: after.title }
+        : patch.place
+          ? { label: 'Place', before: before.place || before.title, after: after.place || after.title }
+          : { label: 'Change', before: before.time, after: after.time }
 
   return <div className={cx('changeConfirmCard', message.applied && 'done')}>
-    {showRecognizedItem && proposedChange && <div className="recognizedItem"><span>Cadensy matched this to</span><strong>{proposedChange.item_title}</strong></div>}
-    <CandidateOptionList
-      options={message.candidateOptions}
-      selectedId={message.selectedCandidateId}
-      disabled={message.applied || message.applying || message.classifyingCandidate}
-      onSelect={onSelectCandidate}
-    />
-    {!proposedChange ? <>
-      <div className="changeConfirmHead">
-        <div><span>Options ready</span><h3>Select one option to prepare a change</h3></div>
-      </div>
-      <div className={cx('decisionStatus', 'decisionStatus--notice')}>
-        {message.classifyingCandidate
-          ? 'Checking that option against the Current Plan...'
-          : message.selectionNote || 'Select an option above to prepare a change before anything is submitted.'}
-      </div>
-      {message.applyError && <p className="assistantError">{message.applyError}</p>}
-    </> : <>
-      <div className="changeConfirmHead">
-        <div><span>{changedField.label} change</span><h3>{proposedChange.item_title}</h3>{before.place && <p>{before.place}</p>}</div>
-        {message.applied && <Badge tone="green">Done</Badge>}
-      </div>
-      <div className="changeCompare assistantChangeCompare">
-        <div><small>Current</small><strong>{changedField.before}</strong></div>
-        <b>→</b>
-        <div className="new"><small>Proposed</small><strong>{changedField.after}</strong></div>
-      </div>
-      <div className={cx('decisionStatus', `decisionStatus--${verdict.path}`)}>{presentation.status}</div>
-      {message.applyError && <p className="assistantError">{message.applyError}</p>}
-      <div className="changeDecisionActions">
-        <button className="changePrimaryAction" onClick={onApply} disabled={message.applied || message.applying || message.classifyingCandidate}>{message.applied ? 'Applied' : message.applying ? 'Applying...' : presentation.action}</button>
-        {!message.applied && <button className="changeCancelAction" onClick={onDismiss}>Cancel</button>}
-      </div>
-    </>}
+    {showRecognizedItem && <div className="recognizedItem"><span>Cadensy matched this to</span><strong>{proposedChange.item_title}</strong></div>}
+    <div className="changeConfirmHead">
+      <div><span>{changedField.label} change</span><h3>{proposedChange.item_title}</h3>{before.place && <p>{before.place}</p>}</div>
+      {message.applied && <Badge tone="green">Done</Badge>}
+    </div>
+    <div className="changeCompare assistantChangeCompare">
+      <div><small>Current</small><strong>{changedField.before}</strong></div>
+      <b>→</b>
+      <div className="new"><small>Proposed</small><strong>{changedField.after}</strong></div>
+    </div>
+    <div className={cx('decisionStatus', `decisionStatus--${verdict.path}`)}>{presentation.status}</div>
+    {message.applyError && <p className="assistantError">{message.applyError}</p>}
+    <div className="changeDecisionActions">
+      <button className="changePrimaryAction" onClick={onApply} disabled={message.applied || message.applying}>{message.applied ? 'Applied' : message.applying ? 'Applying...' : presentation.action}</button>
+      {!message.applied && <button className="changeCancelAction" onClick={onDismiss}>Cancel</button>}
+    </div>
   </div>
 }
 
@@ -541,22 +517,17 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
       <div className="drawerThread" ref={view.threadRef}>
         <div className="assistantBubbleRail"><i/><i/><i/></div>
         <PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble>
-        {view.messages.map(message => {
-          const focusItemId = message.proposedChange?.item_id || message.candidateOptions?.find(option => option.id === message.selectedCandidateId)?.item_id
-          const currentItem = focusItemId ? (view.itemById[focusItemId] || (item.id === focusItemId ? item : null)) : null
-          return <div key={message.id}>
-            <PlanChatBubble from={message.from}>{message.proposedChange ? (decisionPresentation[message.proposedChange.verdict?.path] || decisionPresentation.notice).summary : message.text}</PlanChatBubble>
-            {(message.proposedChange || message.candidateOptions?.length) && <ChangeConfirmCard
-              message={message}
-              proposedChange={message.proposedChange}
-              currentItem={currentItem}
-              showRecognizedItem={mode === 'global'}
-              onApply={() => actions.applyProposal(message, message.proposedChange)}
-              onDismiss={() => actions.dismissProposal(message.id)}
-              onSelectCandidate={option => actions.selectCandidateOption(message, option)}
-            />}
-          </div>
-        })}
+        {view.messages.map(message => <div key={message.id}>
+          <PlanChatBubble from={message.from}>{message.proposedChange ? (decisionPresentation[message.proposedChange.verdict?.path] || decisionPresentation.notice).summary : message.text}</PlanChatBubble>
+          {message.proposedChange && <ChangeConfirmCard
+            message={message}
+            proposedChange={message.proposedChange}
+            currentItem={view.itemById[message.proposedChange.item_id] || (item.id === message.proposedChange.item_id ? item : null)}
+            showRecognizedItem={mode === 'global'}
+            onApply={() => actions.applyProposal(message, message.proposedChange)}
+            onDismiss={() => actions.dismissProposal(message.id)}
+          />}
+        </div>)}
         {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
       </div>
@@ -592,26 +563,30 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
       <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>Edit preferences</Link><Button secondary className="askCadensyBtn" onClick={() => actions.openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask Cadensy</Button></div></div>
       {app.loading.initial && <div className="planNotice"><span>…</span><div><strong>Loading trip data</strong><p>Fetching the current plan from the backend.</p></div></div>}
       {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
+      {app.planNeedsRefresh && <div className="planNotice planRefreshNotice"><span>↻</span><div><strong>Preferences updated</strong><p>Your current plan was generated using earlier preferences and has not been changed. Future replans and change proposals will use the latest planning inputs.</p></div><Link to={tripHref(currentTrip.id, 'preferences')}>Review →</Link></div>}
       {app.conflictCreated && !app.decisionResolved && <Link className="planNotice" to={tripHref(currentTrip.id, 'updates')}><span>!</span><div><strong>Proposed change waiting for confirmation</strong><p>A hard constraint is involved. The current plan remains active until the affected members accept.</p></div><b>Review →</b></Link>}
       {app.decisionResolved && <div className="successNotice"><span>✓</span><div><strong>The plan was updated</strong><p>Every affected member confirmed. Bookings elsewhere in the plan are unchanged.</p></div></div>}
       <div className="accordionPlan">
         {view.days.map(day => {
           const open = view.openDays.includes(day.id)
+          const sightseeingItems = day.items.filter(item => !item.isMeal)
+          const mealItems = day.items.filter(item => item.isMeal)
           return <section className={cx('accordionDay', open && 'open')} key={day.id}>
             <button className="accordionHead" onClick={() => actions.toggleDay(day.id)} aria-expanded={open}>
               <span className="dayNumber">{day.label}</span><div><small>{day.date}</small><h2>{dayDisplayTitle(day, currentTrip.destination)}</h2></div><p>{day.summary}</p><i>{open ? '−' : '+'}</i>
             </button>
             <div className="accordionBody"><div className="accordionInner">
               <div className="dayRouteLine">
-                <span>{day.items.length} stops</span>
-                <strong>{day.items.map(item => placeDisplayName(item.title)).join(' → ')}</strong>
+                <span>{sightseeingItems.length} activities · {mealItems.length} meals</span>
+                <strong>{sightseeingItems.map(item => placeDisplayName(item.title)).join(' → ')}</strong>
                 <button type="button" onClick={() => actions.showDayOnMap(day.id)}>Show on map</button>
               </div>
               <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
-                <article id={`trip-item-${item.id}`} className={cx('activityBlock', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
-                  <button type="button" className={cx('activityIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{index + 1}</b></button>
-                  <ActivityPhoto item={item}/>
-                  <div className="activityMain"><div className="activityTitle"><div><small>{day.date}</small><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}</div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div><p className="activityMeta">⌖ {compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)} <span>•</span> ◷ {item.time}</p><p>{item.note}</p>{item.locked && <small className="lockedNote">🔒 Existing reservation</small>}</div>
+                <article id={`trip-item-${item.id}`} className={cx('activityBlock', item.isMeal && 'mealStopBlock', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
+                  <button type="button" className={cx('activityIndex', item.isMeal && 'mealStopIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{item.isMeal ? 'M' : day.items.slice(0, index).filter(previous => !previous.isMeal).length + 1}</b></button>
+                  <StopCategoryIcon item={item}/>
+                  <div className="activityMain"><div className="activityTitle"><div><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}<small>{categoryPresentation(item).label}</small><p className="activityAddress">{compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)}</p></div>{!item.isMeal && visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div>{item.note && <p>{item.note}</p>}{item.locked && <small className="lockedNote">Existing reservation</small>}</div>
+                  <time className="activityStartTime" dateTime={String(item.startHour ?? '')}>{item.time}</time>
                   <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => actions.openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
                   {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
                   {view.historyOpen === item.id && (view.changeHistory[item.id] || []).length > 0 && <div className="itemHistoryPanel">
@@ -625,7 +600,7 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
                   {view.commenting === item.id && <div className="publicComposer"><label>Group note</label><textarea rows="2" value={view.commentDraft} onChange={e => actions.updateCommentDraft(e.target.value)} placeholder="Whole group can see this note." />{view.commentError && <p className="formError">{view.commentError}</p>}<div><button onClick={actions.cancelCommentComposer}>Cancel</button><Button disabled={app.loading.action || !view.commentDraft.trim()} onClick={() => actions.submitComment(item.id)}>{app.loading.action ? 'Posting...' : 'Post note'}</Button></div></div>}
                 </article>
                 {app.activeRounds?.filter(round => round.itemId === item.id || round.itemTitle === item.title).map(round => <PlanDecisionRoundCard key={round.id} round={round} compact onCommand={onCommand}/>)}
-                {index < day.items.length - 1 && <div className="routeSegment">
+                {index < day.items.length - 1 && item.coords && day.items[index + 1].coords && <div className="routeSegment">
                   <span>Between stops</span>
                   <strong>{formatStraightLineDistance(item, day.items[index + 1])}</strong>
                   <button type="button" onClick={() => actions.showDayOnMap(day.id)}>Map</button>
