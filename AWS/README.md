@@ -9,6 +9,7 @@ Read these files first:
 ```text
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
+AWS/CUSTOM_DOMAIN_HTTPS_RESULT.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
@@ -19,6 +20,10 @@ AWS/CLOUD_DUAL_AI_CLI_RUNBOOK.md
 Use `TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md` for the full architecture and deployment history.
 
 Use `TRIPSYNC_AWS_URLS.md` for live URLs, AWS console links, GitHub Actions links, resource names, and current blockers.
+
+Use `CUSTOM_DOMAIN_HTTPS_RESULT.md` for the completed manual
+`app.cadensy.top` HTTPS setup, Aliyun DNS records, ALB listener routing, and
+the current answer to where the frontend/backend are hosted.
 
 Use `PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md` when continuing HTTPS/custom domain work.
 
@@ -103,6 +108,7 @@ aws sts get-caller-identity
 README.md
 TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 TRIPSYNC_AWS_URLS.md
+CUSTOM_DOMAIN_HTTPS_RESULT.md
 PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 Cloud Fixed Accounts Runbook: CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 Backend AI Runtime Runbook: BACKEND_AI_RUNTIME_RUNBOOK.md
@@ -131,9 +137,15 @@ AWS/archive/CLOUD_DEMO_PURGE_RUNBOOK.md
 
 ## Current Pause Point
 
-AWS deployment is paused after preparing Phase 10 HTTPS/custom domain automation.
+AWS HTTPS custom domain setup has been completed manually for:
 
-No HTTPS/custom domain AWS resources have been created yet.
+```text
+https://app.cadensy.top
+```
+
+The domain is registered and DNS-managed in Aliyun, not Route 53. See
+`AWS/CUSTOM_DOMAIN_HTTPS_RESULT.md` before changing HTTPS, ALB listener, or
+custom-domain settings.
 
 Cloud RDS remains private. If the two fixed backend accounts need to be written
 to cloud RDS, use the manual `Cloud Fixed Accounts Upsert` GitHub Action
@@ -146,9 +158,13 @@ If the deployed backend should start using a real AI provider, use the manual
 `Backend AI Runtime Config` GitHub Action instead of editing ECS task
 definitions by hand.
 
-Before running Phase 10, provide:
+Before running Phase 10 for any future Route 53-managed domain, provide:
 
 ```text
 domain_name=<owned custom domain, for example app.example.com>
 hosted_zone_id=<existing Route 53 public hosted zone ID>
 ```
+
+Do not blindly re-run Phase 10 against `app.cadensy.top`; the current DNS
+provider is Aliyun and future backend task definition updates must preserve the
+existing AI runtime.

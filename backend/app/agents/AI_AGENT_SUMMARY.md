@@ -1067,3 +1067,450 @@ Update Current Plan
 ```
 
 That is the core Cadensy AI Agent.
+
+<br />
+
+```text
+════════════════════════════════════════════════════════════════════
+                    END OF THE ORIGINAL DOCUMENT
+                         Sections 1 – 15
+════════════════════════════════════════════════════════════════════
+```
+
+<br />
+
+```text
+════════════════════════════════════════════════════════════════════
+
+                    ██  PART II  ██
+                    CURRENT STATE · updated 2026-08-15
+                    Sections 16 – 24
+
+    Everything above is the original document, unedited.
+    Everything below was appended later and describes the code
+    as it actually runs today.
+
+    Where the two disagree, PART II is the accurate one.
+    Start with section 16 — it lists exactly what Part I gets wrong.
+
+════════════════════════════════════════════════════════════════════
+```
+
+<br />
+
+# Part II — Current State (updated 2026-08-15)
+
+## How to read this document
+
+| If you want | Read |
+|---|---|
+| The product story, the problem, the demo script, the classroom pitch | **Part I** (1–15) — still the best material for presenting |
+| What the code does now: model, architecture, tools, decision paths | **Part II** (16–24) |
+| To set up or run anything | **Section 16 first.** Part I's setup and demo steps are out of date |
+
+Part I was not edited. Nothing in it was deleted or rewritten — the corrections
+live in section 16 instead, so the original stays intact as a record of the
+earlier design.
+
+Part II was written by reading the code and running it, not from memory.
+
+---
+
+# 16. Corrections to Part I
+
+| Part I says | Reality now | Where |
+|---|---|---|
+| AI model is **Ollama `qwen3.5:4b`**, local, no per-request fee | **DeepSeek `deepseek-v4-flash`** over the API, billed per request | section 4 |
+| `.env` uses `OPENAI_BASE_URL=http://localhost:11434/v1/` | `DEEPSEEK_BASE_URL=https://api.deepseek.com`, and `CHAT_AI_PROVIDER` / `PLANNER_AI_PROVIDER` / `EXPLAINER_AI_PROVIDER` are all `deepseek` | section 9 |
+| Demo **Terminal 1 runs Ollama** (`ollama run qwen3.5:4b`) | **Not needed.** No route uses Ollama. Only two terminals are required: backend and frontend | section 11 |
+| **Three** decision paths | **Four**: `notice`, `round`, `reopen_round`, `confirm` | section 7 |
+| Chat routes through `chat_agent.understand()` and `chat_agent.explain()` | `understand()` is deleted. `explain()` has no production caller | sections 3, 5 |
+| Vote options include **Split up** | Removed from voting. The organizer's deadlock "split the block" action is a different path and still exists | section 7 |
+
+`.env` still contains `OPENAI_BASE_URL` and `OPENAI_MODEL`. **No route reads them.**
+They are leftover compatibility settings.
+
+---
+
+# 17. Current architecture: one agent, one workflow, five tools
+
+Two subsystems that do not touch each other:
+
+| | Plan generation | Chat |
+|---|---|---|
+| Entry | `domain/plans/generator.py` | `domain/chat/service.py` |
+| Call style | `base.call_model` | `base.call_agent` |
+| Rounds | one, then done | up to 8 |
+| Tools | none | five |
+| Is it an agent? | **No** | **Yes** |
+
+The split is deliberate, and it is worth saying out loud in a defense:
+
+- **Plan generation is a workflow** because it needs one judgment, not an
+  investigation. The candidate list is already filtered and handed to the model.
+- **Chat is an agent** because the requests are open-ended natural language. The
+  old design routed chat with a keyword table; that was removed after it kept
+  dropping real change requests into a path with no tools and no memory.
+
+## 17.1 What the model actually contributes to plan generation
+
+Measured by generating the same seeded Chicago trip twice, once with `MOCK_AI=1`
+(rules only) and once with `MOCK_AI=0` (DeepSeek):
+
+- Both produce a complete, legal, non-repeating itinerary.
+- The difference is **grouping**. Rules pick "the next unused place", which
+  scattered four museums across the whole city in one day. DeepSeek put Pilsen
+  and Chinatown — two adjacent neighbourhoods — together in one day with a
+  matching theme.
+
+So: **rules guarantee legal, the model buys coherent.** The plan still generates
+with the model unavailable.
+
+## 17.2 The chat agent loop
+
+```text
+user text + full conversation history + the item selected on screen
+        ↓
+1. send all messages to DeepSeek, ask whether to call a tool
+2. no tool requested  → that reply is the answer, loop ends
+3. tool requested     → backend executes it (several per round, in parallel)
+4. tool results appended to the messages, back to step 1
+5. limits: 8 rounds · 120000 tokens · 30 seconds
+           the same tool blocked twice by a guard stops the loop
+        ↓
+safety gate: if the reply claims the change already happened
+  (已生效 / 已提交 / took effect / all set …) the whole reply is replaced
+        ↓
+extract proposed_change and candidate_options for the frontend
+```
+
+If the agent times out, errors, or returns nothing, the request degrades to a
+single tool-free answer rather than failing.
+
+## 17.3 The five tools — all read-only
+
+| Tool | What it does | Guard |
+|---|---|---|
+| `get_current_plan` | Read the itinerary by day, date, weekday, or `all` | — |
+| `get_trip_facts` | Destination, dates, member count, currency, estimated total. Never member identities | — |
+| `classify_change` | Classify a proposed change. Also expresses a venue swap via `new_title` / `new_place` / `new_price_per_person` / `new_lat` / `new_lng` | needs `get_current_plan` first |
+| `find_replacement_place` | Find real replacement venues from the place library, excluding the current item, places already used, and places whose hours do not cover the slot | needs `get_current_plan` first |
+| `propose_options` | Build compromise options. Takes `conflict_item_ids` to say which items are actually in conflict, and `suggestions` so the model can write its own options | needs `get_current_plan` first |
+
+**No tool can write to the database.** The agent can only read and classify.
+
+---
+
+# 18. The fourth decision path
+
+Part I documents NOTICE, ROUND, and CONFIRM. There is a fourth.
+
+| Path | Trigger | What happens |
+|---|---|---|
+| `confirm` | A confirmed booking, or a member's required constraint | Affected people confirm one by one. Booking = shared money, so the whole group; a hard constraint = only those members plus the proposer |
+| `reopen_round` | The block was already settled by a vote | Needs a written reason. Overturning requires **more than half of all members**; silence counts toward keeping the current decision |
+| `round` | Someone else touched this slot, or the change overlaps another item | Group vote. Most votes wins, **a tie keeps the current plan**, non-voters do not affect the result |
+| `notice` | None of the above | Applies immediately, the group is notified. The notice carries an "I have a different idea" button that escalates to a round |
+
+Checked in that order; the first hit returns.
+
+Deadlines: voting 24h while planning, **2h once traveling**. Confirmation 7 days
+and 2 days respectively.
+
+**Solo trips** skip `settled` and `contested` — one person has no group to vote
+with — and changing an item you touched yourself is not contested. When the member
+count cannot be read, the strict behaviour is kept.
+
+---
+
+# 19. How the assistant's options reach a vote
+
+This is the only way AI participates in voting: **it writes the options once in
+chat, they are validated and frozen, and the vote only displays them.**
+
+```text
+1. in chat, the agent calls propose_options and writes its own compromises
+   the backend validates each one → survivors returned as candidate_options
+2. the user clicks Apply on one of them
+   the frontend submits the remaining ones in an `options` field
+3. the backend revalidates from scratch — anything from a browser is untrusted
+4. if the change classifies as a vote, the survivors become alternative-N options
+5. the vote card shows: Keep current / Suggested change / the assistant's options
+```
+
+Step 3 has five gates; failing any one drops the option:
+
+1. `item_id` must be **the item being changed** — not merely "in the same trip".
+   A round settles exactly one item, so an option aimed elsewhere would be
+   validated against one item and executed against another.
+2. only `start_hour`, `day_date`, `duration_min` are accepted. `title`, `place`,
+   price, and coordinates cannot enter through this field.
+3. at least one executable field.
+4. `start_hour` within 9:00–21:00, `duration_min` positive.
+5. it must survive `classify_change`, run inside a savepoint so a bad value
+   cannot poison the transaction.
+
+At most five, deduplicated against the change the user already picked.
+
+**An option with no patch changes nothing.** Falling back to the option title
+would rename an itinerary item to a piece of UI copy.
+
+## Why the vote does not call AI again
+
+- Submitting a change is a transactional request. An 8–10 second model call
+  inside it means a timeout fails the whole submission.
+- At that point the model has less context than it had in chat, so the options
+  would be worse.
+- **A vote is open for 24 hours and the whole group must see the same options.**
+  Generating them live would show different people different ballots.
+
+---
+
+# 20. Tuning the agent
+
+Decide which layer is wrong before changing anything.
+
+| Symptom | Where | Leverage |
+|---|---|---|
+| Wrong tool called, or not called, or wrong arguments | `agents/tools.py` — the tool `description` | **highest** |
+| The options themselves are poor | `agents/tools.py` — the tool handler | **highest** |
+| Cross-tool behaviour rules | `domain/chat/service.py · _agent_system_prompt()` | medium |
+| The model is guessing because it lacks facts | `agents/tools.py` — what the tool returns | medium |
+| Truncated before finishing | `CHAT_AGENT_MAX_ROUNDS` (8) | low |
+| Frequent timeouts | `CHAT_AGENT_TIMEOUT_SECONDS` (30) | low |
+
+A description says *when* to reach for a tool; the handler decides *what comes
+back*. They fail differently.
+
+**There is one system prompt**, in `_agent_system_prompt()`. The validation script
+imports it. It used to keep its own copy and the two drifted in both directions,
+which made scripted runs stop being evidence about production. Do not copy it.
+
+---
+
+# 21. Verification
+
+> **A green test suite does not mean the agent is calling the right tools.**
+> Descriptions and prompts fail silently — nothing raises, the model just picks
+> the wrong tool in a case nobody tested.
+
+## Real validation — required after changing any description or prompt
+
+```bash
+cd backend
+MOCK_AI=0 DISABLE_SCHEDULER=1 .venv/bin/python \
+  app/agents/agent-server/run_real_trip_tools_trace.py
+```
+
+Six scenarios. Read the `=== Summary ===` at the end and record **rounds** and
+**tool order**. The script seeds a temporary trip inside one transaction and rolls
+it back.
+
+**Run each configuration three times and compare medians.** The same code
+producing different round counts on two runs is normal; this has been measured.
+
+- Fewer rounds is usually better.
+- **Clearly more rounds, or a tool that stopped being called, means it got worse.
+  Revert.**
+- The two plain-question scenarios should stay at **2 rounds**.
+
+Scenario size matters too. The trace trip is two days; a real one-week trip
+produces far more tokens per round, which is how a token cap that never fired in
+testing was silently discarding good answers in production.
+
+## Unit tests — a backstop, not a substitute
+
+```bash
+cd backend
+DISABLE_SCHEDULER=1 MOCK_AI=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+```
+
+## Logs
+
+```bash
+tail -f logs/agent-trace-$(date +%Y%m%d).jsonl   # which tools each round called
+tail -f logs/trace-$(date +%Y%m%d).jsonl         # every model call: route, provider, latency, tokens
+```
+
+The first answers "did this message reach the agent". The second answers "was a
+real model call made at all".
+
+---
+
+# 22. Known and unfixed
+
+Ordered by how likely each is to bite during a live demo.
+
+### 22.1 Conflict detection is dead in three of four cities — read before demoing
+
+Chicago uses the curated place library and has durations. Every other city comes
+from Geoapify with **no duration**, and conflict detection skips items whose
+duration is unknown.
+
+```text
+chicago        missing duration   0 / 60     ok
+shanghai       missing duration  24 / 24     dead
+los angeles    missing duration  24 / 24     dead
+new york       missing duration  17 / 17     dead
+```
+
+**Demonstrating "changing a time opens a vote" on a Los Angeles, New York, or
+Shanghai trip will never trigger.** One Los Angeles trip has two items at 10:00 on
+the same day and the system says nothing.
+
+**Demo with a Chicago trip.** The fix is a duration default used *only* for
+conflict detection, never written to the database — unknown must not become a
+fake default.
+
+Location: `orchestrator.py · _schedule_conflict_item`
+
+### 22.2 Chat memory lives only in the open drawer
+
+Conversation history is held in frontend React state. There is no `chat_message`
+table.
+
+- Refreshing the page loses the conversation, so "I meant …" stops working.
+- Other members cannot see the conversation.
+
+The backend already accepts history (`call_agent(history=...)`); only persistence
+is missing. **Do not refresh during a demo.**
+
+Location: `trip/src/final/plan-feature/useAssistantChangeRequestFlow.js`
+
+### 22.3 One option can only change one item
+
+`ProposedChatChange` and every option carry a single `item_id` and a single
+`patch`. Requests like "make every day lighter" or "swap the walk and lunch"
+**cannot be expressed in the data model**. The tool description forbids the model
+from promising a second item will move, but the limit itself remains.
+
+Location: `domain/chat/service.py · ProposedChatChange`
+
+### 22.4 Solo trips can still open a vote two ways
+
+The solo-trip rule lives in `classify()`, but two paths bypass it:
+
+- `object_to_notice` hard-codes a `ROUND` without consulting the engine, so one
+  person can object to their own notice and hold a vote with themselves.
+- Schedule-conflict detection runs *after* `classify()` returns NOTICE and
+  overrides it, without checking member count.
+
+Conflict detection itself is right; a 24-hour group vote is the wrong instrument
+for one person.
+
+### 22.5 Plan generation has no validation harness
+
+Chat has `run_real_trip_tools_trace.py`. Plan generation has nothing, so changing
+its prompt can only be judged by eye. A comparison script — same seed, once with
+`MOCK_AI=1` and once with `MOCK_AI=0`, printing places, times, distinct counts,
+and whether days repeat — would close this gap. **Get the ruler before cutting.**
+
+### 22.6 The planner prompt asks for something the model cannot do
+
+It says "do not repeat 10.0, 14.0, 19.0 every day", but the model is called **one
+day at a time** and cannot see the other days. Note that this did **not** reproduce
+in recent runs, so do not chase it blind — confirm it first.
+
+Location: `agents/planner.py · _day_prompt`
+
+### 22.7 Dead code
+
+| File | State |
+|---|---|
+| `agents/explainer.py` | **entire file** has no production caller, only `tests/test_explainer.py` |
+| `agents/chat.py · explain` | same, only `tests/test_chat_safety_and_time.py` |
+
+Both are superseded by the agent. The safety check inside `explain`,
+`_claims_change_completed`, is now wired to the agent's reply separately, so that
+protection was not lost. Delete each with its test.
+
+### 22.8 The vote card never says why the vote exists
+
+The assistant already writes a precise conflict analysis in chat and passes it to
+`propose_options`. A real one from a trace run:
+
+```text
+"Moving Millennium Park walk to 11:00 AM would make it run 11:00-12:30,
+ overlapping with Lunch near the Loop (12:00-1:15 PM)."
+```
+
+**That sentence is then thrown away.** The vote card shows a fixed line that is
+identical on every round — "Vote on the option, not the person" — so a member who
+was not in the chat sees that the block is contested but never learns why.
+
+The fix is the same pattern as the options in section 19: **the assistant writes it
+once, it is validated and frozen, and the vote only displays it.** No new model
+call, no new table.
+
+- `DecisionRound.reason` already exists — reopen rounds use it. It is empty for
+  normal rounds.
+- Frontend: send `conflict_description` alongside `options` on submit.
+- Backend: store it in `reason`, truncated.
+- Frontend: the card renders `reason` only when `isReopen`; drop that condition.
+
+**Constraint:** this text is written by the model and will be read by the whole
+group while they vote. Treat it exactly like the option copy — plain text,
+truncated, and **never an input to any decision.** Classification stays with the
+Python rules.
+
+### 22.9 City names match exactly
+
+`"LA"` does not find the cached places stored under `"Los Angeles"`, which yields
+zero candidates and a blocked plan. This has happened.
+
+Location: `domain/places/service.py · _cached_places`
+
+---
+
+# 23. What not to add
+
+- **Do not add a second agent.** None of the open problems are caused by having
+  too few agents. Each one costs another prompt, another place to drift, and
+  another validation loop. A duplicated prompt has already caused exactly that.
+- **Do not turn plan generation into an agent.** It is one model call per day,
+  about 8.5 seconds for four days. An agent would be four times slower for the
+  same single judgment, and tools would be useless because the candidate list is
+  already handed to it.
+- **Do not add tools casually.** Five already caused a plain question to go from
+  two rounds to three once. More tools means more hesitation. Add one only with a
+  concrete need, and run the real validation afterwards.
+
+## The four boundaries holding this design up
+
+**The worst case when the model is wrong is a poor answer, not a damaged
+itinerary.** That rests on four code-level constraints:
+
+1. All five tools are read-only. The model cannot reach the database.
+2. Decision paths are decided by Python rules. The model can only call
+   `classify_change` and follow the result.
+3. Replies pass a safety gate that replaces any claim the change already happened.
+4. Every change requires the user to press Apply, and a vote to pass.
+
+**Think hard before relaxing any of them.** They are not defensive programming;
+they are why the product holds together.
+
+---
+
+# 24. Key files
+
+| Path | What it is |
+|---|---|
+| `agents/base.py` | Model plumbing. `call_model` is one shot; `call_agent` is the loop with tools |
+| `agents/tools.py` | The five read-only tools. **Most agent tuning happens here** |
+| `agents/planner.py` | The single model call inside plan generation |
+| `agents/chat.py` | The tool-free fallback answer plus the safety phrase check |
+| `agents/trace.py` | Writes `logs/*.jsonl` |
+| `domain/chat/service.py` | Chat entry point, system prompt, degrade path |
+| `domain/plans/generator.py` | Plan generation pipeline |
+| `domain/places/service.py` | Place library: curated Chicago, cache, Geoapify |
+| `domain/constraints/engine.py` | **The classifier.** The four paths are decided here |
+| `domain/decisions/orchestrator.py` | **Execution**: notices, rounds, proposals, settlement |
+| `data/poi_chicago.py` | The 50 curated Chicago places |
+| `api/main.py` | Every HTTP endpoint |
+
+## Three lines never to cross
+
+1. **Tools stay read-only.** Changes go through the user pressing Apply.
+2. **Python decides the decision path.** The model follows it.
+3. **`unknown` is never a fake default.** Unknown price, duration, or opening
+   hours stay null — never 0, never 90 minutes, never "free".

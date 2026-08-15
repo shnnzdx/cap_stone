@@ -1,6 +1,6 @@
 # TripSync AWS URL Index
 
-Date: 2026-08-13
+Date: 2026-08-15
 
 Region: us-east-1
 
@@ -10,15 +10,27 @@ This is the compact entry point for TripSync AWS URLs, console links, workflow l
 
 ```text
 Frontend public URL:
+https://app.cadensy.top
+
+Legacy ALB HTTP URL:
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com
 
 Frontend login route:
+https://app.cadensy.top/login
+
+Legacy ALB login route:
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/login
 
 Embedded Trip static entry:
+https://app.cadensy.top/trip-app/index.html
+
+Legacy ALB embedded Trip static entry:
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/trip-app/index.html
 
 Backend health endpoint:
+https://app.cadensy.top/api/health
+
+Legacy ALB backend health endpoint:
 http://tripsync-backend-alb-2124233156.us-east-1.elb.amazonaws.com/api/health
 
 Expected health response:
@@ -174,6 +186,7 @@ tripsync-postgres.cqv0oqgogc0p.us-east-1.rds.amazonaws.com
 AWS/README.md
 AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md
 AWS/TRIPSYNC_AWS_URLS.md
+AWS/CUSTOM_DOMAIN_HTTPS_RESULT.md
 AWS/PHASE10_HTTPS_CUSTOM_DOMAIN_PLAN.md
 AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md
 AWS/BACKEND_AI_RUNTIME_RUNBOOK.md
@@ -190,16 +203,21 @@ AWS/archive/completed-phases/
 
 ## Current Pause Point
 
-Phase 10 HTTPS/custom domain automation is ready but has not been run.
-
-Required before running Phase 10:
+HTTPS custom domain setup has been completed manually for:
 
 ```text
-domain_name=<owned custom domain, for example app.example.com>
-hosted_zone_id=<existing Route 53 public hosted zone ID>
+https://app.cadensy.top
 ```
 
-No HTTPS/custom domain resources have been created yet.
+The domain is registered and DNS-managed in Aliyun, not Route 53. See:
+
+```text
+AWS/CUSTOM_DOMAIN_HTTPS_RESULT.md
+```
+
+Do not blindly re-run `Phase 10 HTTPS Custom Domain` against
+`app.cadensy.top`; the existing workflow assumes a Route 53 hosted zone and
+future backend task definition updates must preserve the current AI runtime.
 
 Cloud RDS remains private. Use `AWS/CLOUD_FIXED_ACCOUNTS_RUNBOOK.md` and the
 manual `Cloud Fixed Accounts Upsert` workflow if the real database should
