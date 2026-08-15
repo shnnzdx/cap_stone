@@ -1252,6 +1252,78 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   color:var(--text-primary)!important;
   font-size:14px!important;
 }
+.candidateOptions{
+  margin:0 0 18px!important;
+  padding:14px!important;
+  border:1px solid rgba(23,49,77,.10)!important;
+  border-radius:10px!important;
+  background:#fbfcfd!important;
+}
+.candidateOptionsHead{
+  margin-bottom:10px!important;
+}
+.candidateOptionsHead span{
+  display:block!important;
+  color:#7a8490!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  letter-spacing:.08em!important;
+  text-transform:uppercase!important;
+}
+.candidateOptionsHead p{
+  margin:4px 0 0!important;
+  color:#697684!important;
+  font-size:12px!important;
+  line-height:1.35!important;
+}
+.candidateOptionList{
+  display:grid!important;
+  gap:8px!important;
+}
+.candidateOption{
+  display:grid!important;
+  gap:5px!important;
+  width:100%!important;
+  padding:12px!important;
+  border:1px solid rgba(23,49,77,.12)!important;
+  border-radius:9px!important;
+  background:#fff!important;
+  color:var(--text-primary)!important;
+  text-align:left!important;
+  cursor:pointer!important;
+}
+.candidateOption.selected{
+  border-color:rgba(34,108,101,.45)!important;
+  background:#f4fbf9!important;
+  box-shadow:0 0 0 2px rgba(34,108,101,.08)!important;
+}
+.candidateOption:disabled{
+  cursor:default!important;
+  opacity:.65!important;
+}
+.candidateOption span{
+  color:#4c665f!important;
+  font-size:9px!important;
+  font-weight:850!important;
+  letter-spacing:.075em!important;
+  text-transform:uppercase!important;
+}
+.candidateOption strong{
+  color:var(--text-primary)!important;
+  font-size:14px!important;
+  line-height:1.25!important;
+}
+.candidateOption p{
+  margin:0!important;
+  color:#52616f!important;
+  font-size:12px!important;
+  line-height:1.4!important;
+}
+.candidateOption small{
+  color:#7a8490!important;
+  font-size:11px!important;
+  line-height:1.35!important;
+}
 .assistantChangeCompare{
   grid-template-columns:1fr auto 1fr!important;
   gap:14px!important;

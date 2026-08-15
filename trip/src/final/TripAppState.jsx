@@ -761,11 +761,11 @@ export function TripAppProvider({ children }) {
     return normalized
   }, [requestJson])
 
-  const classify = useCallback(async ({ item, actionType, request }) => {
+  const classify = useCallback(async ({ item, actionType, request, patch = null }) => {
     setLoading(current => ({ ...current, action: true }))
     setError('')
     try {
-      const body = { ...requestPatch(actionType, item, request), request }
+      const body = patch ? { ...patch, request } : { ...requestPatch(actionType, item, request), request }
       return await requestJson(`/api/plans/items/${item.id}/classify`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -1021,7 +1021,7 @@ export function TripAppProvider({ children }) {
     return outcome
   }, [fetchProposal, fetchRound, refreshPlan, refreshUpdates])
 
-  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch }) => {
+  const submitChange = useCallback(async ({ item, actionType, request, verdict, patch, options }) => {
     let reason = null
     if (verdict?.needs_reason) {
       reason = window.prompt('Please write a reason for reopening this settled block:')
@@ -1034,6 +1034,7 @@ export function TripAppProvider({ children }) {
     setError('')
     try {
       const body = { ...(patch || requestPatch(actionType, item, request)), request, reason }
+      if (options?.length) body.options = options
       const outcome = await requestJson(`/api/plans/items/${item.id}/changes`, {
         method: 'POST',
         body: JSON.stringify(body),

@@ -757,6 +757,30 @@ function PersonalThread() {
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState([])
   const [sending, setSending] = useState(false)
+
+  const formatCandidateSummary = candidateOptions => candidateOptions
+    .map((option, index) => `${index + 1}. ${option.title}${option.tradeoff ? ` — ${option.tradeoff}` : ''}`)
+    .join('\n')
+
+  const historyTurnFromMessage = message => {
+    const turn = {
+      role: message.from === 'you' ? 'user' : 'assistant',
+      text: message.text,
+    }
+    if (message.from !== 'you' && Array.isArray(message.candidateOptions) && message.candidateOptions.length) {
+      turn.candidate_options = message.candidateOptions.map(option => ({
+        id: option.id,
+        label: option.label || '',
+        title: option.title || '',
+        body: option.body || '',
+        tradeoff: option.tradeoff || '',
+        item_id: option.item_id,
+        patch: option.patch || {},
+      }))
+    }
+    return turn
+  }
+
   const send = async () => {
     const text = draft.trim()
     if (!text || sending) return
@@ -767,18 +791,19 @@ function PersonalThread() {
     try {
       const history = messages
         .filter(message => !message.loading && message.text)
-        .map(message => ({
-          role: message.from === 'you' ? 'user' : 'assistant',
-          text: message.text,
-        }))
+        .map(historyTurnFromMessage)
       const result = await app.chatWithTrip({ message: text, itemId: null, history })
+      const candidateOptions = Array.isArray(result.candidate_options) ? result.candidate_options : []
       setMessages(current => current.map(message => message.id === loadingId ? {
         ...message,
         loading: false,
         from: 'tripSync',
         text: result.proposed_change
           ? `${result.reply} I matched this to ${result.proposed_change.item_title}. Open that item in the plan to review and submit the change.`
-          : result.reply,
+          : candidateOptions.length
+            ? `${result.reply}\n\nOptions:\n${formatCandidateSummary(candidateOptions)}\n\nReply with the option number or tell me how to adjust it.`
+            : result.reply,
+        candidateOptions,
       } : message))
     } catch (err) {
       const text = err.status === 409

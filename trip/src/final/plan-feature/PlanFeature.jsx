@@ -446,49 +446,92 @@ function PlanChatBubble({ from, children }) {
   </div>
 }
 
-function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss }) {
-  const verdict = proposedChange.verdict
-  const patch = proposedChange.patch || {}
+function CandidateOptionList({ options = [], selectedId, disabled = false, onSelect }) {
+  if (!options.length) return null
+  return <div className="candidateOptions">
+    <div className="candidateOptionsHead"><span>Options</span><p>Selecting one only prepares the change. Apply submits it.</p></div>
+    <div className="candidateOptionList">
+      {options.map(option => <button
+        key={option.id}
+        type="button"
+        className={cx('candidateOption', selectedId === option.id && 'selected')}
+        disabled={disabled}
+        onClick={() => onSelect(option)}
+      >
+        <span>{option.label || 'Option'}</span>
+        <strong>{option.title}</strong>
+        {option.body && <p>{option.body}</p>}
+        {option.tradeoff && <small>{option.tradeoff}</small>}
+      </button>)}
+    </div>
+  </div>
+}
+
+function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss, onSelectCandidate }) {
+  const verdict = proposedChange?.verdict || { path: 'notice' }
+  const patch = proposedChange?.patch || {}
   const before = {
-    title: currentItem?.title || proposedChange.item_title,
+    title: currentItem?.title || proposedChange?.item_title || '',
     place: currentItem?.place || '',
     time: currentItem?.time || formatPlanHour(currentItem?.startHour),
     day: formatChangeDay(currentItem?.dayDate),
+    duration: currentItem?.durationMin ? `${currentItem.durationMin} min` : '—',
   }
   const after = {
     title: patch.title || before.title,
     place: patch.place || before.place,
     time: patch.start_hour !== undefined ? formatPlanHour(patch.start_hour) : before.time,
     day: formatChangeDay(patch.day_date || currentItem?.dayDate),
+    duration: patch.duration_min !== undefined ? `${patch.duration_min} min` : before.duration,
   }
   const presentation = decisionPresentation[verdict.path] || decisionPresentation.notice
   const changedField = patch.start_hour !== undefined
     ? { label: 'Time', before: before.time, after: after.time }
     : patch.day_date
       ? { label: 'Day', before: before.day || 'Current day', after: after.day || 'Proposed day' }
-      : patch.title
-        ? { label: 'Activity', before: before.title, after: after.title }
-        : patch.place
-          ? { label: 'Place', before: before.place || before.title, after: after.place || after.title }
-          : { label: 'Change', before: before.time, after: after.time }
+      : patch.duration_min !== undefined
+        ? { label: 'Duration', before: before.duration, after: after.duration }
+        : patch.title
+          ? { label: 'Activity', before: before.title, after: after.title }
+          : patch.place
+            ? { label: 'Place', before: before.place || before.title, after: after.place || after.title }
+            : { label: 'Change', before: before.time, after: after.time }
 
   return <div className={cx('changeConfirmCard', message.applied && 'done')}>
-    {showRecognizedItem && <div className="recognizedItem"><span>Cadensy matched this to</span><strong>{proposedChange.item_title}</strong></div>}
-    <div className="changeConfirmHead">
-      <div><span>{changedField.label} change</span><h3>{proposedChange.item_title}</h3>{before.place && <p>{before.place}</p>}</div>
-      {message.applied && <Badge tone="green">Done</Badge>}
-    </div>
-    <div className="changeCompare assistantChangeCompare">
-      <div><small>Current</small><strong>{changedField.before}</strong></div>
-      <b>→</b>
-      <div className="new"><small>Proposed</small><strong>{changedField.after}</strong></div>
-    </div>
-    <div className={cx('decisionStatus', `decisionStatus--${verdict.path}`)}>{presentation.status}</div>
-    {message.applyError && <p className="assistantError">{message.applyError}</p>}
-    <div className="changeDecisionActions">
-      <button className="changePrimaryAction" onClick={onApply} disabled={message.applied || message.applying}>{message.applied ? 'Applied' : message.applying ? 'Applying...' : presentation.action}</button>
-      {!message.applied && <button className="changeCancelAction" onClick={onDismiss}>Cancel</button>}
-    </div>
+    {showRecognizedItem && proposedChange && <div className="recognizedItem"><span>Cadensy matched this to</span><strong>{proposedChange.item_title}</strong></div>}
+    <CandidateOptionList
+      options={message.candidateOptions}
+      selectedId={message.selectedCandidateId}
+      disabled={message.applied || message.applying || message.classifyingCandidate}
+      onSelect={onSelectCandidate}
+    />
+    {!proposedChange ? <>
+      <div className="changeConfirmHead">
+        <div><span>Options ready</span><h3>Select one option to prepare a change</h3></div>
+      </div>
+      <div className={cx('decisionStatus', 'decisionStatus--notice')}>
+        {message.classifyingCandidate
+          ? 'Checking that option against the Current Plan...'
+          : message.selectionNote || 'Select an option above to prepare a change before anything is submitted.'}
+      </div>
+      {message.applyError && <p className="assistantError">{message.applyError}</p>}
+    </> : <>
+      <div className="changeConfirmHead">
+        <div><span>{changedField.label} change</span><h3>{proposedChange.item_title}</h3>{before.place && <p>{before.place}</p>}</div>
+        {message.applied && <Badge tone="green">Done</Badge>}
+      </div>
+      <div className="changeCompare assistantChangeCompare">
+        <div><small>Current</small><strong>{changedField.before}</strong></div>
+        <b>→</b>
+        <div className="new"><small>Proposed</small><strong>{changedField.after}</strong></div>
+      </div>
+      <div className={cx('decisionStatus', `decisionStatus--${verdict.path}`)}>{presentation.status}</div>
+      {message.applyError && <p className="assistantError">{message.applyError}</p>}
+      <div className="changeDecisionActions">
+        <button className="changePrimaryAction" onClick={onApply} disabled={message.applied || message.applying || message.classifyingCandidate}>{message.applied ? 'Applied' : message.applying ? 'Applying...' : presentation.action}</button>
+        {!message.applied && <button className="changeCancelAction" onClick={onDismiss}>Cancel</button>}
+      </div>
+    </>}
   </div>
 }
 
@@ -517,17 +560,22 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
       <div className="drawerThread" ref={view.threadRef}>
         <div className="assistantBubbleRail"><i/><i/><i/></div>
         <PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble>
-        {view.messages.map(message => <div key={message.id}>
-          <PlanChatBubble from={message.from}>{message.proposedChange ? (decisionPresentation[message.proposedChange.verdict?.path] || decisionPresentation.notice).summary : message.text}</PlanChatBubble>
-          {message.proposedChange && <ChangeConfirmCard
-            message={message}
-            proposedChange={message.proposedChange}
-            currentItem={view.itemById[message.proposedChange.item_id] || (item.id === message.proposedChange.item_id ? item : null)}
-            showRecognizedItem={mode === 'global'}
-            onApply={() => actions.applyProposal(message, message.proposedChange)}
-            onDismiss={() => actions.dismissProposal(message.id)}
-          />}
-        </div>)}
+        {view.messages.map(message => {
+          const focusItemId = message.proposedChange?.item_id || message.candidateOptions?.find(option => option.id === message.selectedCandidateId)?.item_id
+          const currentItem = focusItemId ? (view.itemById[focusItemId] || (item.id === focusItemId ? item : null)) : null
+          return <div key={message.id}>
+            <PlanChatBubble from={message.from}>{message.proposedChange ? (decisionPresentation[message.proposedChange.verdict?.path] || decisionPresentation.notice).summary : message.text}</PlanChatBubble>
+            {(message.proposedChange || message.candidateOptions?.length) && <ChangeConfirmCard
+              message={message}
+              proposedChange={message.proposedChange}
+              currentItem={currentItem}
+              showRecognizedItem={mode === 'global'}
+              onApply={() => actions.applyProposal(message, message.proposedChange)}
+              onDismiss={() => actions.dismissProposal(message.id)}
+              onSelectCandidate={option => actions.selectCandidateOption(message, option)}
+            />}
+          </div>
+        })}
         {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
       </div>
