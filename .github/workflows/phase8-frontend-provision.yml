@@ -2,6 +2,11 @@ name: Phase 8 Frontend Provision
 
 on:
   workflow_dispatch:
+    inputs:
+      public_base_url:
+        description: "Public frontend/API base URL baked into the frontend image"
+        required: true
+        default: "https://app.cadensy.top"
 
 permissions:
   contents: read
@@ -63,6 +68,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          PUBLIC_BASE_URL="${{ inputs.public_base_url }}"
           ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 
           authorize_ingress() {
@@ -179,7 +185,7 @@ jobs:
             echo "backend_tg_arn=${BACKEND_TG_ARN}"
             echo "listener_arn=${LISTENER_ARN}"
             echo "alb_dns=${ALB_DNS}"
-            echo "frontend_base_url=http://${ALB_DNS}"
+            echo "frontend_base_url=${PUBLIC_BASE_URL}"
             echo "ecr_uri=${ECR_URI}"
             echo "execution_role_arn=${EXECUTION_ROLE_ARN}"
           } >> "${GITHUB_OUTPUT}"
