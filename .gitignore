@@ -19,3 +19,13 @@ dist-ssr/
 .pytest_cache/
 __pycache__/
 *.pyc
+
+# Local agent skill installs and temporary Codex artifacts
+.agents/skills/amazon-bedrock/
+.agents/skills/aws-*/
+.agents/skills/launch-with-aws/
+.agents/skills/signing-in-to-aws/
+.codex-temp-*.patch
+
+# Local backend traces and logs
+backend/logs/
