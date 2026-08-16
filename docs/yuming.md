@@ -1022,8 +1022,8 @@ These files had Chinese documentation content translated to English:
 - `AWS/TRIPSYNC_AWS_MASTER_CONTEXT_FINAL.md`
 - `backend/README.md`
 - `docs/AGENTS.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md`
-- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_CURRENT.md`
+- `docs/HANDOFF_PROMPT_BACKEND_REFACTOR_CURRENT.md`
 - `docs/PRODUCT.md`
 - `docs/PROPOSAL.md`
 - `docs/PROPOSAL_EN.md`
@@ -1050,8 +1050,8 @@ Documentation filenames were normalized to avoid Chinese names and avoid hyphens
 - `.agents/skills/improve-codebase-architecture/HTML-REPORT.md`
 - `INTEGRATION-ROADMAP.md`
 - `backend/app/agents/issue-tracker.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md`
-- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_CURRENT.md`
+- `docs/HANDOFF_PROMPT_BACKEND_REFACTOR_CURRENT.md`
 - `docs/_archive/capstone-project-proposal-revised.md`
 - `docs/_archive/collaborative-ai-travel-planning-platform-full-idea.docx`
 - `docs/_archive/group-travel-decision-engine-feature-priority.xlsx`
@@ -1066,7 +1066,7 @@ Examples of final naming:
 
 - `INTEGRATION-ROADMAP.md` -> `INTEGRATION_ROADMAP.md`
 - `docs/product-introduction-page.md` -> `docs/product_introduction_page.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md` -> `docs/HANDOFF_PROMPT_2026_08_11.md`
+- older dated handoff prompts -> `docs/HANDOFF_PROMPT_CURRENT.md`
 - `docs/frontend/ai-travel-hero-scroll-storytelling-final.md` -> `docs/frontend/ai_travel_hero_scroll_storytelling_final.md`
 - `交接.md` -> `HANDOFF.md`
 - `docs/产品介绍页面.md` -> `docs/product_introduction_page.md`
