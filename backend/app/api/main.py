@@ -1326,8 +1326,11 @@ def add_my_constraint(
     _require_scoped_trip(db, me, trip_id)
     try:
         row, conflicts = pref_service.add_constraint(db, me, **body.model_dump())
-    except pref_service.UnknownConstraintKind as exc:
-        raise HTTPException(422, f"Unsupported constraint kind: {exc}") from exc
+    except (
+        pref_service.UnknownConstraintKind,
+        pref_service.InvalidConstraintParams,
+    ) as exc:
+        raise HTTPException(422, str(exc)) from exc
     db.commit()
     return {"id": row.id, "conflicts": conflicts}
 
@@ -1343,6 +1346,8 @@ def patch_my_constraint(
         row, conflicts = pref_service.update_constraint(
             db, me, constraint_id, params=body.params, importance=body.importance
         )
+    except pref_service.InvalidConstraintParams as exc:
+        raise HTTPException(422, str(exc)) from exc
     except pref_service.NotYours as exc:
         raise HTTPException(404, str(exc)) from exc
     db.commit()

@@ -325,6 +325,107 @@ def _rules_evening_places() -> tuple[PlannerPlace, ...]:
     return tuple(rows)
 
 
+def _museum_avoidance_places() -> tuple[PlannerPlace, ...]:
+    return (
+        PlannerPlace(
+            candidate_id="museum-stop",
+            name="City History Museum",
+            location="Chicago",
+            latitude=41.880,
+            longitude=-87.630,
+            category="entertainment.museum",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=20.0,
+            duration_min=90,
+            opens=9.0,
+            closes=18.0,
+            tags=("museum", "culture"),
+        ),
+        PlannerPlace(
+            candidate_id="park-stop",
+            name="Riverfront Park",
+            location="Chicago",
+            latitude=41.881,
+            longitude=-87.631,
+            category="leisure.park",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=0.0,
+            duration_min=60,
+            opens=9.0,
+            closes=20.0,
+            tags=("park", "nature"),
+        ),
+        PlannerPlace(
+            candidate_id="garden-stop",
+            name="City Garden",
+            location="Chicago",
+            latitude=41.882,
+            longitude=-87.632,
+            category="leisure.park",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=0.0,
+            duration_min=60,
+            opens=9.0,
+            closes=20.0,
+            tags=("garden", "nature"),
+        ),
+        PlannerPlace(
+            candidate_id="view-stop",
+            name="Skyline Viewpoint",
+            location="Chicago",
+            latitude=41.883,
+            longitude=-87.633,
+            category="tourism.viewpoint",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=0.0,
+            duration_min=60,
+            opens=9.0,
+            closes=21.0,
+            tags=("viewpoint", "views"),
+        ),
+        PlannerPlace(
+            candidate_id="lunch-stop",
+            name="Lunch Kitchen",
+            location="Chicago",
+            latitude=41.884,
+            longitude=-87.634,
+            category="catering.restaurant",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=18.0,
+            duration_min=60,
+            opens=11.0,
+            closes=22.0,
+            tags=("catering", "restaurant"),
+        ),
+        PlannerPlace(
+            candidate_id="dinner-stop",
+            name="Dinner Kitchen",
+            location="Chicago",
+            latitude=41.885,
+            longitude=-87.635,
+            category="catering.restaurant",
+            address="Chicago",
+            image_url=None,
+            opening_hours=None,
+            price=24.0,
+            duration_min=60,
+            opens=11.0,
+            closes=22.0,
+            tags=("catering", "restaurant"),
+        ),
+    )
+
+
 def test_organizer_must_submit_preferences_before_generation(
     client: TestClient, api_session: Session
 ):
@@ -404,6 +505,31 @@ def test_generated_items_pass_every_required_constraint(db: Session):
         )
         for constraint in constraints:
             assert not violates(constraint, change)
+
+
+def test_generate_plan_honors_required_avoid_museum_tag(db: Session, monkeypatch):
+    setup = _make_trip(db, days=1, budget_ceiling=500.0)
+    pref.add_constraint(
+        db,
+        setup["organizer"],
+        kind="avoid_tag",
+        params={"tags": ["museum"]},
+        importance="required",
+        original_text="Required: avoid museums",
+    )
+    monkeypatch.setattr(
+        generator.place_service, "places_for_planner", lambda *_args: _museum_avoidance_places()
+    )
+    monkeypatch.setattr(
+        planner,
+        "plan_day",
+        lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "active"
+    assert all("museum" not in (item.tags or []) for item in result.items)
 
 
 def test_generated_total_stays_under_the_lowest_budget_ceiling(db: Session):
@@ -627,7 +753,7 @@ def test_rules_can_place_a_high_value_evening_activity_after_dinner(
     assert planner.category_allows_window(tuple(evening[0].tags or ()), "evening")
 
 
-def test_saved_limited_availability_is_read_as_a_soft_lighter_day_signal(
+def test_saved_limited_availability_limits_generation_to_shared_dates(
     db: Session, monkeypatch
 ):
     setup = _make_trip(db, days=3, budget_ceiling=800.0)
@@ -650,10 +776,52 @@ def test_saved_limited_availability_is_read_as_a_soft_lighter_day_signal(
     result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
 
     assert result.status == "active"
+    assert {item.day_index for item in result.items} == {2, 3}
+    assert all(item.day_date >= setup["trip"].preferred_start_date + timedelta(days=1) for item in result.items)
     assert [
         sum(item.day_index == day_index and not item.is_meal for item in result.items)
         for day_index in range(1, 4)
-    ] == [2, 2, 4]
+    ] == [0, 2, 4]
+
+
+def test_disjoint_limited_availability_blocks_generation(
+    db: Session, monkeypatch
+):
+    setup = _make_trip(db, days=3, budget_ceiling=800.0)
+    pref.save_mine(
+        db,
+        setup["organizer"],
+        pref.PreferenceData(
+            preferred_start_date=setup["trip"].preferred_start_date,
+            preferred_end_date=setup["trip"].preferred_end_date,
+            available_start_date=setup["trip"].preferred_start_date,
+            available_end_date=setup["trip"].preferred_start_date,
+            ideal_budget=100.0,
+            maximum_budget=800.0,
+            top_interests=("culture", "food"),
+        ),
+    )
+    pref.save_mine(
+        db,
+        setup["participant"],
+        pref.PreferenceData(
+            preferred_start_date=setup["trip"].preferred_start_date,
+            preferred_end_date=setup["trip"].preferred_end_date,
+            available_start_date=setup["trip"].preferred_end_date,
+            available_end_date=setup["trip"].preferred_end_date,
+        ),
+    )
+    monkeypatch.setattr(
+        planner,
+        "plan_day",
+        lambda _payload: (_ for _ in ()).throw(base.AgentUnavailable("rules only")),
+    )
+
+    result = generator.generate_plan(db, setup["trip"].id, setup["organizer"])
+
+    assert result.status == "blocked"
+    assert result.blocked_reason == generator.AVAILABILITY_BLOCKED_REASON
+    assert db.query(PlanItem).count() == 0
 
 
 def test_planner_exception_falls_back_to_rules(

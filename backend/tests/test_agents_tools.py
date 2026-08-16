@@ -5,12 +5,14 @@ from datetime import date
 
 from app.agents.base import AgentProviderReply, AgentToolCall, call_agent
 from app.agents.tools import build_read_only_trip_tools
+from app.domain.places import geoapify
 from app.db.models import (
     ChangeProposal,
     DecisionRound,
     Plan,
     PlanChange,
     PlanItem,
+    Place,
     ProposalDecision,
     UpdateNotice,
     Vote,
@@ -41,6 +43,46 @@ def _write_counts(db) -> dict[str, int]:
         "vote": db.query(Vote).count(),
         "update_notice": db.query(UpdateNotice).count(),
     }
+
+
+def _seed_chicago_replacement_places(db, *, include_starbucks: bool = True) -> None:
+    rows = [
+        Place(
+            provider="geoapify",
+            provider_place_id="wildberry",
+            name="Wildberry Pancakes and Cafe",
+            english_name="Wildberry Pancakes and Cafe",
+            local_name=None,
+            city="Chicago",
+            country="United States",
+            latitude=41.8828,
+            longitude=-87.6233,
+            category="catering.cafe",
+            address="130 E Randolph St, Chicago, Illinois, United States",
+            image_url=None,
+            opening_hours="Mo-Su 07:00-12:00",
+        )
+    ]
+    if include_starbucks:
+        rows.append(
+            Place(
+                provider="geoapify",
+                provider_place_id="starbucks-reserve",
+                name="Starbucks Reserve Chicago Roastery",
+                english_name="Starbucks Reserve Chicago Roastery",
+                local_name=None,
+                city="Chicago",
+                country="United States",
+                latitude=41.8942,
+                longitude=-87.6243,
+                category="catering.cafe",
+                address="646 N Michigan Ave, Chicago, Illinois, United States",
+                image_url=None,
+                opening_hours="Mo-Su 07:00-22:00",
+            )
+        )
+    db.add_all(rows)
+    db.flush()
 
 
 def test_read_only_trip_tools_return_normal_results(db, full_trip):
@@ -448,6 +490,7 @@ def test_propose_options_returns_real_item_ids_and_structured_patches(db, full_t
 
 
 def test_find_replacement_place_excludes_places_already_in_current_plan(db, full_trip):
+    _seed_chicago_replacement_places(db)
     db.add(
         PlanItem(
             plan_id=full_trip["plan"].id,
@@ -472,6 +515,7 @@ def test_find_replacement_place_excludes_places_already_in_current_plan(db, full
 
 
 def test_find_replacement_place_excludes_places_not_open_for_item_time(db, full_trip):
+    _seed_chicago_replacement_places(db)
     tools = _tools_by_name(db, full_trip)
 
     result = tools["find_replacement_place"].handler(
@@ -744,16 +788,125 @@ def test_computed_options_are_a_fallback_not_a_supplement(db, full_trip):
     assert any(o["kind"] == "computed" for o in without["options"])
 
 
-def test_find_replacement_place_fails_safely_for_non_chicago_destinations(db, full_trip):
-    full_trip["trip"].destination = "Tokyo"
+def test_find_replacement_place_uses_place_service_for_non_chicago_destinations(
+    monkeypatch, db, full_trip
+):
+    full_trip["trip"].destination = "Los Angeles, USA"
+    full_trip["art"].title = "Los Angeles Times Globe Lobby"
+    full_trip["art"].place = "Downtown Los Angeles"
+    full_trip["art"].lat = 34.0519
+    full_trip["art"].lng = -118.2445
+    full_trip["art"].start_hour = 14.0
+    full_trip["art"].duration_min = 120
+    db.add(
+        PlanItem(
+            plan_id=full_trip["plan"].id,
+            day_index=3,
+            day_date=date(2026, 8, 16),
+            start_hour=11.0,
+            duration_min=90,
+            title="Grand Central Market",
+            place="317 S Broadway",
+            lat=34.0508,
+            lng=-118.2487,
+        )
+    )
     db.flush()
+
+    calls: list[str] = []
+
+    def fake_fetch_places(destination: str, *, limit: int = 72):
+        calls.append(destination)
+        assert limit == 72
+        return (
+            geoapify.GeoapifyPlace(
+                provider_place_id="la-times-globe-lobby",
+                name="Los Angeles Times Globe Lobby",
+                city="Los Angeles",
+                country="United States",
+                latitude=34.0519,
+                longitude=-118.2445,
+                category="tourism.attraction",
+                address="202 W 1st St, Los Angeles, California, United States",
+                image_url=None,
+                opening_hours="Mo-Su 09:00-18:00",
+                english_name="Los Angeles Times Globe Lobby",
+                local_name=None,
+            ),
+            geoapify.GeoapifyPlace(
+                provider_place_id="grand-central-market",
+                name="Grand Central Market",
+                city="Los Angeles",
+                country="United States",
+                latitude=34.0508,
+                longitude=-118.2487,
+                category="catering.restaurant",
+                address="317 S Broadway, Los Angeles, California, United States",
+                image_url=None,
+                opening_hours="Mo-Su 08:00-22:00",
+                english_name="Grand Central Market",
+                local_name=None,
+            ),
+            geoapify.GeoapifyPlace(
+                provider_place_id="echo-park-lake",
+                name="Echo Park Lake",
+                city="Los Angeles",
+                country="United States",
+                latitude=34.0782,
+                longitude=-118.2606,
+                category="leisure.park",
+                address="751 Echo Park Ave, Los Angeles, California, United States",
+                image_url=None,
+                opening_hours="Mo-Su 05:00-22:30",
+                english_name="Echo Park Lake",
+                local_name=None,
+            ),
+            geoapify.GeoapifyPlace(
+                provider_place_id="the-broad",
+                name="The Broad",
+                city="Los Angeles",
+                country="United States",
+                latitude=34.0544,
+                longitude=-118.2507,
+                category="entertainment.museum",
+                address="221 S Grand Ave, Los Angeles, California, United States",
+                image_url=None,
+                opening_hours="Mo-Su 10:00-18:00",
+                english_name="The Broad",
+                local_name=None,
+            ),
+            geoapify.GeoapifyPlace(
+                provider_place_id="early-bird-cafe",
+                name="Early Bird Cafe",
+                city="Los Angeles",
+                country="United States",
+                latitude=34.0527,
+                longitude=-118.243,
+                category="catering.cafe",
+                address="200 S Spring St, Los Angeles, California, United States",
+                image_url=None,
+                opening_hours="Mo-Su 06:00-12:00",
+                english_name="Early Bird Cafe",
+                local_name=None,
+            ),
+        )
+
+    monkeypatch.setattr(geoapify, "fetch_places", fake_fetch_places)
     tools = _tools_by_name(db, full_trip)
 
     result = tools["find_replacement_place"].handler(
         item_id=full_trip["art"].id,
-        keywords=["cafe"],
+        keywords=["relaxing"],
     )
 
-    assert result["error"] == "unsupported_destination"
-    assert "Chicago" in result["message"]
-    assert "Tokyo" in result["message"]
+    assert calls == ["Los Angeles, USA"]
+    assert result["item"]["title"] == "Los Angeles Times Globe Lobby"
+    assert result["candidates"][0]["title"] == "Echo Park Lake"
+    assert result["candidates"][0]["candidate_id"] == "geoapify:echo-park-lake"
+    assert result["candidates"][0]["price_per_person"] is None
+
+    titles = {candidate["title"] for candidate in result["candidates"]}
+    assert "Los Angeles Times Globe Lobby" not in titles
+    assert "Grand Central Market" not in titles
+    assert "Early Bird Cafe" not in titles
+    assert titles == {"Echo Park Lake"}

@@ -918,7 +918,7 @@ const CONSTRAINT_KINDS = [
 ]
 
 const DIET_TAGS = ['vegetarian', 'vegan', 'halal', 'gluten_free']
-const AVOID_TAGS = ['nightlife', 'outdoor', 'shopping', 'family', 'music', 'seafood']
+const AVOID_TAGS = ['museum', 'nightlife', 'outdoor', 'shopping', 'family', 'music', 'seafood']
 const VISIBILITY_OPTIONS = [
   { value: 'planning_only', label: 'Only Cadensy' },
   { value: 'organizer', label: 'Organizer too' },
@@ -958,6 +958,25 @@ const constraintSummary = entry => {
   if (entry.kind === 'date_range') return [params.start, params.end].filter(Boolean).length ? `Available from ${params.start || 'any start'} to ${params.end || 'any end'}` : 'Date limit set'
   if (entry.kind === 'avoid_tag') return (params.tags || []).length ? `Avoid ${(params.tags || []).join(', ')}` : 'Avoidance rule set'
   return 'Requirement set'
+}
+
+const constraintDraftProblem = draft => {
+  const params = draft?.params || {}
+  if (draft?.kind === 'time_window') {
+    const earliest = params.earliest_hour
+    const latest = params.latest_hour
+    if (earliest === null && latest === null) return 'Choose a not-before or not-after time.'
+    if (earliest !== null && earliest !== undefined && latest !== null && latest !== undefined && latest < earliest) {
+      return 'The end of the time window cannot be earlier than the start.'
+    }
+    return ''
+  }
+  if (draft?.kind === 'budget_ceiling') return params.max_total_per_person === null || params.max_total_per_person === undefined ? 'Choose a maximum total budget.' : ''
+  if (draft?.kind === 'walk_limit') return params.max_km_per_day === null || params.max_km_per_day === undefined ? 'Choose a daily walking limit.' : ''
+  if (draft?.kind === 'dietary') return (params.required_tags || []).length ? '' : 'Choose at least one dietary tag.'
+  if (draft?.kind === 'date_range') return params.start || params.end ? '' : 'Choose an available date range.'
+  if (draft?.kind === 'avoid_tag') return (params.tags || []).length ? '' : 'Choose at least one thing to avoid.'
+  return ''
 }
 
 function ConstraintParams({ kind, params, onChange, allowedRange = null }) {
@@ -1059,6 +1078,11 @@ function PreferencesPage() {
 
   const commitDraft = async () => {
     if (!draft) return
+    const problem = constraintDraftProblem(draft)
+    if (problem) {
+      app.notify(problem)
+      return
+    }
     try {
       const result = await app.addConstraint(draft)
       setConstraints(current => [...current, { id: result.id, ...draft }])
@@ -1122,7 +1146,7 @@ function PreferencesPage() {
 
         <div className="wide needsPanel">
           <label>Things that are not negotiable</label>
-          <p className="needsHint">Only these are checked against the plan. Anything else, say it to the group.</p>
+          <p className="needsHint">Only these structured selections are checked against the plan. Anything else, say it to the group.</p>
           {/* State the privacy promise once, directly above the most private inputs. Repeating it sounds defensive; call out the budget exception explicitly. */}
           <div className="privacyBox"><div><strong>Private by default</strong><p>Nobody sees this — not even the organizer.</p></div><Badge tone="green">Protected</Badge></div>
           {constraints.map(entry => <div className="needRow savedNeed" key={entry.id}>
@@ -1139,7 +1163,7 @@ function PreferencesPage() {
             </label>
             <CustomSelect label="How strict is this?" value={draft.importance} onChange={value => setDraft(current => ({ ...current, importance: value }))} options={[{ value: 'required', label: 'Not negotiable' }, { value: 'flexible', label: 'Prefer, but flexible' }]}/>
             <CustomSelect label="Who can see this?" value={draft.visibility} onChange={value => setDraft(current => ({ ...current, visibility: value }))} options={VISIBILITY_OPTIONS}/>
-            <div className="needDraftActions"><Button onClick={commitDraft}>Add</Button><Button ghost onClick={() => setDraft(null)}>Cancel</Button></div>
+            <div className="needDraftActions"><Button disabled={Boolean(constraintDraftProblem(draft))} onClick={commitDraft}>Add</Button><Button ghost onClick={() => setDraft(null)}>Cancel</Button></div>
           </div>}
 
           {picking && !draft && <div className="needPicker">

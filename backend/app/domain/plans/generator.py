@@ -66,6 +66,9 @@ NO_PLACES_BLOCKED_REASON = (
     "No usable places were available for this destination. Check the destination name "
     "or try again when place data is available."
 )
+AVAILABILITY_BLOCKED_REASON = (
+    "The submitted availability windows do not leave any shared trip dates to plan."
+)
 RULES_DAY_NOTE = "Deterministic rules fallback generated this day."
 
 
@@ -178,15 +181,16 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
     meal_budget_cap = _load_meal_budget_cap(db, trip_id)
     dates = _trip_dates(trip)
     availability_by_date = _load_availability_by_date(db, trip_id, dates)
+    day_slots = _day_slots_for_generation(dates, availability_by_date)
     preferred_counts = tuple(
         _preferred_activity_count(day_index, availability_by_date.get(day_date))
-        for day_index, day_date in enumerate(dates, start=1)
+        for day_index, day_date in day_slots
     )
     poi_pool = tuple(
         _as_poi(place)
         for place in place_service.places_for_planner(db, trip.destination)
     )
-    blocked_reason = _blocked_reason(dates, constraints)
+    blocked_reason = _blocked_reason(dates, constraints, day_slots)
     if not poi_pool:
         blocked_reason = NO_PLACES_BLOCKED_REASON
     allow_reuse_across_days = not any(
@@ -197,10 +201,10 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
     used: set[str] = set()
     accepted_days: list[DayDraft] = []
 
-    for day_index, day_date in enumerate(dates, start=1):
+    for slot_index, (day_index, day_date) in enumerate(day_slots, start=1):
         # Count remaining slots in the whole trip so fallback can reserve budget for later days.
         # Otherwise early days pick expensive options and the later days can make the plan blocked.
-        slots_left = sum(preferred_counts[day_index - 1:])
+        slots_left = sum(preferred_counts[slot_index - 1:])
         day = _build_day(
             slots_left=slots_left,
             day_index=day_index,
@@ -210,7 +214,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             already_selected=tuple(draft),
             already_used=used,
             interests=interests,
-            preferred_activity_count=preferred_counts[day_index - 1],
+            preferred_activity_count=preferred_counts[slot_index - 1],
             allow_reuse_across_days=allow_reuse_across_days,
             poi_pool=poi_pool,
             meal_budget_cap=meal_budget_cap,
@@ -235,7 +239,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             item.poi.title for item in day.items if not _is_flexible_meal_break(item.poi)
         )
 
-    if not _is_complete(dates, tuple(draft)):
+    if not _is_complete(day_slots, tuple(draft)):
         plan.status = "blocked"
         plan.blocked_reason = blocked_reason
         plan.estimated_total_per_person = None
@@ -309,10 +313,14 @@ def _trip_dates(trip: Trip) -> tuple[date, ...]:
 
 
 def _blocked_reason(
-    dates: tuple[date, ...], constraints: tuple[Constraint, ...]
+    dates: tuple[date, ...],
+    constraints: tuple[Constraint, ...],
+    day_slots: tuple[tuple[int, date], ...],
 ) -> str:
     if not dates:
         return DATES_BLOCKED_REASON
+    if dates and not day_slots:
+        return AVAILABILITY_BLOCKED_REASON
     if any(constraint.kind is ConstraintKind.BUDGET_CEILING for constraint in constraints):
         return BUDGET_BLOCKED_REASON
     return CONSTRAINTS_BLOCKED_REASON
@@ -386,10 +394,10 @@ def _load_meal_budget_cap(db: Session, trip_id: str) -> float | None:
 def _load_availability_by_date(
     db: Session, trip_id: str, dates: tuple[date, ...]
 ) -> dict[date, tuple[int, int]]:
-    """Return submitted-member availability as a soft scheduling signal.
+    """Return submitted-member availability by trip date.
 
-    Missing availability means the member selected the full trip. A partial window
-    can make a day lighter, but never invalidates or removes a trip day.
+    Missing availability means the member selected the full trip.
+    Submitted limited windows later become hard generation-day filtering.
     """
     preferences = db.scalars(
         select(Preference)
@@ -420,6 +428,21 @@ def _load_availability_by_date(
         )
         for day_date in dates
     }
+
+
+def _day_slots_for_generation(
+    dates: tuple[date, ...],
+    availability_by_date: dict[date, tuple[int, int]],
+) -> tuple[tuple[int, date], ...]:
+    slots: list[tuple[int, date]] = []
+    for day_index, day_date in enumerate(dates, start=1):
+        availability = availability_by_date.get(day_date)
+        if availability is not None:
+            available, submitted = availability
+            if submitted and available < submitted:
+                continue
+        slots.append((day_index, day_date))
+    return tuple(slots)
 
 
 def _preferred_activity_count(
@@ -1542,10 +1565,12 @@ def _change_for(
     )
 
 
-def _is_complete(dates: tuple[date, ...], draft: tuple[DraftItem, ...]) -> bool:
-    if not dates:
+def _is_complete(
+    day_slots: tuple[tuple[int, date], ...], draft: tuple[DraftItem, ...]
+) -> bool:
+    if not day_slots:
         return False
-    counts = {day_index: 0 for day_index in range(1, len(dates) + 1)}
+    counts = {day_index: 0 for day_index, _day_date in day_slots}
     for item in draft:
         if item.day_index not in counts:
             return False

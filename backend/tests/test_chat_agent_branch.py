@@ -700,6 +700,136 @@ def test_hallucinated_replacement_candidate_does_not_become_a_proposed_change(
 
     assert result.proposed_change is None
 
+
+def test_unknown_price_replacement_candidate_can_become_a_proposed_change(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content="Echo Park Lake looks like a calmer replacement.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "find_replacement_place",
+                    "arguments": {"item_id": full_trip["art"].id, "keywords": ["relaxing"]},
+                    "output": {
+                        "candidates": [
+                            {
+                                "candidate_id": "geoapify:echo-park-lake",
+                                "title": "Echo Park Lake",
+                                "place": "751 Echo Park Ave",
+                                "price_per_person": None,
+                                "opening_hours": "Mo-Su 05:00-22:30",
+                                "lat": 34.0782,
+                                "lng": -118.2606,
+                                "tags": ["parks", "park", "relaxing"],
+                            }
+                        ]
+                    },
+                    "guard_rejected": False,
+                },
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {
+                            "title": "Echo Park Lake",
+                            "place": "751 Echo Park Ave",
+                            "lat": 34.0782,
+                            "lng": -118.2606,
+                        },
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message="Replace this with something more relaxing",
+        item_id=full_trip["art"].id,
+    )
+
+    assert result.proposed_change is not None
+    assert result.proposed_change.patch == {
+        "title": "Echo Park Lake",
+        "place": "751 Echo Park Ave",
+        "lat": 34.0782,
+        "lng": -118.2606,
+    }
+
+
+def test_unknown_price_replacement_candidate_rejects_an_invented_price(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content="I found a calmer option.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "find_replacement_place",
+                    "arguments": {"item_id": full_trip["art"].id, "keywords": ["relaxing"]},
+                    "output": {
+                        "candidates": [
+                            {
+                                "candidate_id": "geoapify:echo-park-lake",
+                                "title": "Echo Park Lake",
+                                "place": "751 Echo Park Ave",
+                                "price_per_person": None,
+                                "lat": 34.0782,
+                                "lng": -118.2606,
+                                "tags": ["parks", "park", "relaxing"],
+                            }
+                        ]
+                    },
+                    "guard_rejected": False,
+                },
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {
+                            "title": "Echo Park Lake",
+                            "place": "751 Echo Park Ave",
+                            "price_per_person": 25.0,
+                            "lat": 34.0782,
+                            "lng": -118.2606,
+                        },
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message="Replace this with something more relaxing",
+        item_id=full_trip["art"].id,
+    )
+
+    assert result.proposed_change is None
+
 def _history_option(
     *,
     id: str,
@@ -746,6 +876,55 @@ def test_followup_option_number_resolves_previous_candidate_without_calling_agen
         trip_id=full_trip["trip"].id,
         membership=full_trip["me"],
         message="Option 2.",
+        history=_history_with_options(
+            _history_option(
+                id="keep",
+                label="Keep current",
+                title="Keep current",
+                body="No change.",
+                tradeoff="Wednesday stays busy.",
+                item_id=full_trip["art"].id,
+                patch={},
+            ),
+            _history_option(
+                id="move-later",
+                label="Move later",
+                title="Move the museum later",
+                body="Shift Art Institute of Chicago to 3:00 PM.",
+                tradeoff="Dinner has less buffer afterward.",
+                item_id=full_trip["art"].id,
+                patch={"start_hour": 15.0},
+            ),
+            _history_option(
+                id="move-to-thursday",
+                label="Move to Thursday",
+                title="Move to Thursday",
+                body="Shift Art Institute of Chicago to Thursday.",
+                tradeoff="The visit moves to another day.",
+                item_id=full_trip["art"].id,
+                patch={"day_date": date(2026, 8, 20)},
+            ),
+        ),
+    )
+
+    assert result.proposed_change is not None
+    assert result.proposed_change.item_id == full_trip["art"].id
+    assert result.proposed_change.patch == {"start_hour": 15.0}
+    assert result.proposed_change.verdict.path is Path.NOTICE
+    assert result.candidate_options == ()
+    assert "click Apply" in result.reply
+
+
+def test_followup_bare_number_resolves_previous_candidate_without_calling_agent(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setattr(base, "call_agent", _unexpected_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message="2",
         history=_history_with_options(
             _history_option(
                 id="keep",
@@ -865,6 +1044,45 @@ def test_followup_semantic_selection_resolves_unique_previous_candidate(
 
     assert result.proposed_change is not None
     assert result.proposed_change.patch == {"day_date": date(2026, 8, 20)}
+
+
+def test_followup_full_option_text_resolves_previous_candidate(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setattr(base, "call_agent", _unexpected_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message=(
+            "2. Move the museum later - Shift Art Institute of Chicago to 3:00 PM."
+        ),
+        history=_history_with_options(
+            _history_option(
+                id="keep",
+                label="Keep current",
+                title="Keep current",
+                body="No change.",
+                tradeoff="Wednesday stays busy.",
+                item_id=full_trip["art"].id,
+                patch={},
+            ),
+            _history_option(
+                id="move-later",
+                label="Move later",
+                title="Move the museum later",
+                body="Shift Art Institute of Chicago to 3:00 PM.",
+                tradeoff="Dinner has less buffer afterward.",
+                item_id=full_trip["art"].id,
+                patch={"start_hour": 15.0},
+            ),
+        ),
+    )
+
+    assert result.proposed_change is not None
+    assert result.proposed_change.patch == {"start_hour": 15.0}
+    assert result.proposed_change.verdict.path is Path.NOTICE
 
 
 def test_followup_ambiguous_acceptance_does_not_silently_choose(
@@ -1027,6 +1245,48 @@ def test_selected_item_pronoun_reference_creates_a_proposed_change(
     assert result.proposed_change is not None
     assert result.proposed_change.item_id == full_trip["art"].id
     assert result.proposed_change.patch == {"start_hour": 15.0}
+
+
+def test_selected_item_relative_time_request_without_pronoun_uses_selected_item(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        assert 'selected on screen' in kwargs["user"]
+        assert full_trip["art"].title in kwargs["user"]
+        return base.AgentRunResult(
+            content="I can prepare moving that to 4 PM.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {"start_hour": 16.0},
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message="move to 4pm",
+        item_id=full_trip["art"].id,
+    )
+
+    assert result.proposed_change is not None
+    assert result.proposed_change.item_id == full_trip["art"].id
+    assert result.proposed_change.patch == {"start_hour": 16.0}
 
 
 def test_explicit_item_reference_overrides_the_selected_item(

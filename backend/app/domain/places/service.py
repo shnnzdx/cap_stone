@@ -63,16 +63,42 @@ def places_for_planner(
     minimum: int = DEFAULT_MINIMUM_PLACES,
 ) -> tuple[PlannerPlace, ...]:
     """Return cached/provider-backed global places for Planner."""
+    rows = _provider_places_for_destination(db, destination, minimum=minimum)
+    return tuple(_database_place(row) for row in _balanced_places(rows))
+
+
+def places_for_replacement(
+    db: Session,
+    destination: str,
+    *,
+    minimum: int = DEFAULT_MINIMUM_PLACES,
+) -> tuple[PlannerPlace, ...]:
+    """Return provider-backed places for itinerary replacement suggestions."""
+    rows = _provider_places_for_destination(db, destination, minimum=minimum)
+    ordered = sorted(
+        rows,
+        key=lambda row: (-_place_quality_score(row), row.name.casefold()),
+    )
+    return tuple(_database_place(row) for row in ordered)
+
+
+def _provider_places_for_destination(
+    db: Session,
+    destination: str,
+    *,
+    minimum: int,
+) -> list[Place]:
+    """Shared cache/provider path used by Planner and replacement suggestions."""
     destination = _canonical_destination(destination)
 
     cached = _cached_places(db, destination)
     if not _cache_needs_refresh(cached, minimum=minimum):
-        return tuple(_database_place(row) for row in _balanced_places(cached))
+        return cached
 
     try:
         fetched = geoapify.fetch_places(destination)
     except geoapify.GeoapifyUnavailable:
-        return tuple(_database_place(row) for row in _balanced_places(cached))
+        return cached
 
     if fetched:
         _upsert_geoapify(db, fetched)
@@ -86,7 +112,7 @@ def places_for_planner(
                 .where(Place.provider == "geoapify", Place.provider_place_id.in_(ids))
                 .order_by(Place.name)
             ).all()
-    return tuple(_database_place(row) for row in _balanced_places(cached))
+    return cached
 
 
 def _canonical_destination(destination: str) -> str:

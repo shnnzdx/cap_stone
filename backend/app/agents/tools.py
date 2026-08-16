@@ -8,21 +8,31 @@ wording. Every handler returns data that is safe to feed back to the model.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
+from math import cos, radians, sqrt
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .base import AgentRunState, AgentTool, safe_context
-from data.poi_chicago import POIS
 from ..db.models import Plan, PlanItem, Trip, TripMembership
 from ..domain.decisions import orchestrator
+from ..domain.places import service as place_service
 
 # Window a proposed option may move an item into. Options are suggestions the
 # group still votes on, so this only has to be a sane waking day.
 DAY_START_HOUR = 9.0
 DAY_END_HOUR = 21.0
+_WEEKDAY_CODES = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
+_REPLACEMENT_KEYWORD_ALIASES = {
+    "relaxing": ("park", "garden", "nature", "lake", "waterfront"),
+    "park": ("park", "garden", "nature"),
+    "cafe": ("cafe", "coffee", "bakery"),
+    "viewpoint": ("viewpoint", "lookout", "observation", "sights", "attraction"),
+    "museum": ("museum", "gallery", "culture"),
+}
 
 
 def build_read_only_trip_tools(
@@ -66,17 +76,26 @@ def build_read_only_trip_tools(
             "new_lat": new_lat,
             "new_lng": new_lng,
         }
+        required_replacement_values = {
+            "new_title": new_title,
+            "new_place": new_place,
+            "new_lat": new_lat,
+            "new_lng": new_lng,
+        }
         if any(value is not None for value in replacement_values.values()) and not all(
-            value is not None for value in replacement_values.values()
+            value is not None for value in required_replacement_values.values()
         ):
             missing = [
-                key for key, value in replacement_values.items() if value is None
+                key
+                for key, value in required_replacement_values.items()
+                if value is None
             ]
             return _tool_error(
                 "incomplete_replacement",
                 (
                     "Replacement venue fields must be provided together: "
-                    "new_title, new_place, new_price_per_person, new_lat, and new_lng. "
+                    "new_title, new_place, new_lat, and new_lng. "
+                    "new_price_per_person is optional when the real provider result has no price. "
                     f"Missing: {', '.join(missing)}."
                 ),
             )
@@ -171,8 +190,8 @@ def build_read_only_trip_tools(
                 "day and put the target date in new_day_date. If the traveler wants to "
                 "replace this item with another venue, first call find_replacement_place, "
                 "choose a returned candidate, then pass that candidate using new_title, "
-                "new_place, new_price_per_person, new_lat, and new_lng. Do not invent "
-                "replacement venues."
+                "new_place, new_lat, and new_lng, plus new_price_per_person only when "
+                "the tool returned a real price. Do not invent replacement venues or prices."
             ),
             parameters=_change_parameters(),
             handler=classify_change,
@@ -181,18 +200,20 @@ def build_read_only_trip_tools(
         AgentTool(
             name="find_replacement_place",
             description=(
-                "Find real replacement venues from the curated place library when the "
+                "Find real replacement venues from the backend place service when the "
                 "traveler wants to swap an itinerary item for a different place, not "
                 "when they only want to change time, date, or duration. Call "
                 "get_current_plan first and pass item_id from it. Returns candidates "
-                "with title, place, price_per_person, duration_min, opens, closes, "
-                "lat, lng, and tags. It excludes the current item, excludes places "
-                "already used in the Current Plan, and excludes places whose hours do "
-                "not cover the item's current time block. You may pass keywords such "
-                "as cafe or downtown to filter candidates loosely; if no keyword "
-                "matches, the tool returns all eligible candidates. After choosing a "
-                "candidate, propose it with classify_change using new_title, new_place, "
-                "new_price_per_person, new_lat, and new_lng."
+                "with candidate_id, title, place, price_per_person, opening_hours, "
+                "opens, closes, lat, lng, and tags. price_per_person may be null when "
+                "the provider has no trustworthy price. It excludes the current item, "
+                "excludes places already used in the Current Plan, and excludes places "
+                "whose known hours do not cover the item's current time block. You may "
+                "pass keywords such as relaxing, park, cafe, viewpoint, or museum to "
+                "filter candidates loosely; if no keyword matches, the tool returns all "
+                "eligible candidates. After choosing a candidate, propose it with "
+                "classify_change using new_title, new_place, new_lat, and new_lng, "
+                "plus new_price_per_person only when the tool returned a real price."
             ),
             parameters={
                 "type": "object",
@@ -360,7 +381,8 @@ def _change_parameters() -> dict[str, Any]:
                 "type": "number",
                 "description": (
                     "Replacement venue estimated price per person from "
-                    "find_replacement_place. Do not invent this value."
+                    "find_replacement_place. Optional when the provider returned no real "
+                    "price. Do not invent this value."
                 ),
             },
             "new_lat": {
@@ -943,23 +965,10 @@ def _hour_label(hour: float) -> str:
     return f"{display}:{minutes:02d} {suffix}"
 
 
-def _supports_curated_replacements(trip: Trip | None) -> bool:
-    return trip is not None and "chicago" in (trip.destination or "").strip().lower()
-
-
 def _find_replacement_place(
     db: Session, trip_id: str, item_id: str, keywords: list[str]
 ) -> dict[str, Any]:
     trip = db.get(Trip, trip_id)
-    if not _supports_curated_replacements(trip):
-        destination = trip.destination if trip is not None else "unknown"
-        return _tool_error(
-            "unsupported_destination",
-            (
-                "Replacement suggestions are only available for curated Chicago trips "
-                f"right now. This trip destination is '{destination}'."
-            ),
-        )
     plan = _active_plan(db, trip_id)
     items = list(
         db.scalars(
@@ -975,41 +984,82 @@ def _find_replacement_place(
             f"No Current Plan item has id '{item_id}'. Call get_current_plan and retry with a real item id.",
         )
 
-    candidates = _replacement_candidates(items, selected)
+    destination = (trip.destination if trip is not None else "").strip()
+    candidates = _replacement_candidates(
+        items,
+        selected,
+        place_service.places_for_replacement(db, destination),
+    )
     filtered = _filter_replacement_candidates(candidates, keywords)
     return {
         "item": _safe_item(selected),
         "keywords": list(keywords),
-        "candidates": [_json_safe(candidate) for candidate in filtered],
+        "candidates": [_json_safe(_public_replacement_candidate(candidate)) for candidate in filtered],
     }
 
 def _replacement_candidates(
-    items: list[PlanItem], selected: PlanItem
+    items: list[PlanItem],
+    selected: PlanItem,
+    places: tuple[place_service.PlannerPlace, ...],
 ) -> tuple[dict[str, Any], ...]:
     if selected.duration_min is None:
         return ()
-    existing_titles = {item.title for item in items if item.id != selected.id}
-    end_hour = selected.start_hour + selected.duration_min / 60
+    existing_titles = {_normalize_title(item.title) for item in items if item.id != selected.id}
     candidates: list[dict[str, Any]] = []
-    for title, place, lat, lng, price, duration, opens, closes, _walk, _access, _diet, tags in POIS:
-        if title == selected.title or title in existing_titles:
+    for place in places:
+        title = place.name.strip()
+        if not title or _normalize_title(title) == _normalize_title(selected.title):
             continue
-        if opens > selected.start_hour or closes < end_hour:
+        if _normalize_title(title) in existing_titles:
             continue
+        if _same_coordinates(place.latitude, place.longitude, selected.lat, selected.lng):
+            continue
+        if any(
+            _same_coordinates(place.latitude, place.longitude, item.lat, item.lng)
+            for item in items
+            if item.id != selected.id
+        ):
+            continue
+        intervals = _opening_intervals_for_date(place.opening_hours, selected.day_date)
+        if not _time_block_is_supported(
+            intervals,
+            selected.start_hour,
+            selected.duration_min,
+        ):
+            continue
+        opens = closes = None
+        if intervals and len(intervals) == 1:
+            opens, closes = intervals[0]
+        tags = _replacement_tags(place)
         candidates.append(
             {
+                "candidate_id": place.candidate_id,
                 "title": title,
-                "place": place,
-                "price_per_person": float(price),
-                "duration_min": int(duration),
-                "opens": float(opens),
-                "closes": float(closes),
-                "lat": float(lat),
-                "lng": float(lng),
+                "place": place.location,
+                "price_per_person": None,
+                "opening_hours": place.opening_hours,
+                "opens": opens,
+                "closes": closes,
+                "lat": float(place.latitude),
+                "lng": float(place.longitude),
                 "tags": list(tags),
+                "_distance_score": _distance_score(
+                    selected.lat,
+                    selected.lng,
+                    place.latitude,
+                    place.longitude,
+                ),
             }
         )
-    return tuple(candidates)
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate["_distance_score"],
+                str(candidate["title"]).casefold(),
+            ),
+        )
+    )
 
 
 def _filter_replacement_candidates(
@@ -1019,18 +1069,159 @@ def _filter_replacement_candidates(
     if not cleaned:
         return candidates
 
-    def matches(candidate: dict[str, Any]) -> bool:
+    def score(candidate: dict[str, Any]) -> int:
         haystack = " ".join(
             [
                 str(candidate.get("title") or ""),
                 str(candidate.get("place") or ""),
+                str(candidate.get("opening_hours") or ""),
                 *[str(tag) for tag in candidate.get("tags") or []],
             ]
         ).lower()
-        return any(keyword in haystack for keyword in cleaned)
+        total = 0
+        for keyword in cleaned:
+            terms = {keyword, *_REPLACEMENT_KEYWORD_ALIASES.get(keyword, ())}
+            if any(term in haystack for term in terms):
+                total += 1
+        return total
 
-    filtered = tuple(candidate for candidate in candidates if matches(candidate))
-    return filtered or candidates
+    scored = [(score(candidate), candidate) for candidate in candidates]
+    filtered = [candidate for points, candidate in scored if points > 0]
+    if not filtered:
+        return candidates
+    return tuple(
+        candidate
+        for _points, candidate in sorted(
+            ((score(candidate), candidate) for candidate in filtered),
+            key=lambda pair: (
+                -pair[0],
+                pair[1].get("_distance_score", float("inf")),
+                str(pair[1].get("title") or "").casefold(),
+            ),
+        )
+    )
+
+
+def _replacement_tags(place: place_service.PlannerPlace) -> tuple[str, ...]:
+    tags = {tag.casefold() for tag in place.tags}
+    if place.category:
+        tags.add(place.category.casefold())
+        tags.update(part.casefold() for part in place.category.split(".") if part)
+    if "tourism.sights" in (place.category or "") or "tourism.attraction" in (place.category or ""):
+        tags.add("viewpoint")
+    return tuple(sorted(tags))
+
+
+def _public_replacement_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    public = dict(candidate)
+    public.pop("_distance_score", None)
+    return public
+
+
+def _time_block_is_supported(
+    intervals: tuple[tuple[float, float], ...] | None,
+    start_hour: float,
+    duration_min: int,
+) -> bool:
+    if intervals is None:
+        return True
+    end_hour = start_hour + duration_min / 60
+    return any(start <= start_hour and end_hour <= end for start, end in intervals)
+
+
+def _same_coordinates(
+    left_lat: float | None,
+    left_lng: float | None,
+    right_lat: float | None,
+    right_lng: float | None,
+) -> bool:
+    if None in {left_lat, left_lng, right_lat, right_lng}:
+        return False
+    return abs(float(left_lat) - float(right_lat)) < 0.0001 and abs(
+        float(left_lng) - float(right_lng)
+    ) < 0.0001
+
+
+def _distance_score(
+    base_lat: float | None,
+    base_lng: float | None,
+    candidate_lat: float,
+    candidate_lng: float,
+) -> float:
+    if base_lat is None or base_lng is None:
+        return float("inf")
+    lat_scale = 111.0
+    lng_scale = 111.0 * max(cos(radians(base_lat)), 0.1)
+    lat_delta = (candidate_lat - base_lat) * lat_scale
+    lng_delta = (candidate_lng - base_lng) * lng_scale
+    return sqrt(lat_delta * lat_delta + lng_delta * lng_delta)
+
+
+def _opening_intervals_for_date(
+    raw: str | None, day_date: date
+) -> tuple[tuple[float, float], ...] | None:
+    if not raw:
+        return None
+    value = raw.strip()
+    if value == "24/7":
+        return ((0.0, 24.0),)
+    weekday = _WEEKDAY_CODES[day_date.weekday()]
+    matched_day = False
+    intervals: list[tuple[float, float]] = []
+    for segment in value.split(";"):
+        segment = segment.strip()
+        parsed = re.match(
+            r"^([A-Z][a-z](?:-[A-Z][a-z])?(?:,[A-Z][a-z])*)\s+(.+)$",
+            segment,
+        )
+        if parsed is None or not _weekday_spec_contains(parsed.group(1), weekday):
+            continue
+        matched_day = True
+        hours = parsed.group(2).strip()
+        if hours.casefold() in {"off", "closed"}:
+            continue
+        for start_text, end_text in re.findall(r"(\d{1,2}:\d{2})-(\d{1,2}:\d{2})", hours):
+            start = _clock_hour(start_text)
+            end = _clock_hour(end_text)
+            if start is None or end is None:
+                continue
+            if end <= start:
+                end += 24.0
+            intervals.append((start, end))
+    if not matched_day:
+        return None
+    return tuple(intervals)
+
+
+def _weekday_spec_contains(spec: str, weekday: str) -> bool:
+    for part in spec.split(","):
+        if "-" not in part:
+            if part == weekday:
+                return True
+            continue
+        start, end = part.split("-", 1)
+        if start not in _WEEKDAY_CODES or end not in _WEEKDAY_CODES:
+            continue
+        start_index = _WEEKDAY_CODES.index(start)
+        end_index = _WEEKDAY_CODES.index(end)
+        day_index = _WEEKDAY_CODES.index(weekday)
+        if start_index <= end_index:
+            if start_index <= day_index <= end_index:
+                return True
+        elif day_index >= start_index or day_index <= end_index:
+            return True
+    return False
+
+
+def _clock_hour(value: str) -> float | None:
+    try:
+        hour_text, minute_text = value.split(":", 1)
+        hour, minute = int(hour_text), int(minute_text)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= hour <= 24 and 0 <= minute < 60) or (hour == 24 and minute):
+        return None
+    return hour + minute / 60
 
 
 def _resolve_day_filter(trip: Trip | None, day: str) -> date | int | None:
