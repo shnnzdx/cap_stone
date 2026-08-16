@@ -172,7 +172,10 @@ export function usePlanInteractionRuntime({ currentTrip }) {
     setMenuOpen(current => current === itemId ? null : itemId)
   }, [])
 
-  const showDayOnMap = useCallback(dayId => setRailDay(dayId), [])
+  const showDayOnMap = useCallback(dayId => {
+    setRailDay(dayId)
+    setOpenDays([dayId])
+  }, [])
   const showAllOnMap = useCallback(() => setRailDay('all'), [])
   const selectPlanItem = useCallback(itemId => setSelectedTripItemId(itemId), [])
   const updateCommentDraft = useCallback(value => setCommentDraft(value), [])

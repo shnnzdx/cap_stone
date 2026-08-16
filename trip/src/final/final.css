@@ -3183,12 +3183,20 @@ body,
   line-height:1.35!important;
 }
 
-.workspaceContent:has(.planSplit) .accordionBody,
+.workspaceContent:has(.planSplit) .accordionBody{
+  grid-template-rows:0fr!important;
+}
+
 .workspaceContent:has(.planSplit) .accordionDay.open .accordionBody{
   grid-template-rows:1fr!important;
 }
 
-.workspaceContent:has(.planSplit) .accordionInner,
+.workspaceContent:has(.planSplit) .accordionInner{
+  opacity:0!important;
+  transform:translateY(-8px)!important;
+  overflow:hidden!important;
+}
+
 .workspaceContent:has(.planSplit) .accordionDay.open .accordionInner{
   opacity:1!important;
   transform:none!important;

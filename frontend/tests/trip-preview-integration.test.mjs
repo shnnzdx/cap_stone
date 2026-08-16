@@ -167,6 +167,27 @@ test("plan stop cards use compact category icons instead of activity photos", as
   assert.match(builtHtml, /index-.*\.js/);
 });
 
+test("plan accordion styles preserve open and closed states inside the workspace shell", async () => {
+  const finalCss = await readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8");
+
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionBody\{[\s\S]*grid-template-rows:0fr!important;/,
+  );
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open \.accordionBody\{[\s\S]*grid-template-rows:1fr!important;/,
+  );
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionInner\{[\s\S]*opacity:0!important;[\s\S]*overflow:hidden!important;/,
+  );
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open \.accordionInner\{[\s\S]*opacity:1!important;[\s\S]*overflow:visible!important;/,
+  );
+});
+
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "trip-preview-sync-"));
   const sourceRoot = path.join(tempRoot, "trip");

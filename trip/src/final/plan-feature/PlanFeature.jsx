@@ -119,6 +119,11 @@ const formatStraightLineDistance = (from, to) => {
   return `About ${miles.toFixed(miles < 10 ? 1 : 0)} mi to next stop`
 }
 
+const totalRouteMiles = items => items.reduce((total, item, index) => {
+  if (index === items.length - 1) return total
+  return total + (straightLineMiles(item, items[index + 1]) || 0)
+}, 0)
+
 const fieldLabels = {
   title: 'Title',
   place: 'Place',
