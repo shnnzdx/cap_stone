@@ -571,3 +571,47 @@ def test_chat_selected_item_relative_time_request_uses_selected_item(
     assert body["proposed_change"] is not None
     assert body["proposed_change"]["item_id"] == full_trip["art"].id
     assert body["proposed_change"]["patch"] == {"start_hour": 16.0}
+
+
+def test_chat_change_time_clarification_response_is_plain_text(
+    monkeypatch, db: Session, full_trip: dict
+):
+    grand_park = PlanItem(
+        plan_id=full_trip["plan"].id,
+        day_index=47,
+        day_date=date(2026, 9, 29),
+        start_hour=10.0,
+        duration_min=90,
+        title="Gloria Molina Grand Park",
+        place="Downtown Los Angeles",
+        settledness="loose",
+    )
+    db.add(grand_park)
+    db.flush()
+
+    monkeypatch.setattr(
+        base,
+        "call_agent",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("call_agent should not run")),
+    )
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "change time",
+                "item_id": grand_park.id,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["proposed_change"] is None
+    assert body["candidate_options"] == []
+    assert body["reply"] == (
+        "Gloria Molina Grand Park is currently scheduled for 10:00 AM on "
+        "September 29. What time would you like to move it to?"
+    )
+    assert "**" not in body["reply"]
+    assert "_" not in body["reply"]

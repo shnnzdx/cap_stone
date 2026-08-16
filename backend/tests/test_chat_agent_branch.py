@@ -246,6 +246,7 @@ def test_selected_item_is_in_agent_user_message(monkeypatch, db: Session, full_t
 
     def fake_call_agent(**kwargs):
         calls.append(kwargs)
+        assert "Respond in plain text only." in kwargs["system"]
         return base.AgentRunResult(
             content="I checked the selected item.",
             trace_id="trace",
@@ -267,6 +268,42 @@ def test_selected_item_is_in_agent_user_message(monkeypatch, db: Session, full_t
 
     assert "Art Institute of Chicago" in calls[0]["user"]
     assert "Move this later" in calls[0]["user"]
+
+
+def test_change_time_clarification_uses_plain_text_without_running_agent(
+    monkeypatch, db: Session, full_trip: dict
+):
+    grand_park = PlanItem(
+        plan_id=full_trip["plan"].id,
+        day_index=47,
+        day_date=date(2026, 9, 29),
+        start_hour=10.0,
+        duration_min=90,
+        title="Gloria Molina Grand Park",
+        place="Downtown Los Angeles",
+        settledness="loose",
+    )
+    db.add(grand_park)
+    db.flush()
+
+    monkeypatch.setattr(base, "call_agent", _unexpected_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message="change time",
+        item_id=grand_park.id,
+    )
+
+    assert result.proposed_change is None
+    assert result.candidate_options == ()
+    assert result.reply == (
+        "Gloria Molina Grand Park is currently scheduled for 10:00 AM on "
+        "September 29. What time would you like to move it to?"
+    )
+    assert "**" not in result.reply
+    assert "_" not in result.reply
 
 
 def test_agent_reply_claiming_chinese_change_completed_is_replaced(

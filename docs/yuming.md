@@ -48,6 +48,38 @@ Request recorded on 2026-08-13:
 
 ## Latest Local Changes Summary
 
+### 2026-08-16 Chat Agent Plain-Text Reply Contract For Issue B
+
+Fixed Chat Agent UX Issue B, where ordinary assistant replies could include raw
+Markdown syntax such as `**10:00 AM**` even though the Plan drawer chat bubble is a
+plain-text renderer.
+
+Files changed:
+
+- `backend/app/domain/chat/service.py`
+- `backend/tests/test_chat_agent_branch.py`
+- `backend/tests/test_chat.py`
+- `docs/backend/yuming/CHAT_AGENT_OBSERVED_ISSUES_2026-08-15.md`
+- `docs/yuming.md`
+
+What changed:
+
+- Kept the Trip frontend renderer unchanged; no Markdown renderer or new frontend
+  dependency was added.
+- Added a plain-text contract to the agent system prompt for ordinary user-visible
+  replies.
+- Added a deterministic plain-text clarification path for item-scoped
+  `change time` requests that are missing the target time.
+- Kept structured proposal cards, candidate option cards, Apply flow, Planner, and
+  decision orchestration behavior unchanged.
+
+Verification:
+
+- `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_chat_agent_branch.py -k "plain_text or selected_item_is_in_agent_user_message" -q`
+- `backend/.venv/Scripts/python.exe -m pytest backend/tests/test_chat.py -k "change_time_clarification_response_is_plain_text or selected_item_relative_time_request_uses_selected_item" -q`
+- Direct output check:
+  - `Gloria Molina Grand Park is currently scheduled for 10:00 AM on September 29. What time would you like to move it to?`
+
 ### Plan Generation Variety Fix
 
 Fixed the backend generator so single-member trips do not repeat the same places every day.

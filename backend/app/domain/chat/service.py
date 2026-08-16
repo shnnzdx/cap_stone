@@ -134,6 +134,9 @@ def _respond_with_agent_branch(
     target = reference.item or selected
     expected_item_id = reference.item.id if reference.item is not None else None
     selected_on_screen = reference.item is None or reference.source == "selected"
+    clarification = _plain_text_clarification_reply(message, target)
+    if clarification is not None:
+        return ChatResult(reply=clarification, proposed_change=None)
 
     try:
         result = _run_chat_agent_with_timeout(
@@ -414,6 +417,44 @@ def _looks_like_selected_item_relative_request(message: str) -> bool:
         r"^(shorten|lengthen|extend|replace|remove|delete)\b",
     )
     return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _plain_text_clarification_reply(message: str, target: PlanItem | None) -> str | None:
+    """Return deterministic plain-text follow-ups when the request is missing a slot.
+
+    Plain text is the product contract for ordinary chat bubbles in the current UI.
+    Keep these follow-ups out of the model path so the frontend never has to render
+    Markdown for basic clarification turns.
+    """
+    if target is None:
+        return None
+    if not _needs_time_clarification(message):
+        return None
+    return _time_clarification_reply(message, target)
+
+
+def _needs_time_clarification(message: str) -> bool:
+    if chat_agent._hour_from_text(message.lower()) is not None:
+        return False
+    normalized = _normalize_selection_text(message)
+    return normalized in {
+        "change time",
+        "change the time",
+        "edit time",
+        "edit the time",
+    }
+
+
+def _time_clarification_reply(message: str, item: PlanItem) -> str:
+    if _contains_chinese(message):
+        return (
+            f"{item.title} 现在安排在 {_format_chat_time(item.start_hour)}，日期是 "
+            f"{_format_chat_day(item.day_date)}。你想改到几点？"
+        )
+    return (
+        f"{item.title} is currently scheduled for {_format_chat_time(item.start_hour)} "
+        f"on {_format_chat_day(item.day_date)}. What time would you like to move it to?"
+    )
 
 
 def _ambiguous_item_reference_reply(message: str) -> str:
@@ -831,19 +872,37 @@ def _agent_system_prompt() -> str:
         "\n"
         "Rules:\n"
         "1. Answer in English only.\n"
-        "2. Before answering any itinerary question, verify facts with tools. "
+        "2. Respond in plain text only. Do not use Markdown, emphasis markers, "
+        "headings, bullets, or list syntax in the final user-visible reply.\n"
+        "3. Before answering any itinerary question, verify facts with tools. "
         "Do not guess.\n"
-        "3. Use only facts returned by tools. Do not invent items, times, dates, "
+        "4. Use only facts returned by tools. Do not invent items, times, dates, "
         "places, member details, membership ids, or private preference wording.\n"
-        "4. If suggesting a move to another day, inspect that day before judging "
+        "5. If suggesting a move to another day, inspect that day before judging "
         "whether it has room.\n"
-        "5. For fuzzy requests to make a day easier or to offer compromises, call "
+        "6. For fuzzy requests to make a day easier or to offer compromises, call "
         "propose_options after checking the Current Plan.\n"
-        "6. For a specific proposed change, call classify_change and follow its "
+        "7. For a specific proposed change, call classify_change and follow its "
         "result. Do not choose a decision path yourself.\n"
-        "7. Do not say the Current Plan has changed. Changes require user action "
+        "8. If the traveler has not given a required target time, date, or other "
+        "missing slot yet, ask only the concise follow-up question needed to continue.\n"
+        "9. Do not say the Current Plan has changed. Changes require user action "
         "in the product UI.\n"
     )
+
+
+def _format_chat_time(value: float | int | None) -> str:
+    if value is None:
+        return "an unknown time"
+    numeric = float(value)
+    whole = int(numeric)
+    minutes = round((numeric - whole) * 60)
+    suffix = "PM" if whole >= 12 else "AM"
+    return f"{whole % 12 or 12}:{minutes:02d} {suffix}"
+
+
+def _format_chat_day(value: date) -> str:
+    return value.strftime("%B %d").replace(" 0", " ")
 
 
 def _candidate_options_from_agent(

@@ -737,3 +737,39 @@ What time would you like to move it to?
 
 - 待修复。
 - 建议把这条作为 chat agent UX / response rendering bug，而不是 planner 或 decision orchestrator bug。
+
+2026-08-16 已完成修复：
+
+- 没有给 Plan drawer / Ask Cadensy 增加 Markdown renderer，也没有引入 `react-markdown`、
+  `remark-gfm` 或其他 Markdown dependency。
+- 普通 assistant chat bubble 继续走现有 plain text renderer。
+- 后端把普通用户可见 reply contract 固定为 plain text：
+  - 不输出 `**bold**`
+  - 不输出 `_italic_`
+  - 不依赖 Markdown heading/list syntax
+- `backend/app/domain/chat/service.py` 的 agent system prompt 现在明确要求最终用户可见回复使用
+  plain text。
+- `change time` 这类缺少目标时间的 item-scoped clarification 现在走 deterministic plain-text
+  reply path，不再把 Markdown emphasis 或后续渲染能力当作前提。
+- 这次修复没有影响：
+  - `ProposedChatChange` cards
+  - candidate option cards
+  - Apply flow
+  - Planner
+  - decision orchestrator
+
+验证结果：
+
+- 新增 regression coverage：
+  - `backend/tests/test_chat_agent_branch.py`
+  - `backend/tests/test_chat.py`
+- 通过的定向测试：
+  - `backend/tests/test_chat_agent_branch.py -k "plain_text or selected_item_is_in_agent_user_message"`
+  - `backend/tests/test_chat.py -k "change_time_clarification_response_is_plain_text or selected_item_relative_time_request_uses_selected_item"`
+- `selected item = Gloria Molina Grand Park` 且 `user = change time` 的最终 reply 现在是：
+
+```text
+Gloria Molina Grand Park is currently scheduled for 10:00 AM on September 29. What time would you like to move it to?
+```
+
+- 用户可见普通文本中不再出现 raw `**`、`_` 等 Markdown syntax。
