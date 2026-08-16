@@ -1,9 +1,13 @@
-# Next Handoff Prompt: Backend And Repo Refactor
+# Handoff Prompt: Backend And Repo Refactor
 
-Last refreshed: August 13, 2026
+Last refreshed: August 16, 2026
 
 Use this when the next task is backend cleanup, architecture assessment, repo consolidation, or
 related structural work.
+
+This document replaces the older backend-refactor-specific prompt:
+
+- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
 
 ```text
 You are taking over `C:\Users\zdxzh\Desktop\capstone\New`.
@@ -13,12 +17,11 @@ Read these first:
 - `AGENTS.md`
 - `README.md`
 - `INTEGRATION-ROADMAP.md`
-- `交接.md`
+- `HANDOFF.md`
 - `backend/README.md`
 - `backend/LOCAL_DEV.md`
-- `docs/HANDOFF_PROMPT_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_CURRENT.md`
 - `docs/navigation-known-wrong-behavior.md`
-- `docs/AGENTS.md`
 - `trip/BACKEND.md`
 
 Check `git status` before editing. There may be unrelated user work in progress.

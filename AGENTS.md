@@ -13,7 +13,7 @@ Read these files before substantial work:
 
 If the task is backend cleanup or repo consolidation, also read:
 
-- `docs/HANDOFF_PROMPT_NEXT_BACKEND_AND_REPO_REFACTOR_2026-08-11.md`
+- `docs/HANDOFF_PROMPT_BACKEND_REFACTOR_CURRENT.md`
 - `backend/README.md`
 - `backend/LOCAL_DEV.md`
 

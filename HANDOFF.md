@@ -8,7 +8,8 @@
 
 给其他 AI 的最新可复用交接 prompt 在：
 
-`docs/HANDOFF_PROMPT_2026-08-14.md`
+- `docs/HANDOFF_PROMPT_CURRENT.md`
+- `docs/HANDOFF_PROMPT_BACKEND_REFACTOR_CURRENT.md`（仅限 backend / repo refactor 任务）
 
 > 项目历史文档中可能仍出现 `TripSync`。在当前产品语境中，它指的就是 Cadensy，不要因此复制或新建第二套项目结构。
 
