@@ -4251,3 +4251,422 @@ body,
   background:#f6eee0!important;
   border-color:#ece1ce!important;
 }
+
+/* Focused correction pass: keep workspace surfaces clean and actions in the real context bar. */
+.tripPage,
+.tripPage .workspaceContent,
+.tripPage:has(.planSplit),
+.tripPage:has(.chatLayout){
+  background:#faf8f2!important;
+  background-image:none!important;
+  background-size:auto!important;
+}
+.tripPage .tripContextMasthead:before,
+.tripPage .tripContextMasthead:after{
+  display:none!important;
+  content:none!important;
+  background:none!important;
+}
+.planTripContext{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  align-items:center!important;
+  gap:24px!important;
+}
+.planTripContext .tripContextMeta{
+  min-width:0!important;
+}
+.planContextActionsSlot{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  min-width:0!important;
+}
+.planContextActionsSlot .planHeadingActions,
+.planContextActionsSlot .planHeadingActions .badge,
+.planContextActionsSlot .planHeadingActions .btn{
+  position:static!important;
+  top:auto!important;
+  right:auto!important;
+  transform:none!important;
+}
+.planContextActionsSlot .planHeadingActions{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:9px!important;
+  flex-wrap:nowrap!important;
+}
+.workspaceContent:has(.planSplit) .planHeadingActions{
+  position:static!important;
+  inset:auto!important;
+  transform:none!important;
+}
+.workspaceContent:has(.planSplit) .planHeading{
+  min-height:0!important;
+  background:#fffdfa!important;
+  background-image:none!important;
+}
+.workspaceContent:has(.planSplit) .dayRouteLine{
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:16px!important;
+}
+.workspaceContent:has(.planSplit) .dayRouteLine>span{display:none!important}
+.workspaceContent:has(.planSplit) .dayRouteLine>strong{
+  flex:1 1 auto!important;
+  color:#6d756f!important;
+  font-size:12px!important;
+  font-weight:650!important;
+  letter-spacing:0!important;
+  text-transform:none!important;
+}
+.workspaceContent:has(.planSplit) .dayRouteLine>button{white-space:nowrap!important}
+
+/* Preserve Leaflet's existing click handler while keeping the marker hit area above overlays. */
+.tripLeafletMap .leaflet-marker-icon.leafletTripMarker,
+.tripLeafletMap .leafletTripMarker,
+.tripLeafletMap .leafletTripMarker span{
+  pointer-events:auto!important;
+  cursor:pointer!important;
+}
+.tripLeafletMap .leaflet-marker-icon.leafletTripMarker{z-index:650!important}
+
+/* Chat uses one calm paper workspace with a restrained context rail. */
+.tripPage:has(.chatLayout) .chatLayout{
+  background:#fffdfa!important;
+  border-color:#e2ddd4!important;
+  box-shadow:none!important;
+}
+.tripPage:has(.chatLayout) .conversationList{
+  background:#eef3f3!important;
+  border-right-color:#dce5e5!important;
+}
+.tripPage:has(.chatLayout) .conversation:hover,
+.tripPage:has(.chatLayout) .conversation.active{
+  background:#f9fbfa!important;
+  box-shadow:none!important;
+}
+.tripPage:has(.chatLayout) .chatPanel,
+.tripPage:has(.chatLayout) .chatPanel>header,
+.tripPage:has(.chatLayout) .messages,
+.tripPage:has(.chatLayout) .chatComposer{
+  background:#fffdfa!important;
+  background-image:none!important;
+}
+.tripPage:has(.chatLayout) .chatPanel>header,
+.tripPage:has(.chatLayout) .chatComposer{
+  border-color:#e2ddd4!important;
+}
+.tripPage:has(.chatLayout) .chatComposer input{
+  background:#fbf9f4!important;
+  border-color:#ded8ce!important;
+}
+
+@media(max-width:900px){
+  .planTripContext{grid-template-columns:1fr!important;gap:14px!important}
+  .planContextActionsSlot{justify-content:flex-start!important}
+  .planContextActionsSlot .planHeadingActions{justify-content:flex-start!important;flex-wrap:wrap!important}
+}
+
+/* Map tabs sit outside Leaflet and must remain the topmost interactive layer. */
+.tripMapCard .mapDayTabs{
+  position:relative!important;
+  z-index:20!important;
+  isolation:isolate!important;
+  pointer-events:auto!important;
+}
+.tripMapCard .mapDayTabs button{
+  position:relative!important;
+  z-index:21!important;
+  pointer-events:auto!important;
+  cursor:pointer!important;
+}
+
+/* A sparse collaborator list should read as a utility strip, not a second card. */
+.workspaceContent:has(.planSplit) .planCollaboratorStrip{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:10px!important;
+  align-self:start!important;
+  min-width:180px!important;
+  padding:4px 0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip>span{
+  color:#6f7c80!important;
+  font-size:11px!important;
+  font-weight:700!important;
+  letter-spacing:.04em!important;
+  text-transform:uppercase!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip .collaboratorAvatars{
+  display:flex!important;
+  align-items:center!important;
+  gap:4px!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip .collaboratorAvatars i{
+  display:grid!important;
+  place-items:center!important;
+  width:28px!important;
+  height:28px!important;
+  border:1px solid #d8e2e1!important;
+  border-radius:50%!important;
+  background:#eef3f3!important;
+  color:#29475f!important;
+  font-size:10px!important;
+  font-style:normal!important;
+  font-weight:750!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip>a{
+  color:#29475f!important;
+  font-size:11px!important;
+  font-weight:650!important;
+  white-space:nowrap!important;
+}
+@media(max-width:760px){
+  .workspaceContent:has(.planSplit) .planCollaboratorStrip{
+    justify-content:flex-start!important;
+    min-width:0!important;
+    margin-top:10px!important;
+  }
+}
+
+/* Shared Cadensy Trip workspace foundation. */
+.tripPage{
+  --ws-page:#f8f6f0;
+  --ws-surface:#fffdfa;
+  --ws-surface-secondary:#f1f4f3;
+  --ws-surface-accent:#f3f0e8;
+  --ws-border:#dedbd3;
+  --ws-border-soft:#e8e5de;
+  --ws-ink:#233b4b;
+  --ws-muted:#788187;
+  --ws-radius:12px;
+  --ws-shadow:0 8px 24px rgba(35,59,75,.055);
+  background:var(--ws-page)!important;
+  background-image:none!important;
+  color:var(--ws-ink);
+}
+.tripPage .workspaceContent{
+  max-width:1280px!important;
+  padding:30px 36px 64px!important;
+  background:transparent!important;
+}
+.tripPage .pageHeading h1,
+.tripPage .planSummaryIntro h1,
+.tripPage .editorialPageHeading h1,
+.tripPage .preferenceWrap h1{
+  color:var(--ws-ink)!important;
+  font-family:Georgia,"Times New Roman",serif!important;
+  font-weight:600!important;
+  letter-spacing:-.02em!important;
+}
+.tripPage .eyebrow,
+.tripPage .pageHeading p,
+.tripPage .needsHint,
+.tripPage .formFooter,
+.tripPage .tripMapSummary p,
+.tripPage .dayContextCard>p{
+  color:var(--ws-muted)!important;
+}
+.tripPage .planHeading,
+.tripPage .accordionDay,
+.tripPage .chatLayout,
+.tripPage .decisionCard,
+.tripPage .emptyState,
+.tripPage .preferenceCard,
+.tripPage .memberList,
+.tripPage .organizerLimits,
+.tripPage .linkPanel,
+.tripPage .inviteManager .shareHero{
+  border-color:var(--ws-border)!important;
+  border-radius:var(--ws-radius)!important;
+  box-shadow:var(--ws-shadow)!important;
+}
+.tripPage .planHeading,
+.tripPage .accordionDay,
+.tripPage .decisionCard,
+.tripPage .emptyState,
+.tripPage .preferenceCard,
+.tripPage .memberList,
+.tripPage .organizerLimits,
+.tripPage .linkPanel{
+  background:var(--ws-surface)!important;
+  background-image:none!important;
+}
+.tripPage .btn,
+.tripPage .btnSecondary,
+.tripPage .memberRemind,
+.tripPage .copyActions .btn,
+.tripPage .chatComposer button,
+.tripPage .mapDayTabs button{
+  border-radius:9px!important;
+  box-shadow:none!important;
+}
+.tripPage .btnSecondary,
+.tripPage .memberRemind,
+.tripPage .chatComposer button:not(.sendBtn),
+.tripPage .mapDayTabs button:not(.active){
+  border-color:var(--ws-border)!important;
+  background:var(--ws-surface)!important;
+  color:var(--ws-ink)!important;
+}
+.tripPage .planNotice,
+.tripPage .successNotice{
+  border-color:var(--ws-border)!important;
+  border-radius:var(--ws-radius)!important;
+  box-shadow:none!important;
+}
+
+/* Plan, map and supporting context use the same secondary surface family. */
+.tripPage .tripMapCard,
+.tripPage .dayContextCard,
+.tripPage .planCollaboratorStrip{
+  border-color:var(--ws-border)!important;
+  box-shadow:none!important;
+}
+.tripPage .tripMapCard{background:var(--ws-surface-secondary)!important}
+.tripPage .dayContextCard{background:var(--ws-surface-accent)!important}
+
+/* Chat is a workspace surface, not a separate messaging product. */
+.tripPage .chatLayout{
+  min-height:600px!important;
+  background:var(--ws-surface)!important;
+  border-color:var(--ws-border)!important;
+  box-shadow:var(--ws-shadow)!important;
+}
+.tripPage .conversationList{
+  background:var(--ws-surface-secondary)!important;
+  border-right-color:var(--ws-border)!important;
+}
+.tripPage .conversation:hover,
+.tripPage .conversation.active{
+  background:var(--ws-surface)!important;
+  box-shadow:none!important;
+}
+.tripPage .chatPanel,
+.tripPage .chatPanel>header,
+.tripPage .messages,
+.tripPage .chatComposer{
+  background:var(--ws-surface)!important;
+  background-image:none!important;
+}
+.tripPage .chatPanel>header,
+.tripPage .chatComposer{
+  border-color:var(--ws-border-soft)!important;
+}
+.tripPage .chatComposer input{
+  background:#fbfaf6!important;
+  border-color:var(--ws-border)!important;
+}
+
+/* Updates, Preferences, Members and Invite share the same content rhythm. */
+.tripPage .editorialPageHeading,
+.tripPage .preferenceWrap .pageHeading,
+.tripPage .inviteManager{
+  margin-bottom:22px!important;
+}
+.tripPage .updatesList,
+.tripPage .memberList,
+.tripPage .preferenceWrap,
+.tripPage .inviteManager{
+  width:100%!important;
+}
+.tripPage .updateFilters{
+  margin-bottom:18px!important;
+  border-bottom-color:var(--ws-border)!important;
+}
+.tripPage .updateFilters button{
+  color:var(--ws-muted)!important;
+  border-radius:8px 8px 0 0!important;
+}
+.tripPage .updateFilters button.active{
+  color:var(--ws-ink)!important;
+  border-color:var(--ws-ink)!important;
+}
+.tripPage .updateRow{
+  border-color:var(--ws-border-soft)!important;
+  background:var(--ws-surface)!important;
+  box-shadow:none!important;
+}
+.tripPage .updateRow h3,
+.tripPage .memberRow h3,
+.tripPage .linkPanel h2{
+  color:var(--ws-ink)!important;
+}
+.tripPage .preferenceWrap{max-width:820px!important;margin:0 auto!important}
+.tripPage .preferenceCard{
+  gap:20px!important;
+  padding:28px!important;
+}
+.tripPage .preferenceCard input,
+.tripPage .preferenceCard select,
+.tripPage .preferenceCard textarea{
+  border-color:var(--ws-border)!important;
+  background:#fbfaf6!important;
+  border-radius:9px!important;
+}
+.tripPage .styleTile,
+.tripPage .availabilityChoice label,
+.tripPage .needsPanel,
+.tripPage .tripDatesCard{
+  border-color:var(--ws-border-soft)!important;
+  background:var(--ws-surface-secondary)!important;
+  border-radius:10px!important;
+}
+.tripPage .memberStats{
+  border-color:var(--ws-border)!important;
+  background:var(--ws-surface-secondary)!important;
+  border-radius:var(--ws-radius)!important;
+  box-shadow:none!important;
+}
+.tripPage .memberRow{border-color:var(--ws-border-soft)!important}
+.tripPage .organizerLimits{background:var(--ws-surface-accent)!important}
+.tripPage .inviteManager{max-width:980px!important;margin:0 auto!important}
+.tripPage .inviteManager .shareHero{background:var(--ws-surface-secondary)!important}
+.tripPage .inviteManager .shareHero:before,
+.tripPage .inviteManager .shareHero:after{opacity:.08!important}
+.tripPage .linkPanel{padding:26px!important}
+
+@media(max-width:900px){
+  .tripPage .workspaceContent{padding:24px 18px 48px!important}
+}
+
+/* Plan itinerary rhythm: quiet tints separate rows without turning them into cards. */
+.workspaceContent:has(.planSplit) .accordionHead{
+  background:#f5f6f2!important;
+  border-bottom:1px solid #e1e4de!important;
+}
+.workspaceContent:has(.planSplit) .accordionHead:hover{
+  background:#f1f4f1!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock,
+.workspaceContent:has(.planSplit) .activityBlock.mealStopBlock{
+  background:#f7f8f5!important;
+  background-image:none!important;
+  border-bottom-color:#e1e4de!important;
+  box-shadow:none!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock:hover,
+.workspaceContent:has(.planSplit) .activityBlock.selected{
+  background:#f2f5f2!important;
+  box-shadow:none!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock.mealStopBlock{
+  background:#fbf8f1!important;
+  border-bottom-color:#e9e2d5!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock.mealStopBlock:hover,
+.workspaceContent:has(.planSplit) .activityBlock.mealStopBlock.selected{
+  background:#f8f4e9!important;
+}
+.workspaceContent:has(.planSplit) .routeSegment{
+  background:transparent!important;
+  border-bottom-color:#e7e8e2!important;
+  box-shadow:none!important;
+}

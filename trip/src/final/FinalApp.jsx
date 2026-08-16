@@ -504,38 +504,9 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
       </div>
     </header>
     <main className="workspaceContent">
-      <TripContextMasthead trip={currentTrip} role={currentUser.role} days={app.days || []} isPlan={location.pathname.includes('/plan')}/>
       {children}
     </main>
   </div>
-}
-
-function roleLabel(role) {
-  return role === 'guest' ? 'Guest' : role === 'organizer' ? 'Organizer' : 'Participant'
-}
-
-function destinationIntro(destination) {
-  const city = (destination || '').split(',')[0].trim()
-  return city ? `${city} plan, decisions, and shared travel context in one living workspace.` : 'Shared itinerary, decisions, and travel context in one living workspace.'
-}
-
-function TripContextMasthead({ trip: t, role, days = [], isPlan = false }) {
-  const city = (t.destination || '').split(',')[0].trim()
-  const dates = (t.dates || '').replace(/,?\s*\d{4}$/, '')
-  const dayCount = days.length || 0
-  const items = days.flatMap(day => day.items || [])
-  const mealCount = items.filter(item => item.isMeal || item.kind === 'food').length
-  const activityCount = Math.max(0, items.length - mealCount)
-  return <section className={`tripContextMasthead ${isPlan ? 'planTripContext' : ''}`} aria-label="Trip context">
-    <div className="tripContextHero">
-      <span className="tripContextKicker">Shared itinerary</span>
-      <h1>{t.name}</h1>
-      <p>{destinationIntro(t.destination)}</p>
-    </div>
-    <dl className="tripContextMeta">
-      {isPlan ? <><div><dt>Planning</dt><dd>{t.status || 'Live plan'}</dd></div><div><dt>Destination</dt><dd>{city || t.destination}</dd></div><div><dt>Dates</dt><dd>{dates || 'Dates not set'}</dd></div><div><dt>Members</dt><dd>{t.people}</dd></div><div><dt>Organizer</dt><dd>{role === 'organizer' ? 'You' : 'Trip organizer'}</dd></div></> : <><div><dt>Status</dt><dd>{t.status}</dd></div><div><dt>Destination</dt><dd>{city || t.destination}</dd></div><div><dt>Dates</dt><dd>{dates || 'Dates not set'}</dd></div><div><dt>Members</dt><dd>{t.people}</dd></div><div><dt>Your role</dt><dd>{roleLabel(role)}</dd></div><div><dt>Days</dt><dd>{dayCount || '—'}</dd></div><div><dt>Activities</dt><dd>{activityCount || '—'}</dd></div><div><dt>Meals</dt><dd>{mealCount || '—'}</dd></div></>}
-    </dl>
-  </section>
 }
 
 // Guest account binding: keep the existing membership, do not create a member, and keep submitted preferences.
