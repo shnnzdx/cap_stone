@@ -629,3 +629,111 @@ Humans apply.
    - structured required constraints
    - limited availability generation filtering
    - item-scoped selected-item context
+
+## 2026-08-16 补充：`change time` 澄清回复暴露内部推理，且 Markdown 未渲染
+
+观察场景：
+
+```text
+Cadensy:
+Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.
+
+User:
+change time
+```
+
+当时是在 item-scoped `Ask Cadensy` 中操作，选中的 item 是：
+
+```text
+Gloria Molina Grand Park
+item id: c6618460949a425ea061b38f07dedc91
+current start: 10:00 AM
+date: 2026-09-29
+```
+
+实际看到的回复：
+
+```text
+The traveler wants to change the time of "Gloria Molina Grand Park" (item id c6618460949a425ea061b38f07dedc91), which currently starts at 10:00 AM on 2026-09-29. The user hasn't specified a new time. I need to ask what time they'd like to move it to. Let me classify the change once I know the target time. But since no specific time was given, I should ask for the desired time. Let me ask the traveler what time they'd like to move it to. The item "Gloria Molina Grand Park" is currently scheduled at **10:00 AM** on **September 29**. What time would you like to move it to?
+```
+
+这次观察里同时有两个用户可见问题。
+
+### A. Agent 内部推理泄露到 chat bubble
+
+问题表现：
+
+- 用户只说 `change time`，没有给目标时间。
+- 系统已经知道 selected item 是 `Gloria Molina Grand Park`，所以 item context 没丢。
+- 但回复里出现了 agent 内部执行过程：
+  - `The traveler wants to change the time...`
+  - `The user hasn't specified a new time.`
+  - `I need to ask...`
+  - `Let me classify...`
+  - `Let me ask...`
+- 这些内容不是面向用户的最终回复，应该只存在于内部推理 / scratchpad / routing 层。
+
+正确行为：
+
+```text
+Gloria Molina Grand Park is currently scheduled for 10:00 AM on September 29.
+What time would you like to move it to?
+```
+
+或更短：
+
+```text
+What time would you like to move Gloria Molina Grand Park to?
+```
+
+问题分类：
+
+- 不是 selected item context 问题：item 已识别正确。
+- 不是 `classify_change` 能力问题：当前缺少目标时间，本来就不该进入最终 change proposal。
+- 更像是 missing-slot clarification path 的 final response assembly 问题：内部 reasoning 没有和用户可见 answer 分离。
+
+通过标准：
+
+- 用户只输入 `change time` 且没有目标时间时，只追问目标时间。
+- 用户可见回复不包含 `I need to...`、`Let me...`、`traveler wants...`、`classify_change`、tool planning 或 classification planning。
+- 不生成 `ProposedChatChange`，直到用户给出具体新时间。
+- item-scoped drawer 继续使用 selected item context，不要求用户重复 item 名称。
+
+### B. Markdown 没有渲染
+
+问题表现：
+
+- 回复末尾包含 Markdown bold syntax：
+
+```text
+**10:00 AM**
+**September 29**
+```
+
+- 但 UI 中没有渲染成加粗，而是原样显示星号。
+
+用户影响：
+
+- Chat bubble 看起来像 raw model output，而不是产品化的 assistant reply。
+- 这和内部推理泄露叠加后，会让用户感觉 AI response 没有经过 final formatting / rendering 层处理。
+
+预期行为：
+
+- 如果 chat bubble 支持 Markdown，则 `**10:00 AM**` 和 `**September 29**` 应渲染为加粗。
+- 如果该 UI 不打算支持 Markdown，则 agent 输出层不应生成 Markdown syntax，应输出 plain text：
+
+```text
+The item "Gloria Molina Grand Park" is currently scheduled at 10:00 AM on September 29.
+What time would you like to move it to?
+```
+
+排查方向：
+
+- 检查 Plan drawer / Ask Cadensy message renderer 是否对 assistant message 启用了 Markdown rendering。
+- 检查是否某些 message type 走了 plain text renderer，而 proposal / card message 走了不同 renderer。
+- 检查 agent final response format 是否应该避免 Markdown，统一输出 plain text。
+
+当前状态：
+
+- 待修复。
+- 建议把这条作为 chat agent UX / response rendering bug，而不是 planner 或 decision orchestrator bug。
