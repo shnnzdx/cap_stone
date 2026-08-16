@@ -235,16 +235,17 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
         return
       }
       updateMessage(message.id, { applying: false, applied: true })
-      if (outcome.path === 'notice') {
+      if (outcome.applied) {
         app.notify('Updated')
         onResolvedOutcome?.({ kind: 'focus-item', itemId: targetItem.id, outcome, targetItem })
       } else if (outcome.path === 'round' || outcome.path === 'reopen_round') {
         app.notify('Vote opened')
         onResolvedOutcome?.({ kind: 'focus-round', itemId: targetItem.id, outcome, targetItem })
       } else {
-        setPendingRedirect('Affected members need to confirm. Opening the conversation...')
+        app.setUpdateFilter?.('actions')
+        setPendingRedirect('Affected members need to confirm. Opening trip notes...')
         const tripId = app.activeTripId || app.trip?.id || trip?.id
-        if (tripId) onCommand?.({ type: 'navigate', to: tripHref(tripId, 'conflict'), delayMs: 850 })
+        if (tripId) onCommand?.({ type: 'navigate', to: tripHref(tripId, 'updates'), delayMs: 850 })
       }
     } catch (err) {
       const applyError = assistantErrorText(err)

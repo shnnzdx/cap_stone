@@ -956,12 +956,13 @@ export function TripAppProvider({ children }) {
     try {
       const result = await requestJson(`/api/proposals/${proposalId}/escalate`, { method: 'POST' })
       setActiveProposals(current => current.map(proposal => proposal.id === proposalId ? { ...proposal, status: result.status } : proposal))
-      await refreshUpdates()
+      setUpdateFilter('actions')
+      await Promise.all([refreshUpdates(), refreshActions()])
       return result
     } finally {
       setLoading(current => ({ ...current, action: false }))
     }
-  }, [refreshUpdates, requestJson])
+  }, [refreshActions, refreshUpdates, requestJson])
 
   const resolveDeadlock = useCallback(async (proposalId, action) => {
     setLoading(current => ({ ...current, action: true }))

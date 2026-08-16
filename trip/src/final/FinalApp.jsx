@@ -791,6 +791,7 @@ function PersonalThread() {
 function TradeoffThread() {
   const app = useTripApp()
   const currentTrip = useCurrentTrip()
+  const navigate = useNavigate()
   const isOrganizer = app.currentUser.role === 'organizer'
   const [reply, setReply] = useState('')
   const [threadMessages, setThreadMessages] = useState([])
@@ -806,6 +807,7 @@ function TradeoffThread() {
     try {
       await app.escalateProposal(proposal.id)
       app.notify('Sent to the organizer')
+      navigate(tripHref(currentTrip.id, 'updates'))
     } catch {
       app.notify('Could not escalate this proposal.')
     }

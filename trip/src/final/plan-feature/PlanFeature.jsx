@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useTripApp } from '../TripAppState.jsx'
 import { trip } from '../tripContent.js'
 import TripMap from '../TripMap.jsx'
+import { resolveTripCover, tripCoverImageUrlForVariant } from '../trip-cover.js'
 import { serializeWorkspaceRoute } from '../../../../shared/trip-navigation-route/index.js'
 import { useAssistantChangeRequestFlow } from './useAssistantChangeRequestFlow.js'
 import { usePlanInteractionRuntime } from './usePlanInteractionRuntime.js'
@@ -188,6 +189,17 @@ const decisionPresentation = {
   },
 }
 
+const decisionPresentationFor = (path, memberCount) => {
+  const presentation = decisionPresentation[path] || decisionPresentation.notice
+  if (path !== 'confirm' || Number(memberCount || 0) > 1) return presentation
+  return {
+    ...presentation,
+    summary: 'This affects a confirmed booking or required constraint. Because this trip only has one member, applying it updates the plan now.',
+    status: 'BOOKING CHANGE · Solo trip applies directly',
+    action: 'Apply change',
+  }
+}
+
 function Badge({ children, tone = 'neutral' }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
 }
@@ -200,6 +212,19 @@ function usePlanCurrentTrip() {
   const { tripId } = useParams()
   const app = useTripApp()
   return app.trips.find(item => item.id === tripId) || app.trip || trip || null
+}
+
+const tripCityLabel = currentTrip => (currentTrip?.destination || 'Destination not set').split(',')[0].trim() || currentTrip?.destination || 'Destination not set'
+
+function PlanCoverMasthead({ currentTrip }) {
+  const cover = resolveTripCover(currentTrip || {})
+  const imageUrl = tripCoverImageUrlForVariant(cover.imageUrl, 'featured')
+  const label = cover.label || `${currentTrip.destination || 'Trip'} cover`
+  return <section className={cx('planCoverMasthead', imageUrl && 'hasImage')} aria-label={label}>
+    {imageUrl && <img className="planCoverImage" src={imageUrl} alt="" loading="eager" />}
+    <div className="planCoverOverlay" aria-hidden="true"/>
+    {cover.attribution && <small className="planCoverAttribution">Photo by <a href={cover.attribution.photographerUrl} target="_blank" rel="noreferrer">{cover.attribution.name}</a> on <a href={cover.attribution.sourceUrl} target="_blank" rel="noreferrer">Unsplash</a></small>}
+  </section>
 }
 
 const categoryPresentation = item => {
@@ -452,6 +477,8 @@ function PlanChatBubble({ from, children }) {
 }
 
 function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognizedItem, onApply, onDismiss }) {
+  const app = useTripApp()
+  const memberCount = app.trip?.people || 1
   const verdict = proposedChange.verdict
   const patch = proposedChange.patch || {}
   const before = {
@@ -466,7 +493,7 @@ function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognize
     time: patch.start_hour !== undefined ? formatPlanHour(patch.start_hour) : before.time,
     day: formatChangeDay(patch.day_date || currentItem?.dayDate),
   }
-  const presentation = decisionPresentation[verdict.path] || decisionPresentation.notice
+  const presentation = decisionPresentationFor(verdict.path, memberCount)
   const changedField = patch.start_hour !== undefined
     ? { label: 'Time', before: before.time, after: after.time }
     : patch.day_date
@@ -498,6 +525,8 @@ function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognize
 }
 
 function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, inline = false }) {
+  const app = useTripApp()
+  const memberCount = app.trip?.people || 1
   const actionLabels = {
     global: 'Ask Cadensy',
     ask: 'Ask Cadensy',
@@ -523,7 +552,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
         <div className="assistantBubbleRail"><i/><i/><i/></div>
         <PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble>
         {view.messages.map(message => <div key={message.id}>
-          <PlanChatBubble from={message.from}>{message.proposedChange ? (decisionPresentation[message.proposedChange.verdict?.path] || decisionPresentation.notice).summary : message.text}</PlanChatBubble>
+          <PlanChatBubble from={message.from}>{message.proposedChange ? decisionPresentationFor(message.proposedChange.verdict?.path, memberCount).summary : message.text}</PlanChatBubble>
           {message.proposedChange && <ChangeConfirmCard
             message={message}
             proposedChange={message.proposedChange}
@@ -560,12 +589,15 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
     actions,
   } = usePlanInteractionRuntime({ currentTrip })
   const app = view.app
+  const isOrganizer = app.currentUser?.role === 'organizer'
 
   if (!app.loading.initial && view.days.length === 0) return <NewTripPlan currentTrip={currentTrip}/>
 
-  return <div className={cx('planSplit', !view.drawerItem && 'withMap', view.drawerItem && 'withAssistant')}>
+  return <>
+  <PlanCoverMasthead currentTrip={currentTrip}/>
+  <div className={cx('planSplit', !view.drawerItem && 'withMap', view.drawerItem && 'withAssistant')}>
     <section className="planMainPane">
-      <div className="pageHeading planHeading"><div className="planSummaryIntro"><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1><p>Plan the days, places, and decisions your group will share.</p><div className="planSummaryStats"><span><b>{view.days.length}</b> days</span><span><b>{view.days.reduce((total, day) => total + day.items.length, 0)}</b> stops</span><span><b>{view.days.reduce((total, day) => total + day.items.filter(item => !item.isMeal).length, 0)}</b> activities</span><span><b>{view.days.reduce((total, day) => total + day.items.filter(item => item.isMeal).length, 0)}</b> meals</span></div></div><div className="planCollaboratorStrip"><span>Collaborators</span><div className="collaboratorMeta"><div className="collaboratorAvatars"><i>{app.currentUser?.initials || 'You'}</i>{(currentTrip.people || 1) > 1 && <i className="collaboratorCount">+{(currentTrip.people || 1) - 1}</i>}</div><span className="collaboratorMemberCount">{currentTrip.people || 1} {(currentTrip.people || 1) === 1 ? 'member' : 'members'}</span></div><Link to={tripHref(currentTrip.id, 'members')}>Manage members →</Link></div></div>
+      <div className="pageHeading planHeading"><div className="planSummaryIntro"><span className="eyebrow">{tripCityLabel(currentTrip)}</span><h1>{currentTrip.name || 'Untitled trip'}</h1><p>{currentTrip.dates || 'Dates not set'}</p><div className="planSummaryStats"><span><b>{view.days.length}</b> days</span><span><b>{view.days.reduce((total, day) => total + day.items.length, 0)}</b> stops</span><span><b>{view.days.reduce((total, day) => total + day.items.filter(item => !item.isMeal).length, 0)}</b> activities</span><span><b>{view.days.reduce((total, day) => total + day.items.filter(item => item.isMeal).length, 0)}</b> meals</span></div></div><div className="planCollaboratorStrip"><span>Collaborators</span><div className="collaboratorMeta"><div className="collaboratorAvatars"><i>{app.currentUser?.initials || 'You'}</i>{(currentTrip.people || 1) > 1 && <i className="collaboratorCount">+{(currentTrip.people || 1) - 1}</i>}</div><span className="collaboratorMemberCount">{currentTrip.people || 1} {(currentTrip.people || 1) === 1 ? 'member' : 'members'}</span></div>{isOrganizer && <Link to={tripHref(currentTrip.id, 'members')}>Manage members →</Link>}</div></div>
       {app.loading.initial && <div className="planNotice"><span>…</span><div><strong>Loading trip data</strong><p>Fetching the current plan from the backend.</p></div></div>}
       {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
       {app.planNeedsRefresh && <div className="planNotice planRefreshNotice"><span>↻</span><div><strong>Preferences updated</strong><p>Your current plan was generated using earlier preferences and has not been changed. Future replans and change proposals will use the latest planning inputs.</p></div><Link to={tripHref(currentTrip.id, 'preferences')}>Review →</Link></div>}
@@ -640,4 +672,5 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
       }
     }} inline/>}
   </div>
+  </>
 }
