@@ -1230,6 +1230,27 @@ def test_foreign_constraint_path_is_rejected_instead_of_using_my_trip(
     assert response.status_code == 403
 
 
+def test_constraint_api_rejects_non_executable_required_payload(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user, role="organizer")
+
+    response = client.post(
+        f"/api/trips/{trip.id}/constraints",
+        headers={"X-Membership-Id": membership.id},
+        json={
+            "kind": "avoid_tag",
+            "importance": "required",
+            "params": {},
+            "original_text": "Required: avoid museums",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "at least one tag" in response.text
+
+
 def test_marking_an_item_booked_and_unbooked_is_persistent(
     client: TestClient, api_session: Session
 ):

@@ -48,6 +48,36 @@ def test_only_the_six_kinds_are_accepted(db, full_trip):
         _add(db, full_trip["me"], "must_be_sunny", {})
 
 
+def test_constraint_requires_executable_structured_params(db, full_trip):
+    with pytest.raises(pref.InvalidConstraintParams):
+        _add(
+            db,
+            full_trip["me"],
+            "avoid_tag",
+            {},
+            text="Required: avoid museums",
+        )
+
+    with pytest.raises(pref.InvalidConstraintParams):
+        _add(
+            db,
+            full_trip["me"],
+            "dietary",
+            {"required_tags": []},
+            text="Required: vegetarian meals only",
+        )
+
+
+def test_time_window_must_have_a_valid_order(db, full_trip):
+    with pytest.raises(pref.InvalidConstraintParams):
+        _add(
+            db,
+            full_trip["me"],
+            "time_window",
+            {"earliest_hour": 18.0, "latest_hour": 11.0},
+        )
+
+
 # ————————————————————— 原话只有自己看得到 —————————————————————
 
 

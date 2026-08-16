@@ -248,6 +248,9 @@ def _resolve_item_reference(
             return _ResolvedItemReference(status="ambiguous", candidates=history_candidates, source="history")
         return _ResolvedItemReference(status="ambiguous")
 
+    if selected is not None and _looks_like_selected_item_relative_request(message):
+        return _ResolvedItemReference(status="matched", item=selected, source="selected")
+
     if _looks_like_named_reference(message):
         return _ResolvedItemReference(status="missing")
 
@@ -396,6 +399,19 @@ def _looks_like_named_reference(message: str) -> bool:
         r"\bcheck(?: the)? [a-z0-9]+(?: [a-z0-9]+){0,3}\b",
         r"\bthat [a-z0-9]+(?: [a-z0-9]+){0,3}\b",
         r"\bthe [a-z0-9]+(?: [a-z0-9]+){0,3}\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _looks_like_selected_item_relative_request(message: str) -> bool:
+    normalized = _normalize_selection_text(message)
+    if not normalized:
+        return False
+    patterns = (
+        r"^(move|shift|push|delay|reschedule)\s+(to|later|earlier|tomorrow|next)\b",
+        r"^(start)\s+(at|later|earlier)\b",
+        r"^(make)\s+[a-z0-9]+(?:\s+[a-z0-9]+){0,4}\s+(shorter|longer)\b",
+        r"^(shorten|lengthen|extend|replace|remove|delete)\b",
     )
     return any(re.search(pattern, normalized) for pattern in patterns)
 
@@ -603,6 +619,10 @@ def _option_id_is_explicitly_selected(option: ChatCandidateOption, normalized_me
 
 
 def _selected_option_index(normalized_message: str) -> tuple[int | None, bool]:
+    bare_number_match = re.fullmatch(r"(\d+)", normalized_message)
+    if bare_number_match:
+        return int(bare_number_match.group(1)) - 1, True
+
     number_match = re.search(r"\boption\s+(\d+)\b", normalized_message)
     if number_match:
         return int(number_match.group(1)) - 1, True
@@ -854,23 +874,23 @@ def _candidate_options_from_agent(
     return tuple(options)
 
 
-_REPLACEMENT_PATCH_FIELDS = (
+_REPLACEMENT_CORE_FIELDS = (
     "title",
     "place",
-    "price_per_person",
     "lat",
     "lng",
 )
+_REPLACEMENT_PRICE_FIELD = "price_per_person"
 
 
 def _replacement_signature(payload: dict[str, Any]) -> tuple[Any, ...]:
-    return tuple(payload.get(field) for field in _REPLACEMENT_PATCH_FIELDS)
+    return tuple(payload.get(field) for field in _REPLACEMENT_CORE_FIELDS)
 
 
 def _replacement_candidates_from_agent(
     tool_results: tuple[dict[str, Any], ...]
-) -> frozenset[tuple[Any, ...]]:
-    candidates: set[tuple[Any, ...]] = set()
+) -> tuple[dict[str, Any], ...]:
+    candidates: list[dict[str, Any]] = []
     for result in tool_results:
         if result.get("tool") != "find_replacement_place" or result.get("guard_rejected"):
             continue
@@ -880,18 +900,31 @@ def _replacement_candidates_from_agent(
         for candidate in output.get("candidates") or ():
             if not isinstance(candidate, dict):
                 continue
-            if any(candidate.get(field) is None for field in _REPLACEMENT_PATCH_FIELDS):
+            if any(candidate.get(field) is None for field in _REPLACEMENT_CORE_FIELDS):
                 continue
-            candidates.add(_replacement_signature(candidate))
-    return frozenset(candidates)
+            candidates.append(candidate)
+    return tuple(candidates)
 
 
 def _replacement_patch_is_supported(
     patch: dict[str, Any], tool_results: tuple[dict[str, Any], ...]
 ) -> bool:
-    if not any(field in patch for field in _REPLACEMENT_PATCH_FIELDS):
+    replacement_fields = (*_REPLACEMENT_CORE_FIELDS, _REPLACEMENT_PRICE_FIELD)
+    if not any(field in patch for field in replacement_fields):
         return True
-    return _replacement_signature(patch) in _replacement_candidates_from_agent(tool_results)
+    matching = [
+        candidate
+        for candidate in _replacement_candidates_from_agent(tool_results)
+        if _replacement_signature(candidate) == _replacement_signature(patch)
+    ]
+    if not matching:
+        return False
+    if _REPLACEMENT_PRICE_FIELD in patch:
+        return any(
+            candidate.get(_REPLACEMENT_PRICE_FIELD) == patch.get(_REPLACEMENT_PRICE_FIELD)
+            for candidate in matching
+        )
+    return any(candidate.get(_REPLACEMENT_PRICE_FIELD) is None for candidate in matching)
 
 
 def _proposed_change_from_agent_classification(

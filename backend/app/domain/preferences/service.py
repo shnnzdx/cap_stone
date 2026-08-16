@@ -51,6 +51,10 @@ class UnknownConstraintKind(Exception):
     """只有六种。填不进去的,系统会老实说保护不了,而不是硬塞一个。"""
 
 
+class InvalidConstraintParams(Exception):
+    """支持的类型也必须带可执行的结构化参数。"""
+
+
 class PreferenceDateOutOfTripRange(Exception):
     """Preference dates must stay within the trip date window."""
 
@@ -220,6 +224,133 @@ def _owned(db: Session, membership: TripMembership, constraint_id: str) -> Membe
     return row
 
 
+def _parse_constraint_date(value: object, field: str) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise InvalidConstraintParams(f"{field} must be an ISO date") from exc
+    raise InvalidConstraintParams(f"{field} must be an ISO date")
+
+
+def _parse_constraint_number(
+    value: object,
+    field: str,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, (int, float)):
+        raise InvalidConstraintParams(f"{field} must be a number")
+    numeric = float(value)
+    if minimum is not None and numeric < minimum:
+        raise InvalidConstraintParams(f"{field} must be at least {minimum}")
+    if maximum is not None and numeric > maximum:
+        raise InvalidConstraintParams(f"{field} must be at most {maximum}")
+    return numeric
+
+
+def _normalize_constraint_tags(value: object, field: str) -> list[str]:
+    if value in (None, ""):
+        raw = []
+    elif isinstance(value, str):
+        raw = [value]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        raw = list(value)
+    else:
+        raise InvalidConstraintParams(f"{field} must be a list of tags")
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, str):
+            raise InvalidConstraintParams(f"{field} must contain only text tags")
+        tag = item.strip().casefold().replace(" ", "_")
+        if not tag or tag in seen:
+            continue
+        cleaned.append(tag)
+        seen.add(tag)
+    if not cleaned:
+        raise InvalidConstraintParams(f"{field} must include at least one tag")
+    return cleaned
+
+
+def _validated_constraint_params(kind: ConstraintKind, params: dict) -> dict:
+    raw = dict(params or {})
+
+    if kind is ConstraintKind.TIME_WINDOW:
+        earliest = _parse_constraint_number(
+            raw.get("earliest_hour"), "earliest_hour", minimum=0.0, maximum=24.0
+        )
+        latest = _parse_constraint_number(
+            raw.get("latest_hour"), "latest_hour", minimum=0.0, maximum=24.0
+        )
+        if earliest is None and latest is None:
+            raise InvalidConstraintParams(
+                "time_window requires earliest_hour or latest_hour"
+            )
+        if earliest is not None and latest is not None and latest < earliest:
+            raise InvalidConstraintParams("latest_hour must be at or after earliest_hour")
+        normalized = {}
+        if earliest is not None:
+            normalized["earliest_hour"] = earliest
+        if latest is not None:
+            normalized["latest_hour"] = latest
+        return normalized
+
+    if kind is ConstraintKind.BUDGET_CEILING:
+        ceiling = _parse_constraint_number(
+            raw.get("max_total_per_person"),
+            "max_total_per_person",
+            minimum=0.0,
+        )
+        if ceiling is None:
+            raise InvalidConstraintParams(
+                "budget_ceiling requires max_total_per_person"
+            )
+        return {"max_total_per_person": ceiling}
+
+    if kind is ConstraintKind.DATE_RANGE:
+        start = _parse_constraint_date(raw.get("start"), "start")
+        end = _parse_constraint_date(raw.get("end"), "end")
+        if start is None and end is None:
+            raise InvalidConstraintParams("date_range requires start or end")
+        if start is not None and end is not None and end < start:
+            raise InvalidConstraintParams("end must be on or after start")
+        normalized = {}
+        if start is not None:
+            normalized["start"] = start.isoformat()
+        if end is not None:
+            normalized["end"] = end.isoformat()
+        return normalized
+
+    if kind is ConstraintKind.WALK_LIMIT:
+        limit = _parse_constraint_number(
+            raw.get("max_km_per_day"), "max_km_per_day", minimum=0.0
+        )
+        if limit is None:
+            raise InvalidConstraintParams("walk_limit requires max_km_per_day")
+        return {"max_km_per_day": limit}
+
+    if kind is ConstraintKind.DIETARY:
+        return {
+            "required_tags": _normalize_constraint_tags(
+                raw.get("required_tags"), "required_tags"
+            )
+        }
+
+    if kind is ConstraintKind.AVOID_TAG:
+        return {"tags": _normalize_constraint_tags(raw.get("tags"), "tags")}
+
+    return raw
+
+
 def add_constraint(
     db: Session,
     membership: TripMembership,
@@ -231,15 +362,16 @@ def add_constraint(
     visibility: str = "planning_only",
 ) -> tuple[MemberConstraint, list[dict]]:
     try:
-        ConstraintKind(kind)
+        kind_enum = ConstraintKind(kind)
     except ValueError as exc:
         raise UnknownConstraintKind(kind) from exc
+    validated_params = _validated_constraint_params(kind_enum, params)
 
     row = MemberConstraint(
         trip_membership_id=membership.id,
         kind=kind,
         importance=importance,
-        params=params,
+        params=validated_params,
     )
     db.add(row)
     db.flush()
@@ -265,7 +397,7 @@ def update_constraint(
 ) -> tuple[MemberConstraint, list[dict]]:
     row = _owned(db, membership, constraint_id)
     if params is not None:
-        row.params = params
+        row.params = _validated_constraint_params(ConstraintKind(row.kind), params)
     if importance is not None:
         row.importance = importance
     db.flush()

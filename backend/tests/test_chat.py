@@ -449,6 +449,59 @@ def test_chat_selecting_previous_candidate_is_read_only(
     } == before
 
 
+def test_chat_bare_number_selects_previous_candidate_without_running_agent(
+    monkeypatch, db: Session, full_trip: dict
+):
+    def unexpected_call_agent(**kwargs):
+        raise AssertionError("call_agent should not run for follow-up option selection")
+
+    monkeypatch.setattr(base, "call_agent", unexpected_call_agent)
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "2",
+                "history": [
+                    {
+                        "role": "assistant",
+                        "text": "Here are a few options.",
+                        "candidate_options": [
+                            {
+                                "id": "keep",
+                                "label": "Keep current",
+                                "title": "Keep current",
+                                "body": "No change.",
+                                "tradeoff": "Wednesday stays busy.",
+                                "item_id": full_trip["art"].id,
+                                "patch": {},
+                            },
+                            {
+                                "id": "move-later",
+                                "label": "Move later",
+                                "title": "Move the museum later",
+                                "body": "Shift Art Institute of Chicago to 3:00 PM.",
+                                "tradeoff": "Dinner has less buffer afterward.",
+                                "item_id": full_trip["art"].id,
+                                "patch": {"start_hour": 15.0},
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["proposed_change"] is not None
+    assert body["proposed_change"]["item_id"] == full_trip["art"].id
+    assert body["proposed_change"]["patch"] == {"start_hour": 15.0}
+    assert body["proposed_change"]["verdict"]["path"] == "notice"
+    assert body["candidate_options"] == []
+    assert "click Apply" in body["reply"]
+
+
 def test_chat_stale_selected_item_fails_safely_without_a_404(
     monkeypatch, db: Session, full_trip: dict
 ):
@@ -472,3 +525,49 @@ def test_chat_stale_selected_item_fails_safely_without_a_404(
     body = response.json()
     assert body["proposed_change"] is None
     assert "which item" in body["reply"].lower()
+
+
+def test_chat_selected_item_relative_time_request_uses_selected_item(
+    monkeypatch, db: Session, full_trip: dict
+):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        assert 'selected on screen' in kwargs["user"]
+        assert full_trip["art"].title in kwargs["user"]
+        return base.AgentRunResult(
+            content="I can prepare moving that to 4 PM.",
+            trace_id="trace",
+            rounds=(),
+            tool_results=(
+                {
+                    "tool": "classify_change",
+                    "arguments": {},
+                    "output": {
+                        "item": {"id": full_trip["art"].id},
+                        "proposed_patch": {"start_hour": 16.0},
+                    },
+                    "guard_rejected": False,
+                },
+            ),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
+    with _client(db) as client:
+        response = client.post(
+            f"/api/trips/{full_trip['trip'].id}/chat",
+            headers=_headers(full_trip["me"].id),
+            json={
+                "message": "move to 4pm",
+                "item_id": full_trip["art"].id,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["proposed_change"] is not None
+    assert body["proposed_change"]["item_id"] == full_trip["art"].id
+    assert body["proposed_change"]["patch"] == {"start_hour": 16.0}

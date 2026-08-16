@@ -1,6 +1,6 @@
 # Chat Agent / Planner 观察到的问题
 
-最后更新：2026-08-15
+最后更新：2026-08-16
 
 ## 背景
 
@@ -22,50 +22,112 @@ Day 1, 9:00 AM
 
 ## 已观察到的问题
 
-### 1. 替换地点能力目前受城市限制
+### 1. 非 Chicago replacement 曾受城市限制，现已修复
 
-当用户要求把洛杉矶的 item 替换成更放松的地方时，助手解释说当前无法为洛杉矶找到替换地点，因为 replacement place library 目前只支持 curated Chicago trips。
-
-用户影响：
-
-- 助手可以给一些替代方案，但不能真正为洛杉矶提供可用的 replacement venue。
-- 非 Chicago trip 会退回到基于时间安排的选项，比如保留当前 item、移动时间、移动到另一天。
-
-预期行为：
-
-- 这个限制应该在回复里明确说明。
-- 助手不应该暗示它能在未支持的城市里替换具体地点。
-
-### 2. 数字选项回复会映射到错误选项
-
-助手曾展示：
+最初根因是 Chat Agent 的 replacement tool 仍停留在旧的 Chicago-only curated 路径：
 
 ```text
-1. Keep the current plan
-2. Move it to 9:15 AM
-3. Move it to Tuesday (2026-08-18)
+backend/app/agents/tools.py::find_replacement_place
+-> data/poi_chicago.py
+-> unsupported_destination for non-Chicago trips
 ```
 
-用户回复：
+而 Planner 侧实际已经走的是共享 Place Service：
+
+```text
+backend/app/domain/places/service.py
+-> PostgreSQL place cache
+-> Geoapify provider
+```
+
+因此问题不是 planner 没有外部 place source，而是 replacement 没复用现有 Place Service。
+
+2026-08-15 已完成修复：
+
+- 去掉了 Chicago-only replacement restriction。
+- `find_replacement_place` 现在复用 backend Place Service / Geoapify path，而不是第二套 places architecture。
+- replacement candidates 现在会：
+  - 保持与当前 trip destination 一致
+  - 排除当前 item 自己
+  - 排除 Current Plan 已使用地点
+  - 只返回真实 provider/cache 结果
+  - 带稳定 `candidate_id`
+  - 要求 coordinates 存在
+  - opening hours 已知且不覆盖当前 time block 时会排除
+  - 支持 `relaxing`、`park`、`cafe`、`viewpoint`、`museum` 这类简单 keyword/category intent
+  - 优先返回距离当前 item 较近的候选
+- `price_per_person` 现在允许 `null/unknown`，不再因为 provider 没价格就拒绝真实地点。
+- deterministic safety 保持不变：AI 仍然只能从 tool 真正返回过的 candidates 里选，hallucinated venue 不能进入 `ProposedChatChange`。
+
+真实 non-Chicago validation：
+
+```text
+Date: 2026-08-15
+Trip destination: Los Angeles, USA
+Current item: Los Angeles Times Globe Lobby
+User: "Can we replace this with something more relaxing?"
+```
+
+验证结果：
+
+- Agent tool sequence:
+
+```text
+get_current_plan
+-> find_replacement_place
+-> classify_change
+```
+
+- tool 通过真实 Geoapify-backed Place Service 返回了 Los Angeles candidates。
+- 返回结果包含真实 `candidate_id`，并能在 `place` 表中找到对应 provider row。
+- Agent 只从 tool 返回的 candidates 中选择。
+- 成功形成合法 `ProposedChatChange`。
+- `Apply` 前 Current Plan 保持不变。
+
+当前状态：
+
+- Observed Issue #1 已修复。
+- replacement path 不再保留 Chicago-only special case。
+
+### 2. 数字选项回复曾会映射到错误选项，现已修复
+
+问题根因已经确认：follow-up option selection parser 原本只认这几类显式格式：
+
+```text
+Option 2
+option b
+the second one
+```
+
+但不认用户单独回复一个 bare number：
 
 ```text
 2
 ```
 
-但助手把它理解成选择了 Tuesday move，而不是第二个 9:15 AM 的时间移动。
+因此当 assistant history 里已经有 candidate options 时，用户只回 `2` 不会进入稳定的 history-option selection 路径，而会漏回到后续 agent / semantic 路径。这就是为什么：
+
+- `Option 2.` 能工作
+- `I'll take the second one.` 能工作
+- 粘贴完整 option 文本也能工作
+- 但单独回复 `2` 会不稳定，甚至可能跑偏
+
+2026-08-16 已完成修复：
+
+- bare numeric reply 现在会被当成显式 option index 解析。
+- `2` 现在稳定映射到第二个 candidate option。
+- 这个修复保持在最小范围内，只扩展 pure-number follow-up，不改变已经工作的 `Option 2`、ordinal 和 full-text selection 行为。
 
 用户影响：
 
-- 用户用简单数字回复时，可能选中错误选项。
-- 助手会准备一个和用户真实意图不一致的 change proposal。
+- 用户现在可以直接回复 `2`，不用再补完整句子。
+- follow-up selection 会优先走 stable option order / identity，而不是回退到自然语言重猜。
 
-预期行为：
+当前状态：
 
-- 回复 `2` 应该精确选择第二个选项。
-- assistant history 应保留选项顺序和稳定 option id。
-- follow-up selection 应按 stable option identity 解析，而不是重新用自然语言猜一次。
+- Observed Issue #2 已修复。
 
-### 3. 粘贴完整选项文本时可以正常工作
+### 3. 粘贴完整选项文本本来就能工作，这证明坏的不是 classify_change
 
 当数字回复选错后，用户粘贴完整文本：
 
@@ -74,7 +136,7 @@ Day 1, 9:00 AM
 nothing else is booked.
 ```
 
-助手随后正确准备了 time-change proposal：
+助手随后能正确准备 time-change proposal：
 
 ```text
 Current: 9:00 AM
@@ -82,15 +144,36 @@ Proposed: 9:15 AM
 Impact: NOTICE
 ```
 
-用户影响：
+这个现象说明底层 change classification 一直是通的，真正不稳定的是 compact follow-up selection。
 
-- 底层 time-change proposal 能工作。
-- 不稳定的是 compact option selection follow-up，不一定是 time-change classification 本身。
+结论已经明确：
 
-预期行为：
+- Issue #2 和 Issue #3 不是两个独立故障。
+- 它们本质上是同一个 seam：
 
-- 用户不应该必须粘贴完整选项文本。
-- 点击选项或输入编号应该足够。
+```text
+history candidate options
+-> follow-up option selection parsing
+-> stable option identity / order
+```
+
+- 不是 `classify_change` 本身坏了。
+
+2026-08-16 的修复后，以下几类 follow-up 都有回归覆盖：
+
+- `2`
+- `Option 2.`
+- `I'll take the second one.`
+- 完整 option 文本
+
+验证结果：
+
+- `backend/tests/test_chat_agent_branch.py`: `43 passed`
+- `backend/tests/test_chat.py`: `10 passed`
+
+当前状态：
+
+- Observed Issue #3 已通过和 Issue #2 同一修复一起解决。
 
 ### 4. Apply 显示 backend reachability error，但真实原因是后端异常
 
@@ -183,124 +266,182 @@ Review ->
 - 应说明当前 plan 在用户确认前不会改变。
 - 如果 whole-plan regeneration 还不支持，UI 应直接说明，并引导用户使用已支持的 change proposal 流程。
 
-### 7. Required planning inputs 在生成时可能没有被强制执行
+### 7. Required planning inputs 的真实问题已确认，并已在 supported 路径上修复
 
-用户在创建或配置 trip 时，可以在 prompt / preference flow 里写 required planning instructions。测试中观察到，有些被写成硬性要求的内容没有反映在生成 itinerary 里。
+这条问题后来确认不是 planner 完全不执行 required constraints。
 
-典型问题：
+backend planner 本来就会对**结构化的 required constraints**做 enforcement：
 
 ```text
-User input: "Required: no seafood", "Required: avoid museums", or
-"Required: start after 11 AM"
+backend/app/domain/plans/generator.py
+-> _load_required_constraints(...)
+-> _build_day(...)
+-> _validate_items(...)
 
-Generated itinerary: includes a seafood restaurant, museum-heavy day, or a
-morning activity before 11 AM.
+backend/app/domain/constraints/engine.py
+-> violates(...)
 ```
 
-用户影响：
+真正的问题有两个：
 
-- 产品让用户相信 Required 是有意义的，但生成结果可能把它当成 soft preference。
-- 用户必须手动检查每个生成 item，信任感会下降。
-- 对 accessibility、dietary、budget、timing、safety 这类要求尤其严重。
+1. 用户看到的是 `Required`，但系统真正执行的是 `kind + params` 这类结构化约束。
+2. 在 2026-08-16 之前，constraint save path 几乎只校验 `kind`，没有校验 `params`
+   是否真的可执行。
 
-预期行为：
-
-- 任何标为 `Required` 的输入都应该被执行，或者明确报告无法满足。
-- 生成计划应避免违反要求，或在接受 itinerary 前显示 blocked / needs-review。
-- UI 应区分 hard requirements 和普通偏好。
-- planner 无法满足时，应说明哪个 requirement 无法满足以及原因。
-
-用户视角测试方法：
-
-1. 从 fresh trip 开始，避免旧 plan 数据影响判断。
-2. 每次只输入一个清晰、肉眼容易检查的 hard requirement：
+这会导致一种很危险的假象：
 
 ```text
-Required: no seafood restaurants.
-Required: no museums.
-Required: start every day after 11:00 AM.
-Required: keep walking under 1 km per day.
-Required: vegetarian meals only.
+original_text: "Required: avoid museums"
+kind: avoid_tag
+params: {}
 ```
 
-3. Generate itinerary。
-4. 检查每天的每个 activity / meal card。
-5. 记录生成结果是否违反该 requirement。
-6. 同一个 requirement 至少测 3 次，因为 planner 输出可能波动。
-7. 再测试两个 requirement 叠加，例如：
+这种输入在旧代码里也能保存，但 planner 实际拿到的是一个空约束，因此不会生效。
+
+另外，前端 `avoid_tag` picker 当时也没有 `museum` 入口，所以用户想表达：
 
 ```text
-Required: no museums.
-Required: start every day after 11:00 AM.
+Required: avoid museums
 ```
 
-8. 记录产品是遵守、阻止生成、解释 tradeoff，还是静默违反。
+没有一个明确、可执行的结构化路径。
 
-通过标准：
+2026-08-16 已完成修复：
 
-- 没有任何生成 item 违反 `Required` 输入。
-- 如果无法生成合法 itinerary，产品明确说明，而不是生成一个违规计划。
-- 生成后 requirement 仍然可见或可审计，方便用户对照检查。
-
-失败标准：
-
-- 任意生成 item 直接违反 `Required` 输入。
-- 产品把 hard requirement 当成普通 preference。
-- 用户只能靠自己看 itinerary 才发现 requirement 被忽略。
-
-### 8. Limited availability 选项可见，但后端 / planner 没有端到端实现
-
-Preferences 页面显示两个 availability 选项：
+- backend 现在会校验六种 constraint 的 `params` 是否真正可执行。
+- 空的或无效的 required constraint 不再允许保存。
+- `original_text` 仍然只作为私有表述，不再被误当成 planner 可执行语义。
+- 前端提示改成更准确的：
 
 ```text
-Yes, all dates
+Only these structured selections are checked against the plan.
+```
+
+- 前端 `avoid_tag` 现在提供 `museum` 入口。
+- 前端在提交前也会阻止明显不可执行的 draft，例如：
+  - 空 `avoid_tag`
+  - 空 `dietary`
+  - 没有起止的 `date_range`
+  - 反向 `time_window`
+
+当前正确心智：
+
+- 被 planner 检查的是**结构化 required selections**，不是任意 free-text 原话。
+- 如果用户只写一句自然语言，但没有落成结构化参数，系统现在会阻止保存，而不是假装它会被执行。
+- 对已经支持的 required 类型，planner 继续执行并在必要时 block generation。
+
+回归覆盖：
+
+- `backend/tests/test_preferences.py`
+  - 空 / 不可执行 constraint 会被拒绝
+  - 反向 time window 会被拒绝
+- `backend/tests/test_trips.py`
+  - constraints API 会对空 required payload 返回 `422`
+- `backend/tests/test_plan_generation.py`
+  - `avoid_tag = museum` 的 required constraint 会被真实执行
+  - generated items 仍通过全部 required constraints
+
+当前状态：
+
+- Observed Issue #7 的 supported path 已修复。
+- planner 不是把 hard requirement 当 soft preference。
+- 产品现在会更诚实地区分：
+  - 可执行的 structured required
+  - 只是用户原话、但还没变成 planner 语义的内容
+
+### 8. Limited availability 之前只被当成 soft signal，现已在 planner generation 路径修复
+
+这条问题后来确认不是 persistence 丢失。
+
+在 2026-08-16 修复前，limited availability 的真实状态是：
+
+- 前端能保存 `available_start_date` / `available_end_date`
+- 重新打开 Preferences 也能读回并恢复 `limited` 选择状态
+- 但 planner generation 并没有把它当成 hard date gate
+
+真正的根因在 backend planner：
+
+```text
+backend/app/domain/plans/generator.py
+-> _load_availability_by_date(...)
+```
+
+旧逻辑只是把 partial availability 当成：
+
+```text
+"this day should be lighter"
+```
+
+也就是：
+
+- 某一天如果不是所有已提交成员都 available
+- planner 只把当天 sightseeing count 降到 `MIN_DAY_ACTIVITIES`
+- 但不会把这一天从可生成日期里移除
+
+所以用户在 Preferences 里选了：
+
+```text
 No, I have limited availability
 ```
 
-用户选择：
+在旧代码里仍可能看到自己不可用日期上的 itinerary items。
+
+2026-08-16 已完成修复：
+
+- saved limited availability 现在会真正收窄 planner generation 的可生成日期。
+- planner 现在只会在**所有已提交 availability 的成员都 available** 的 trip dates 上生成 items。
+- day filtering 保留真实 trip `day_index` / `day_date`，不会把剩余日期重新编号成错误的 Day 1/Day 2。
+- 如果所有已提交 availability window 没有任何交集，generation 现在会直接 blocked，而不是生成一个违规 itinerary。
+- Preferences save / reload path 保持不变：
+  - `available_start_date`
+  - `available_end_date`
+  仍然会保存并回读。
+
+实现后行为：
+
+- 2026-08-16 之前：
+  - limited availability 只是 soft lighter-day signal
+  - planner 仍可能在 unavailable dates 生成 items
+- 2026-08-16 之后：
+  - limited availability 成为 generation-time hard date filter
+  - unavailable dates 不再出现在生成 items 里
+
+额外修正：
+
+- 在把可生成日期缩窄后，planner 的 completeness check 还残留一个旧假设：
 
 ```text
-No, I have limited availability
+allowed day indexes must be 1..N
 ```
 
-后，UI 会显示 `My Availability` 的日期窗口卡片。但这个路径看起来没有在 backend / persistence / planner flow 里端到端实现。用户视角看，它像是可选的真实约束，但实际不能信任。
+这会把只剩 Day 2 / Day 3 的合法 itinerary 误判成 incomplete。
 
-用户影响：
+该问题也已一起修复：
 
-- 用户可以表达 limited availability，但产品可能没有保存或执行它。
-- planner 仍可能生成用户不可用日期上的活动。
-- UI 暗示这是硬性 scheduling constraint，但后端不支持完整链路。
+- completeness 现在按实际允许生成的 trip day slots 检查
+- 不再要求可生成 day index 必须连续从 1 开始
 
-预期行为：
+回归覆盖：
 
-- 如果 limited availability 未实现，应隐藏或禁用该选项，并说明当前只支持 full-trip availability。
-- 如果选项保留可见，后端应保存 selected availability window，planner 应执行它。
-- 保存后重新打开 Preferences，应显示相同的 availability 状态。
-- 生成 itinerary 不应包含用户不可用日期。
+- 已有 persistence/readback coverage 继续证明 availability 会保存：
+  - `backend/tests/test_trips.py`
+- 新 generation coverage：
+  - limited availability 只在 shared available dates 生成
+  - disjoint availability 直接 blocked
+  - existing required-constraint generation checks 保持通过
 
-用户视角测试方法：
+验证结果：
 
-1. 打开一个跨多天的 trip。
-2. 进入 `Preferences`。
-3. 选择 `No, I have limited availability`。
-4. 选择一个更小的可用窗口，例如五天 trip 中只选两天。
-5. 保存 preferences。
-6. 刷新浏览器并重新打开 `Preferences`。
-7. 检查 `No, I have limited availability` 是否仍被选中，起止日期是否仍显示。
-8. Generate / regenerate itinerary。
-9. 检查生成 plan 是否包含 selected availability window 之外的活动。
+- `pytest backend/tests/test_trips.py -q -k "preference_dates_are_saved_and_read_back or preference_dates_outside_trip_window_are_rejected_for_any_role"`
+  - `2 passed`
+- `pytest backend/tests/test_plan_generation.py -q -k "generated_items_pass_every_required_constraint or saved_limited_availability_limits_generation_to_shared_dates or disjoint_limited_availability_blocks_generation"`
+  - `3 passed`
 
-通过标准：
+当前状态：
 
-- 选择的 limited availability window 保存后刷新仍存在。
-- Planner 输出遵守该窗口。
-- 如果不支持 limited availability，UI 在用户依赖它之前就阻止选择。
-
-失败标准：
-
-- 用户能选择 limited availability，但保存后丢失。
-- Planner 生成不可用日期上的 itinerary items。
-- UI 表示 limited availability 是真实功能，但后端忽略它。
+- Observed Issue #8 已在 planner generation 路径修复。
+- limited availability 不再只是 UI 可见项。
+- save / reload / generation 现在已经形成端到端链路。
 
 ### 9. 初次生成后再修改 preferences，没有 replan / preview 动作
 
@@ -370,78 +511,63 @@ Required: start after 11 AM
 - 用户不知道如何让新 preferences 影响 itinerary。
 - 现有 plan 不变且没有明确下一步。
 
-### 10. Item-scoped Ask Cadensy 会丢失 selected item context
+### 10. Item-scoped Ask Cadensy 曾会丢失 selected item context，现已修复
 
-用户从某个具体 plan item 打开 `Ask Cadensy`，drawer header 显示选中 item：
+问题根因已经确认，而且根因在 backend reference-resolution，不是前端没有传 `item_id`。
 
-```text
-Gloria Molina Grand Park
-Civic Center, Los Angeles · 3:30 PM
-```
-
-Drawer 文案告诉用户可以询问这个 item 或提出修改。但用户输入简单的 item-relative request：
+前端实际一直都有把 item-scoped drawer 的 selected item 传给 chat API：
 
 ```text
-move to 4pm
+trip/src/final/plan-feature/useAssistantChangeRequestFlow.js
+-> app.chatWithTrip({ message, itemId, history })
+
+trip/src/final/TripAppState.jsx
+-> POST /api/trips/{tripId}/chat
+-> { message, item_id, history }
 ```
 
-Cadensy 回复：
+真正出错的是 backend 对 selected item 的使用条件太窄：
+
+- 它会把 selected item 自动用于 `this` / `it` / `this one` 这类 pronoun request
+- 但 `move to 4pm` 这种没有代词、却明显是 item-relative change request 的短句
+  不会自动绑定到当前 selected item
+- 结果会被误判成缺少 item reference，然后回复：
 
 ```text
 I don't see that item in the Current Plan yet. Which item do you mean?
 ```
 
+2026-08-16 已完成修复：
+
+- backend 现在在已经有 `item_id` 的前提下，会把 selected item 也用于这类 item-relative short request：
+  - `move to 4pm`
+  - `move to tomorrow`
+  - `make this shorter`
+  - `replace ...`
+  - `remove ...`
+- 修复保持在很小范围内：
+  - 只在已有 selected item 且消息看起来像 item-relative change request 时触发
+  - 不会覆盖显式提到另一个 item 的情况
+  - stale selected item 仍然安全失败
+  - 模糊 generic reference 仍然会要求澄清
+
 用户影响：
 
-- 用户已经从具体 item 打开助手，再问 “which item do you mean?” 体验明显错误。
-- 在 item-scoped drawer 里，`move to 4pm` 这种短请求应该足够。
-- UI 和后端 / agent 看起来没有共享同一个 selected item context。
+- item-scoped drawer 里不再需要为了 `move to 4pm` 这类请求重复 item 名称。
+- Drawer header 和 backend-selected item 现在能保持一致。
 
-预期行为：
+验证结果：
 
-- 从 item 打开 `Ask Cadensy` 时，应把 item id 传入 chat / classification request。
-- 助手应把 `move to 4pm` 理解成对当前 selected item 的修改。
-- 如果 selected item 已不存在，应明确提示并刷新 plan，而不是让用户重复 item 名称。
-- Drawer header 和 backend context 应一致。
+- 新增 regression coverage：
+  - `backend/tests/test_chat_agent_branch.py`
+  - `backend/tests/test_chat.py`
+- 相关通过结果：
+  - `backend/tests/test_chat_agent_branch.py`: `44 passed`
+  - `backend/tests/test_chat.py`: `11 passed`
 
-用户视角测试方法：
+当前状态：
 
-1. 打开 generated itinerary。
-2. 选择一个可见 item，例如：
-
-```text
-Gloria Molina Grand Park
-3:30 PM
-```
-
-3. 点击该 item 的 `Ask Cadensy`。
-4. 确认 drawer header 显示同一个 item。
-5. 输入：
-
-```text
-move to 4pm
-```
-
-6. 检查 Cadensy 是为 selected item 准备 time-change proposal，还是反问用户指哪个 item。
-7. 换另一个 item，再测：
-
-```text
-move this later
-make this 30 minutes shorter
-move this to tomorrow
-```
-
-通过标准：
-
-- 助手使用 drawer selected item 作为上下文。
-- 回复识别正确 item，并准备或分类对应 change。
-- 用户不需要在 item-scoped drawer 中重复 item 名称。
-
-失败标准：
-
-- Drawer 从具体 item 打开后，Cadensy 仍问用户指哪个 item。
-- Cadensy 说 Current Plan 里看不到该 item，但 UI 明明显示它。
-- Drawer header item 和 backend-selected item 不一致。
+- Observed Issue #10 已修复。
 
 ## 当前判断
 
@@ -455,26 +581,20 @@ Humans apply.
 
 现在观察到的问题更具体：
 
-- 非 Chicago replacement coverage 受限。
-- 数字选项 follow-up 可能映射错选项。
+- non-Chicago replacement 已修复，真实 Place Service / Geoapify path 已接通。
+- bare-number option follow-up 已修复，history option selection 现在能稳定处理 `2` / `Option 2` / ordinal / full text。
 - Apply failure 文案过于笼统。
 - Apply endpoint 把 `alternatives` 传给了当前不接受该参数的 orchestrator 函数。
 - backend/server logs 是定位 Apply 失败的必要信息。
 - preferences 更新后会让 plan stale，但缺少 whole-plan update action。
-- required prompt / preference inputs 可能没有在 itinerary generation 中强制执行。
-- limited availability 在 Preferences UI 中可见，但 backend / planner 没有端到端实现。
+- required structured constraints 已确认会被执行；空或不可执行的 required 输入现在会被拒绝保存。
+- limited availability 已在 planner generation 路径接通为真实日期过滤。
 - 初次生成后再改 preferences，会 stale 但没有 regenerate / preview action。
-- item-scoped `Ask Cadensy` 可能丢失 selected item context，导致助手反问用户指哪个 item。
+- item-scoped `Ask Cadensy` selected-item context 已修复，短的相对修改请求现在会绑定到当前 selected item。
 
 ## 建议修复优先级
 
-1. 修复数字选项选择，确保 option id 和顺序可以可靠 round-trip。
-2. 为 candidate options 返回后选择 `2` 添加 regression test。
-3. 对齐 `submit_change()` 和 `orch.propose_change()`，避免包含 frontend candidate options 时 Apply 500。
-4. 改善 Apply error diagnostics，不要把所有 backend 500 都展示成 reachability failure。
-5. 在 replacement place library 支持更多城市前，明确保留 non-Chicago 限制说明。
-6. Preferences 改变后添加明确 stale-plan action，或说明只有 future replans/change proposals 会使用新 preferences。
-7. 为 required inputs 增加用户可见的 planner validation：生成后检查 itinerary 是否违反 hard requirements，违规时 block 或解释。
-8. 要么端到端实现 limited availability，要么在 backend persistence 和 planner enforcement 完成前禁用该选项。
-9. 增加 post-preference-edit replan flow：existing itinerary 上 preferences 改变后显示 regenerate / preview action。
-10. 保留 item-scoped `Ask Cadensy` 的 selected item context，并为 `move to 4pm` 这类相对 prompt 添加 regression test。
+1. 对齐 `submit_change()` 和 `orch.propose_change()`，避免包含 frontend candidate options 时 Apply 500。
+2. 改善 Apply error diagnostics，不要把所有 backend 500 都展示成 reachability failure。
+3. Preferences 改变后添加明确 stale-plan action，或说明只有 future replans/change proposals 会使用新 preferences。
+4. 增加 post-preference-edit replan flow：existing itinerary 上 preferences 改变后显示 regenerate / preview action。
