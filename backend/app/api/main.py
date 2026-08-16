@@ -19,6 +19,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..agents import chat as chat_agent
+from ..agents.tools import DAY_END_HOUR, DAY_START_HOUR
 from ..db.models import (
     ChangeProposal,
     DecisionRound,
@@ -912,7 +913,7 @@ def _validated_change_options(
         if not patch:
             continue
         if "start_hour" in patch and not (
-            orch.DAY_START_HOUR <= patch["start_hour"] <= orch.DAY_END_HOUR
+            DAY_START_HOUR <= patch["start_hour"] <= DAY_END_HOUR
         ):
             continue
         if "duration_min" in patch and patch["duration_min"] <= 0:

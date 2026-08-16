@@ -787,11 +787,13 @@ function PersonalThread() {
           : result.reply,
       } : message))
     } catch (err) {
-      const text = err.status === 409
+      const text = err?.status === 409
         ? 'A vote is already open for this time block.'
-        : err.status === 422
+        : err?.status === 422
           ? 'Reopening this block needs a written reason.'
-          : 'I could not reach the backend. Try again in a moment.'
+          : err?.status >= 500
+            ? 'The backend hit an error while sending this message. Try again or check the backend logs.'
+            : 'I could not reach the backend. Try again in a moment.'
       setMessages(current => current.map(message => message.id === loadingId ? { ...message, text, loading: false, error: true } : message))
     } finally {
       setSending(false)

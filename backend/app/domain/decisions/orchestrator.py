@@ -16,9 +16,10 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import re
+import json
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from data.poi_chicago import POIS
 
@@ -150,24 +151,84 @@ def _option_time_label(hour: float) -> str:
     return f"{display_hour}:{minute:02d} {suffix}"
 
 
-def _options_for(item: PlanItem, request: str, patch: dict | None = None) -> list[dict]:
+def _option_after_state(item: PlanItem, patch: dict | None) -> tuple[str, str]:
+    after = _patch_with_poi_metadata(item, patch or {}) if patch else {}
+    title = str(after.get("title") or item.title)
+    place = str(after.get("place") or item.place)
+    day_date = after.get("day_date") or item.day_date
+    if isinstance(day_date, str):
+        day_date = date.fromisoformat(day_date)
+        after["day_date"] = day_date
+    session = object_session(item)
+    if day_date == item.day_date or session is None:
+        day_index = item.day_index
+    else:
+        day_index = _day_index_for_date(session, item, day_date)
+    start_hour = float(after.get("start_hour", item.start_hour))
+    body = (
+        f"{place} · Day {day_index} · {day_date.isoformat()} · "
+        f"{_option_time_label(start_hour)}"
+    )
+    return title, body
+
+
+def _patch_signature(item: PlanItem, patch: dict | None) -> str:
+    if not patch:
+        return ""
+    return json.dumps(
+        _json_patch(_patch_with_poi_metadata(item, patch)),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _options_for(
+    item: PlanItem,
+    request: str,
+    patch: dict | None = None,
+    alternatives: list[dict] | None = None,
+) -> list[dict]:
     """Options **must include split-up**. This is a product rule, not optional."""
+    requested_title, requested_body = _option_after_state(item, patch)
     requested = {
         "id": "requested",
-        "label": "Suggested change",
-        "title": request[:60] or "Suggested change",
-        "body": "Apply the most recent suggestion to this block.",
+        "label": "Proposed change",
+        "title": requested_title,
+        "body": requested_body,
     }
     if patch:
         requested["patch"] = _json_patch(_patch_with_poi_metadata(item, patch))
+    seen_patches = {_patch_signature(item, patch)}
+    alternative_options = []
+    for index, option in enumerate(alternatives or (), start=1):
+        option_patch = option.get("patch")
+        if not option_patch:
+            continue
+        signature = _patch_signature(item, option_patch)
+        if signature in seen_patches:
+            continue
+        seen_patches.add(signature)
+        title, body = _option_after_state(item, option_patch)
+        alternative_options.append(
+            {
+                "id": f"alternative-{index}",
+                "label": option.get("label") or f"Alternative {index}",
+                "title": title,
+                "body": body,
+                "tradeoff": option.get("tradeoff") or "",
+                "patch": _json_patch(option_patch),
+            }
+        )
+    keep_title, keep_body = _option_after_state(item, None)
     return [
         {
             "id": KEEP_CURRENT,
             "label": "Keep current",
-            "title": item.title,
-            "body": f"Keep this card as it is: {item.place} at {_option_time_label(item.start_hour)}.",
+            "title": keep_title,
+            "body": f"{keep_body}. No change to this block.",
         },
         requested,
+        *alternative_options,
         {"id": SPLIT_UP, "label": "Split up", "title": "Split for this block",
          "body": "Both options run in parallel and the group regroups afterwards."},
     ]
@@ -363,6 +424,7 @@ def propose_change(
     reason: str | None = None,
     trip_total_after: float | None = None,
     day_walk_km_after: float = 0.0,
+    alternatives: list[dict] | None = None,
 ) -> Outcome:
     """Someone wants to change an item. Classify and execute in one step."""
     _guard_not_pending(db, item)
@@ -390,13 +452,32 @@ def propose_change(
     if verdict.path is Path.NOTICE:
         return _do_notice(db, item, patch, actor_membership_id, verdict)
     if verdict.path is Path.ROUND:
-        return _do_round(db, item, trip, request, verdict, kind="normal", patch=patch)
+        return _do_round(
+            db,
+            item,
+            trip,
+            request,
+            verdict,
+            kind="normal",
+            patch=patch,
+            alternatives=alternatives,
+        )
     if verdict.path is Path.REOPEN_ROUND:
         if not (reason or "").strip():
             raise ReasonRequired(
                 "Reopening a settled block needs a written reason."
             )
-        return _do_round(db, item, trip, request, verdict, kind="reopen", reason=reason, patch=patch)
+        return _do_round(
+            db,
+            item,
+            trip,
+            request,
+            verdict,
+            kind="reopen",
+            reason=reason,
+            patch=patch,
+            alternatives=alternatives,
+        )
     return _do_confirm(
         db, item, patch, actor_membership_id, trip, verdict,
         affected=affected_membership_ids(change, constraints),
@@ -528,11 +609,22 @@ def object_to_notice(db: Session, notice: UpdateNotice, request: str = "") -> Ou
 # -------------------- Path B: voting --------------------
 
 
-def _do_round(db, item, trip, request, verdict, *, kind, reason=None, patch=None) -> Outcome:
+def _do_round(
+    db,
+    item,
+    trip,
+    request,
+    verdict,
+    *,
+    kind,
+    reason=None,
+    patch=None,
+    alternatives=None,
+) -> Outcome:
     round_ = DecisionRound(
         plan_item_id=item.id,
         kind=kind,
-        options=_options_for(item, request, patch),
+        options=_options_for(item, request, patch, alternatives),
         reason=reason,
         deadline=_deadline_for(trip),
         status="open",

@@ -136,6 +136,17 @@ backend/app/api/main.py submit_change()
 - 本地测试出现该文案时，应检查 uvicorn/backend traceback。
 - backend API 和 decision orchestrator 的函数签名应保持一致。
 
+Status update, 2026-08-15:
+
+- Fixed in `backend/app/api/main.py` and `backend/app/domain/decisions/orchestrator.py`.
+- `submit_change()` still validates frontend `options` into backend-safe `alternatives`.
+- `orch.propose_change()` now accepts `alternatives`.
+- Alternatives are only used for `ROUND` and `REOPEN_ROUND` decision paths.
+- `NOTICE` and `CONFIRM` paths still ignore alternatives, so the existing mutation boundary remains unchanged.
+- The related time-window constants bug in `_validated_change_options()` was also fixed by importing `DAY_START_HOUR` and `DAY_END_HOUR` from `backend/app/agents/tools.py`.
+- Regression coverage was added in `backend/tests/test_trips.py`.
+- Additional vote-card cleanup: if the submitted `requested` patch and an assistant alternative patch are identical, the duplicate alternative is filtered out so the vote UI does not show two identical choices.
+
 ### 5. 错误文案会掩盖服务端失败
 
 前端会把 missing status 和 500-level failures 映射成宽泛的 backend reachability 文案。
@@ -157,6 +168,20 @@ trip/src/final/FinalApp.jsx
 
 - 面向用户的文案可以简洁，但本地日志/开发诊断应保留细节。
 - 出现该文案时应检查 backend terminal。
+
+Status update, 2026-08-15:
+
+- Fixed in:
+
+```text
+trip/src/final/plan-feature/useAssistantChangeRequestFlow.js
+trip/src/final/TripAppState.jsx
+trip/src/final/FinalApp.jsx
+```
+
+- Missing HTTP status / network failures still use reachability copy.
+- HTTP 500-level backend failures now use backend-error copy instead of reachability copy.
+- This keeps user-facing text short, but gives developers the correct debugging direction: check backend logs rather than assuming the browser could not connect.
 
 ### 6. 偏好更新后没有明确的整计划更新入口
 
@@ -460,6 +485,7 @@ Humans apply.
 - Apply failure 文案过于笼统。
 - Apply endpoint 把 `alternatives` 传给了当前不接受该参数的 orchestrator 函数。
 - backend/server logs 是定位 Apply 失败的必要信息。
+- Vote option cards now render the concrete after-state of a proposed patch, and duplicate assistant alternatives are filtered when they are identical to the submitted proposal.
 - preferences 更新后会让 plan stale，但缺少 whole-plan update action。
 - required prompt / preference inputs 可能没有在 itinerary generation 中强制执行。
 - limited availability 在 Preferences UI 中可见，但 backend / planner 没有端到端实现。
@@ -470,8 +496,8 @@ Humans apply.
 
 1. 修复数字选项选择，确保 option id 和顺序可以可靠 round-trip。
 2. 为 candidate options 返回后选择 `2` 添加 regression test。
-3. 对齐 `submit_change()` 和 `orch.propose_change()`，避免包含 frontend candidate options 时 Apply 500。
-4. 改善 Apply error diagnostics，不要把所有 backend 500 都展示成 reachability failure。
+3. 已修复：对齐 `submit_change()` 和 `orch.propose_change()`，避免包含 frontend candidate options 时 Apply 500。
+4. 已修复：改善 Apply error diagnostics，不要把所有 backend 500 都展示成 reachability failure。
 5. 在 replacement place library 支持更多城市前，明确保留 non-Chicago 限制说明。
 6. Preferences 改变后添加明确 stale-plan action，或说明只有 future replans/change proposals 会使用新 preferences。
 7. 为 required inputs 增加用户可见的 planner validation：生成后检查 itinerary 是否违反 hard requirements，违规时 block 或解释。

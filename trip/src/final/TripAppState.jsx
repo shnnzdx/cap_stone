@@ -235,7 +235,8 @@ const requestPatch = (actionType, item, request) => {
 const friendlyError = err => {
   if (err?.status === 409) return 'A vote is already open for this time block.'
   if (err?.status === 422) return err.message || 'Reopening this block needs a written reason.'
-  if (!err?.status || err.status >= 500) return 'Could not reach the backend.'
+  if (err?.status >= 500) return err.message || 'The backend hit an error while processing this request.'
+  if (!err?.status) return 'Could not reach the backend.'
   return err.message || 'Something went wrong.'
 }
 

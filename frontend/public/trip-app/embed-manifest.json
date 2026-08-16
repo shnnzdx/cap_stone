@@ -4,10 +4,10 @@
   "frameSrc": "/trip-app/index.html#/",
   "sourceApp": "tripsync",
   "sourceVersion": "0.4.0",
-  "syncedAt": "2026-08-16T00:10:12.479Z",
+  "syncedAt": "2026-08-16T01:24:05.768Z",
   "files": [
+    "assets/index-8b98_iyn.js",
     "assets/index-B63CQs9B.css",
-    "assets/index-ixyWb80c.js",
     "images/cadensy-mark.png",
     "images/cadensy-wordmark.png",
     "index.html"

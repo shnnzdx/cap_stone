@@ -32,11 +32,13 @@ const ASSISTANT_LOADING_MESSAGES = [
 ]
 
 const assistantErrorText = err => (
-  err.status === 409
+  err?.status === 409
     ? 'A vote is already open for this time block.'
-    : err.status === 422
+    : err?.status === 422
       ? 'Reopening this block needs a written reason.'
-      : 'I could not reach the backend. Try again in a moment.'
+      : err?.status >= 500
+        ? 'The backend hit an error while applying this change. Try again or check the backend logs.'
+        : 'I could not reach the backend. Try again in a moment.'
 )
 
 const hasExecutablePatch = option => Boolean(option?.patch && Object.keys(option.patch).length)

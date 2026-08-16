@@ -680,6 +680,92 @@ def test_submit_change_access_is_scoped_to_plan_item(
     assert item_b.start_hour == 14.0
 
 
+def test_submit_change_accepts_validated_round_alternatives(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    _, item = _plan_item(api_session, trip)
+    item.settledness = "touched"
+    api_session.flush()
+
+    response = client.post(
+        f"/api/plans/items/{item.id}/changes",
+        headers={"X-Membership-Id": membership.id},
+        json={
+            "title": "Shopping",
+            "request": "Replace this with shopping",
+            "options": [
+                {
+                    "item_id": item.id,
+                    "label": "Move later",
+                    "title": "Move it to 4:00 PM",
+                    "body": "Shift this block later on the same day.",
+                    "tradeoff": "Keeps the same activity.",
+                    "start_hour": 16.0,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "round"
+    round_ = api_session.scalars(select(DecisionRound)).one()
+    requested = next(option for option in round_.options if option["id"] == "requested")
+    assert requested["label"] == "Proposed change"
+    assert requested["title"] == "Shopping"
+    assert "Michigan Avenue" in requested["body"]
+    assert "Day 1" in requested["body"]
+
+    alternative = next(
+        option for option in round_.options if option["id"] == "alternative-1"
+    )
+    assert alternative["title"] == "Art Institute of Chicago"
+    assert "Michigan Avenue" in alternative["body"]
+    assert "4:00 PM" in alternative["body"]
+    assert alternative["patch"] == {"start_hour": 16.0}
+
+
+def test_submit_change_deduplicates_requested_round_alternative(
+    client: TestClient, api_session: Session
+):
+    user = _user(api_session, "Mia")
+    trip, membership = _trip_with_member(api_session, user)
+    _, item = _plan_item(api_session, trip)
+    item.settledness = "touched"
+    api_session.flush()
+
+    response = client.post(
+        f"/api/plans/items/{item.id}/changes",
+        headers={"X-Membership-Id": membership.id},
+        json={
+            "start_hour": 13.0,
+            "request": "Move this to 1 PM",
+            "options": [
+                {
+                    "item_id": item.id,
+                    "label": "Move to 1 PM",
+                    "title": "Move this to 1 PM",
+                    "body": "Same as the submitted proposal.",
+                    "start_hour": 13.0,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    round_ = api_session.scalars(select(DecisionRound)).one()
+    assert [option["id"] for option in round_.options] == [
+        "keep",
+        "requested",
+        "split",
+    ]
+    requested = next(option for option in round_.options if option["id"] == "requested")
+    assert requested["label"] == "Proposed change"
+    assert requested["title"] == "Art Institute of Chicago"
+    assert "1:00 PM" in requested["body"]
+
+
 def test_submit_change_with_day_date_writes_json_safe_plan_change(
     client: TestClient, api_session: Session
 ):
