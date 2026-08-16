@@ -115,8 +115,8 @@ const straightLineMiles = (from, to) => {
 const formatStraightLineDistance = (from, to) => {
   const miles = straightLineMiles(from, to)
   if (miles === null) return 'Distance unavailable'
-  if (miles < 0.1) return '<0.1 mi straight line'
-  return `${miles.toFixed(miles < 10 ? 1 : 0)} mi straight line`
+  if (miles < 0.1) return 'About 0.1 mi to next stop'
+  return `About ${miles.toFixed(miles < 10 ? 1 : 0)} mi to next stop`
 }
 
 const fieldLabels = {
@@ -560,7 +560,7 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
 
   return <div className={cx('planSplit', !view.drawerItem && 'withMap', view.drawerItem && 'withAssistant')}>
     <section className="planMainPane">
-      <div className="pageHeading planHeading"><div><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>Edit preferences</Link><Button secondary className="askCadensyBtn" onClick={() => actions.openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask Cadensy</Button></div></div>
+      <div className="pageHeading planHeading"><div className="planSummaryIntro"><span className="eyebrow">Current Plan</span><h1>Your shared itinerary</h1><p>Plan the days, places, and decisions your group will share.</p><div className="planSummaryStats"><span><b>{view.days.length}</b> days</span><span><b>{view.days.reduce((total, day) => total + day.items.length, 0)}</b> stops</span><span><b>{view.days.reduce((total, day) => total + day.items.filter(item => !item.isMeal).length, 0)}</b> activities</span><span><b>{view.days.reduce((total, day) => total + day.items.filter(item => item.isMeal).length, 0)}</b> meals</span><span className="planCollaborators">Shared with {currentTrip.people || 1} collaborators</span></div></div><div className="planCollaboratorPanel"><span>Trip collaborators</span><div className="collaboratorAvatars"><i>{app.currentUser?.initials || 'You'}</i>{(currentTrip.people || 1) > 1 && <i className="collaboratorCount">+{(currentTrip.people || 1) - 1}</i>}</div><Link to={tripHref(currentTrip.id, 'members')}>Manage members →</Link></div><div className="planHeadingActions"><Badge tone="blue">Live plan</Badge><Link className="btn btnSecondary" to={tripHref(currentTrip.id, 'preferences')}>Edit preferences</Link><Button secondary className="askCadensyBtn" onClick={() => actions.openDrawer({ title: 'Full itinerary', place: currentTrip.destination, time: currentTrip.dates, note: 'Ask about the whole trip plan.' }, 'global')}>✦ Ask Cadensy</Button></div></div>
       {app.loading.initial && <div className="planNotice"><span>…</span><div><strong>Loading trip data</strong><p>Fetching the current plan from the backend.</p></div></div>}
       {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
       {app.planNeedsRefresh && <div className="planNotice planRefreshNotice"><span>↻</span><div><strong>Preferences updated</strong><p>Your current plan was generated using earlier preferences and has not been changed. Future replans and change proposals will use the latest planning inputs.</p></div><Link to={tripHref(currentTrip.id, 'preferences')}>Review →</Link></div>}
@@ -573,7 +573,7 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
           const mealItems = day.items.filter(item => item.isMeal)
           return <section className={cx('accordionDay', open && 'open')} key={day.id}>
             <button className="accordionHead" onClick={() => actions.toggleDay(day.id)} aria-expanded={open}>
-              <span className="dayNumber">{day.label}</span><div><small>{day.date}</small><h2>{dayDisplayTitle(day, currentTrip.destination)}</h2></div><p>{day.summary}</p><i>{open ? '−' : '+'}</i>
+              <span className="dayHeaderIndex"><small>Day</small><b>{day.label.replace(/[^0-9]/g, '') || '—'}</b><em>{day.date}</em></span><span className="dayHeaderMain"><h2>{dayDisplayTitle(day, currentTrip.destination)}</h2><p>{day.summary}</p></span><span className="dayHeaderStats"><b>{sightseeingItems.length} activities</b><b>{mealItems.length} meals</b><b>{day.items.length} stops</b></span><i>{open ? '−' : '+'}</i>
             </button>
             <div className="accordionBody"><div className="accordionInner">
               <div className="dayRouteLine">
@@ -584,8 +584,7 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
               <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
                 <article id={`trip-item-${item.id}`} className={cx('activityBlock', item.isMeal && 'mealStopBlock', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
                   <button type="button" className={cx('activityIndex', item.isMeal && 'mealStopIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{item.isMeal ? 'M' : day.items.slice(0, index).filter(previous => !previous.isMeal).length + 1}</b></button>
-                  <StopCategoryIcon item={item}/>
-                  <div className="activityMain"><div className="activityTitle"><div><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}<small>{categoryPresentation(item).label}</small><p className="activityAddress">{compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)}</p></div>{!item.isMeal && visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div>{item.note && <p>{item.note}</p>}{item.locked && <small className="lockedNote">Existing reservation</small>}</div>
+                  <div className="activityMain"><div className="activityPlaceLine"><StopCategoryIcon item={item}/><div className="activityTitle"><div><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}<small>{categoryPresentation(item).label} · {compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)}</small></div>{!item.isMeal && visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div></div>{item.note && <p>{item.note}</p>}{item.locked && <small className="lockedNote">Existing reservation</small>}</div>
                   <time className="activityStartTime" dateTime={String(item.startHour ?? '')}>{item.time}</time>
                   <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => actions.openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
                   {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
@@ -601,7 +600,7 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
                 </article>
                 {app.activeRounds?.filter(round => round.itemId === item.id || round.itemTitle === item.title).map(round => <PlanDecisionRoundCard key={round.id} round={round} compact onCommand={onCommand}/>)}
                 {index < day.items.length - 1 && item.coords && day.items[index + 1].coords && <div className="routeSegment">
-                  <span>Between stops</span>
+                  <span>Next stop</span>
                   <strong>{formatStraightLineDistance(item, day.items[index + 1])}</strong>
                   <button type="button" onClick={() => actions.showDayOnMap(day.id)}>Map</button>
                 </div>}
@@ -621,6 +620,12 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
         <div className="tripMapSummary">
           <strong>{view.railDay === 'all' ? `${view.days.reduce((n, d) => n + d.items.length, 0)} stops across ${view.days.length} days` : `${view.railDays[0]?.items.length || 0} stops · ${view.railDays[0]?.date || ''}`}</strong>
           <p>Tap a pin to jump to that stop.</p>
+        </div>
+        <div className="dayContextCard">
+          <span className="eyebrow">Day at a glance</span>
+          <strong>{view.railDay === 'all' ? 'Full trip overview' : `${view.railDays[0]?.label || 'Selected day'}`}</strong>
+          <div className="dayContextStats"><span><b>{view.railDay === 'all' ? view.days.reduce((n, d) => n + d.items.length, 0) : (view.railDays[0]?.items.length || 0)}</b> stops</span><span><b>{view.railDay === 'all' ? view.days.length : (view.railDays[0]?.items.length ? totalRouteMiles(view.railDays[0].items).toFixed(1) : '0')}</b> {view.railDay === 'all' ? 'days' : 'mi route'}</span></div>
+          <p>Select a day above to focus the route and scan its stops.</p>
         </div>
       </div>
     </aside>}
