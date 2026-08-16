@@ -33,7 +33,8 @@ The direction is:
 5. Fixed the Plan day-tab blank-page regression by restoring the missing route-mile helper used only in single-day map mode.
 6. Fixed the Plan accordion regression where workspace-level CSS forced every day open and made the `+ / -` control appear broken.
 7. Added a shared visual foundation across Plan, Chat, Updates, Preferences, Members, and Invite.
-8. Synced the latest Trip preview build into `frontend/public/trip-app`.
+8. Polished the Cadensy landing header, Product section transition, My Trips rows, Invite panel, Updates empty state, Preferences selected interests, workspace logo/header, and Plan collaborators area.
+9. Synced the latest Trip preview build into `frontend/public/trip-app`.
 
 ## Why A UI Change Can Look "Unchanged"
 

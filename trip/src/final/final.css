@@ -1671,6 +1671,13 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   gap:12px!important;
   line-height:0!important;
 }
+.brandAssets{display:inline-flex;align-items:center;gap:12px;line-height:0;flex:none}
+.brandAssets .brandLogoMark{display:block;width:46px;height:46px;object-fit:contain;flex:none}
+.brandAssets .brandLogoWordmark{display:block;width:132px;height:auto;object-fit:contain;flex:none}
+.tripUnifiedBrand .brandBack{gap:12px!important}
+.tripUnifiedBrand .brandBack--return{display:inline-flex;align-items:center}
+.tripUnifiedBrand .brandBack .brandAssets{margin-right:4px}
+.tripUnifiedBrand .brandBack .backArrow{margin-left:2px}
 .brandLogoMark{
   display:block;
   width:46px;
@@ -1785,6 +1792,7 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
 .dashboardTripCard--compact .attentionDot{display:inline-flex;margin-top:7px;padding:0;border:0;background:transparent!important;color:var(--text-secondary)!important;font-size:10px;font-weight:620;letter-spacing:.05em;text-transform:uppercase}
 .dashboardTripCard--compact .dashboardTripBody>p{grid-column:1;margin:5px 0 0;font-size:12px}
 .dashboardTripCard--compact .cardFooter{grid-column:2;grid-row:1 / span 2;align-items:center;margin:0;padding:0 0 0 24px;border-top:0;border-left:1px solid rgba(86,119,153,.13)}
+.dashboardTripCard--compact .cardFooter{padding-right:24px}
 .dashboardTripCard--compact .cardFooter strong{color:var(--text-primary);white-space:nowrap}
 @media(max-width:800px){
   .homeContent{padding:36px 20px 72px}
@@ -4641,8 +4649,224 @@ body,
 .tripPage .inviteManager .shareHero:after{opacity:.08!important}
 .tripPage .linkPanel{padding:26px!important}
 
+/* Final UI pass: one quiet surface system across the workspace. */
+.tripPage .tripUnifiedHeader,
+.tripPage .editorialNav,
+.tripPage .inviteGlass{
+  min-height:82px!important;
+  padding:14px clamp(22px,3.2vw,48px)!important;
+  background:rgba(253,252,250,.94)!important;
+  border-bottom:1px solid var(--ws-border-soft)!important;
+  box-shadow:0 8px 26px rgba(45,83,111,.035)!important;
+}
+.tripPage .workspaceContent{max-width:1240px!important;padding:34px clamp(20px,3.2vw,44px) 88px!important}
+.tripPage .tripUnifiedHeader + .workspaceContent{padding-top:32px!important}
+.tripPage .tripUnifiedHeader .brandAssets .brandLogoMark{width:40px;height:40px}
+.tripPage .tripUnifiedHeader .brandAssets .brandLogoWordmark{width:116px}
+.tripPage .dashboardTripCard--compact .cardFooter{justify-content:flex-end;padding-right:28px}
+.tripPage .dashboardTripCard--compact .cardFooter strong{font-size:13px;letter-spacing:.01em}
+.tripPage .inviteManager{grid-template-columns:minmax(0,1.06fr) minmax(390px,.94fr)!important;gap:28px!important;max-width:1080px!important}
+.tripPage .inviteManager .shareHero{min-height:420px!important;padding:36px!important;border-radius:var(--ws-radius)!important}
+.tripPage .inviteManager .linkPanel{min-height:420px!important;padding:34px!important;border-radius:var(--ws-radius)!important;gap:22px!important}
+.tripPage .inviteManager .linkPanel input{min-height:52px;padding:14px 16px;border-radius:10px}
+.tripPage .inviteManager .copyActions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0}
+.tripPage .inviteManager .copyActions .btn{min-height:52px;width:100%}
+.tripPage .inviteManager .copyActions .btn:last-child{grid-column:1}
+.tripPage .updatesList .quietEmptyState{max-width:620px!important;margin:36px 0 0!important;padding:22px 0 0!important;border-top:1px solid var(--ws-border-soft)!important}
+.tripPage .updatesList .quietEmptyState h2{font-size:18px!important;font-weight:620!important}
+.tripPage .updatesList .quietEmptyState p{font-size:13px!important;color:var(--ws-muted)!important}
+.tripPage .updateFilters{margin-bottom:28px!important}
+@media(max-width:1100px){.tripPage .inviteManager{grid-template-columns:1fr!important}.tripPage .inviteManager .shareHero,.tripPage .inviteManager .linkPanel{min-height:0!important}}
+@media(max-width:760px){.tripPage .workspaceContent{padding:24px 18px 64px!important}.tripPage .tripUnifiedHeader,.tripPage .editorialNav{min-height:74px!important;padding:12px 18px!important}.tripPage .tripUnifiedHeader .brandAssets .brandLogoWordmark{width:100px}.tripPage .inviteManager .linkPanel{padding:24px!important}.tripPage .inviteManager .copyActions{grid-template-columns:1fr}.tripPage .inviteManager .copyActions .btn:last-child{grid-column:auto}.tripPage .dashboardTripCard--compact .cardFooter{padding-right:0}}
+
 @media(max-width:900px){
   .tripPage .workspaceContent{padding:24px 18px 48px!important}
+}
+
+/* Focused follow-up: protect the left navigation and keep utility states editorial. */
+.tripPage .tripUnifiedHeader{
+  grid-template-columns:minmax(310px,auto) minmax(0,1fr) auto!important;
+  gap:28px!important;
+}
+.tripPage .tripUnifiedBrand,
+.tripPage .tripUnifiedBrand .brandBack,
+.tripPage .tripUnifiedBrand .brandAssets{
+  min-width:0!important;
+  flex-shrink:0!important;
+}
+.tripPage .tripUnifiedBrand .brandBack--return{
+  white-space:nowrap!important;
+  flex-wrap:nowrap!important;
+}
+.tripPage .tripUnifiedBrand .brandBack--return>span:last-child{
+  white-space:nowrap!important;
+  flex:0 0 auto!important;
+}
+.tripPage .tripUnifiedBrand .brandAssets{flex:0 0 auto!important}
+
+.tripPage .updatesList .quietEmptyState{
+  display:block!important;
+  width:min(100%,760px)!important;
+  max-width:none!important;
+  min-height:180px!important;
+  margin:44px 0 0!important;
+  padding:24px 0 0!important;
+  border:0!important;
+  border-top:1px solid var(--ws-border-soft)!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  text-align:left!important;
+}
+.tripPage .updatesList .quietEmptyState>span{
+  display:block!important;
+  width:46px!important;
+  height:2px!important;
+  margin:0 0 18px!important;
+  border-radius:0!important;
+  background:var(--ws-ink)!important;
+}
+.tripPage .updatesList .quietEmptyState h2{
+  margin:0 0 7px!important;
+  color:var(--ws-ink)!important;
+  font-size:22px!important;
+  font-weight:560!important;
+  letter-spacing:-.02em!important;
+}
+.tripPage .updatesList .quietEmptyState p,
+.tripPage .updatesList .quietEmptyState small{
+  display:block!important;
+  max-width:520px!important;
+  margin:0!important;
+  color:var(--ws-muted)!important;
+  font-size:14px!important;
+  line-height:1.55!important;
+}
+.tripPage .updatesList .quietEmptyState small{
+  margin-top:6px!important;
+  font-size:12px!important;
+  opacity:.76;
+}
+
+.tripPage .dashboardTripCard--compact{
+  min-height:112px!important;
+}
+.tripPage .dashboardTripCard--compact .tripPhoto{
+  height:84px!important;
+  margin:14px 0!important;
+}
+.tripPage .dashboardTripCard--compact .dashboardTripBody{
+  grid-template-columns:minmax(0,1fr) auto!important;
+  padding:14px 0 14px 24px!important;
+  column-gap:24px!important;
+}
+.tripPage .dashboardTripCard--compact .dashboardTripBody>p{
+  margin:4px 0 0!important;
+}
+.tripPage .dashboardTripCard--compact .cardFooter{
+  grid-column:2!important;
+  grid-row:1 / span 2!important;
+  min-width:126px!important;
+  padding:0 28px 0 22px!important;
+  border-left:1px solid rgba(86,119,153,.13)!important;
+  border-top:0!important;
+}
+.tripPage .dashboardTripCard--compact .cardFooter strong{
+  margin:0!important;
+  white-space:nowrap!important;
+}
+
+.workspaceContent:has(.planSplit) .planCollaboratorStrip{
+  display:grid!important;
+  justify-items:start!important;
+  align-content:start!important;
+  gap:9px!important;
+  width:max-content!important;
+  min-width:0!important;
+  max-width:220px!important;
+  padding:3px 0!important;
+  transform:translateY(22px)!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip>span{
+  text-transform:none!important;
+  letter-spacing:0!important;
+  font-size:13px!important;
+  line-height:1.2!important;
+  font-weight:520!important;
+  color:var(--ws-ink)!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip .collaboratorMeta{
+  display:flex!important;
+  align-items:center!important;
+  gap:9px!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip .collaboratorMemberCount{
+  color:var(--ws-muted)!important;
+  font-size:12px!important;
+  font-weight:520!important;
+  white-space:nowrap!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip>a{
+  color:var(--ws-muted)!important;
+  font-size:12px!important;
+  font-weight:520!important;
+  white-space:nowrap!important;
+}
+.workspaceContent:has(.planSplit) .planCollaboratorStrip>a:hover{
+  color:var(--ws-ink)!important;
+}
+
+.styleGrid .styleTile{
+  position:relative!important;
+  overflow:hidden!important;
+  padding-right:44px!important;
+  transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,color .18s ease!important;
+}
+.styleGrid .styleTile span{transition:color .18s ease!important}
+.styleGrid .styleTile.selected{
+  border-color:var(--ws-ink)!important;
+  background:#e5eef4!important;
+  box-shadow:inset 0 0 0 1px var(--ws-ink),0 8px 18px rgba(45,83,111,.09)!important;
+}
+.styleGrid .styleTile.selected span{
+  color:var(--ws-ink)!important;
+  font-weight:720!important;
+}
+.styleGrid .styleTile.selected small{color:var(--ws-ink)!important;opacity:.82}
+.styleGrid .styleTileCheck{
+  position:absolute!important;
+  top:12px!important;
+  right:12px!important;
+  display:grid!important;
+  place-items:center!important;
+  width:22px!important;
+  height:22px!important;
+  border:1px solid var(--ws-border)!important;
+  border-radius:50%!important;
+  background:transparent!important;
+  color:transparent!important;
+  font-size:12px!important;
+  line-height:1!important;
+  opacity:0!important;
+  transform:scale(.8)!important;
+  transition:opacity .18s ease,transform .18s ease,background .18s ease,color .18s ease,border-color .18s ease!important;
+}
+.styleGrid .styleTile.selected .styleTileCheck{
+  opacity:1!important;
+  transform:scale(1)!important;
+  border-color:var(--ws-ink)!important;
+  background:var(--ws-ink)!important;
+  color:#fff!important;
+}
+
+@media(max-width:1180px){
+  .tripPage .tripUnifiedHeader{grid-template-columns:minmax(290px,auto) minmax(0,1fr) auto!important}
+}
+@media(max-width:760px){
+  .tripPage .tripUnifiedHeader{grid-template-columns:1fr auto!important}
+  .tripPage .tripUnifiedBrand{grid-column:1/-1!important}
+  .tripPage .dashboardTripCard--compact .dashboardTripBody{grid-template-columns:1fr!important;padding-left:16px!important}
+  .tripPage .dashboardTripCard--compact .cardFooter{grid-column:1!important;grid-row:auto!important;min-width:0!important;margin-top:10px!important;padding:10px 0 0!important;border-top:1px solid rgba(86,119,153,.13)!important;border-left:0!important}
 }
 
 /* Plan itinerary rhythm: quiet tints separate rows without turning them into cards. */

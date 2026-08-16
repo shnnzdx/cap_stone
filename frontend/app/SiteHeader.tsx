@@ -4,8 +4,26 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import BrandLogo from "./BrandLogo";
 import SessionAwareLink from "./SessionAwareLink";
+import { createSessionRuntime } from "../../shared/session-runtime/index.js";
 
 const links = [["Product", "/"], ["How It Works", "/how-it-works"], ["Privacy", "/privacy"], ["FAQ", "/faq"]];
+const sessionRuntime = createSessionRuntime();
+
+function AuthActions({ mobile = false, onClick }: { mobile?: boolean; onClick?: () => void }) {
+  const [signedIn, setSignedIn] = useState(() => sessionRuntime.restoreTechnicalSession().facts.kind === "account");
+  useEffect(() => {
+    setSignedIn(sessionRuntime.restoreTechnicalSession().facts.kind === "account");
+  }, []);
+
+  if (signedIn) {
+    return <SessionAwareLink className={mobile ? "button dark" : "button dark compact"} fallbackHref="/trip" fallbackLabel="Open trip" signedInLabel="Open trip" onClick={onClick} />;
+  }
+
+  return <>
+    <SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" />
+    <SessionAwareLink className={mobile ? "button dark" : "button dark compact"} fallbackHref="/signup?next=/trips/new" fallbackLabel="Sign up" signedInLabel="Open trip" onClick={onClick} />
+  </>;
+}
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false);
@@ -88,13 +106,13 @@ export default function SiteHeader() {
     <nav className="shell nav" aria-label="Main navigation">
       <Link className="brand" href="/"><BrandLogo tone={isOnDark ? "light" : "default"} /></Link>
       <div className="nav-links">{links.map(([label, href]) => <Link href={href} key={href}>{label}</Link>)}</div>
-      <div className="nav-actions"><SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" /><SessionAwareLink className="button dark compact" fallbackHref="/signup?next=/trips/new" fallbackLabel="Create a trip" signedInLabel="Open trip" /></div>
+      <div className="nav-actions"><AuthActions /></div>
       <button className="menu-toggle" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)}><i /><i /><i /></button>
     </nav>
     <div className={`mobile-menu ${open ? "is-open" : ""}`} aria-hidden={!open}>
       <div className="mobile-menu-bar"><Link className="brand" href="/" onClick={() => setOpen(false)}><BrandLogo /></Link><button type="button" aria-label="Close navigation" onClick={() => setOpen(false)}>×</button></div>
       <nav aria-label="Mobile navigation">{links.map(([label, href], index) => <Link href={href} key={href} onClick={() => setOpen(false)}><span>0{index + 1}</span>{label}<i>↗</i></Link>)}</nav>
-      <div className="mobile-menu-actions"><SessionAwareLink fallbackHref="/login" fallbackLabel="Log in" signedInLabel="Open trip" onClick={() => setOpen(false)} /><SessionAwareLink className="button dark" fallbackHref="/signup?next=/trips/new" fallbackLabel="Create a trip" signedInLabel="Open trip" onClick={() => setOpen(false)} /></div>
+      <div className="mobile-menu-actions"><AuthActions mobile onClick={() => setOpen(false)} /></div>
     </div>
   </header>;
 }

@@ -20,23 +20,13 @@ export default function ProductSectionTransitions() {
     const audienceIcons = gsap.utils.toArray<HTMLElement>(".people-v2__audience-icon");
     const audienceDescriptions = gsap.utils.toArray<HTMLElement>(".people-v2__audience-copy p");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const productPage = document.querySelector<HTMLElement>(".product-page");
-    const sectionRadius = Number.parseFloat(productPage ? getComputedStyle(productPage).getPropertyValue("--radius-section") : "28") || 28;
 
     if (decision && decisionStage && particleMap && shared && revealSurface && sharedEyebrow && sharedTitle && audiences.length) {
       if (reduced) {
         gsap.set([shared, decisionStage, particleMap, sharedEyebrow, sharedTitle, ...audiences, ...audienceIcons, ...audienceDescriptions], { clearProps: "all" });
         gsap.set(revealSurface, { autoAlpha: 0 });
       } else {
-        const initialWindow = () => {
-          const mobile = window.innerWidth <= 760;
-          const width = mobile ? Math.min(220, window.innerWidth * 0.62) : Math.min(280, Math.max(240, window.innerWidth * 0.15));
-          const height = mobile ? 140 : Math.min(180, Math.max(150, window.innerHeight * 0.18));
-          const centerX = window.innerWidth * (mobile ? 0.58 : 0.64);
-          const centerY = window.innerHeight * (mobile ? 0.66 : 0.64);
-
-          return `inset(${Math.max(0, centerY - height / 2)}px ${Math.max(0, window.innerWidth - centerX - width / 2)}px ${Math.max(0, window.innerHeight - centerY - height / 2)}px ${Math.max(0, centerX - width / 2)}px round ${sectionRadius}px)`;
-        };
+        const initialWindow = "inset(100% 0 0 0)";
 
         gsap.set(revealSurface, { autoAlpha: 0, clipPath: initialWindow });
         gsap.set(shared, { "--people-section-surface": "transparent" });
@@ -59,11 +49,11 @@ export default function ProductSectionTransitions() {
           .fromTo(revealSurface, {
             clipPath: initialWindow,
           }, {
-            clipPath: "inset(0% 0% 0% 0% round 0px 0px 0px 0px)",
-            duration: 0.72,
+            clipPath: "inset(0% 0% 0% 0%)",
+            duration: 0.9,
           }, 0)
-          .to(decisionStage, { scale: 0.982, autoAlpha: 0.58, transformOrigin: "center top", duration: 0.68 }, 0)
-          .to(particleMap, { autoAlpha: 0.12, scale: 0.984, duration: 0.5 }, 0.04)
+          .to(decisionStage, { y: -18, scale: 0.988, autoAlpha: 0.5, transformOrigin: "center top", duration: 0.8 }, 0)
+          .to(particleMap, { y: -10, autoAlpha: 0.12, scale: 0.988, duration: 0.62 }, 0.04)
           .to(sharedEyebrow, { autoAlpha: 1, y: 0, duration: 0.13 }, 0.44)
           .to(sharedTitle, { autoAlpha: 1, y: 0, scale: 1, clipPath: "inset(0 0 0% 0)", duration: 0.18 }, 0.56)
           .set(shared, { "--people-section-surface": "var(--surface-people)" }, 0.92)

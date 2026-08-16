@@ -2435,7 +2435,8 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
 /* Cadensy section surfaces: soft tonal handoffs without changing chapter geometry. */
 .shared-needs-reveal-surface{
   position:fixed;
-  inset:0;
+  inset:auto 0 0;
+  height:100%;
   z-index:4;
   pointer-events:none;
   visibility:hidden;
@@ -2447,6 +2448,8 @@ h1,h2,h3,strong,.brand,.button,.nav{font-weight:400}
     var(--surface-people);
   background-size:84px 84px,84px 84px,auto,auto;
   will-change:clip-path,opacity;
+  border-radius:52px 52px 0 0;
+  box-shadow:0 -24px 70px rgba(76,108,96,.08);
 }
 
 .product-page .product-overview{

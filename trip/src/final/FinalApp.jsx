@@ -169,6 +169,13 @@ function Logo() {
   </Link>
 }
 
+function BrandAssets({ className = '' }) {
+  return <span className={`brandAssets ${className}`.trim()} aria-hidden="true">
+    <img className="brandLogoMark" src="/images/cadensy-mark.png" alt="" />
+    <img className="brandLogoWordmark" src="/images/cadensy-wordmark.png" alt="" />
+  </span>
+}
+
 function Badge({ children, tone = 'neutral' }) {
   return <span className={`badge badge-${tone}`}>{children}</span>
 }
@@ -268,7 +275,7 @@ function DashboardCard({ title, location, dates, status, tone, tripCover, detail
       <Link className="dashboardTripBody dashboardTripBodyLink" to={destinationHref} onClick={onOpen} aria-label={`Open ${title}`}>
         <div className="tripTitle"><h2>{title}</h2>{detail && <span className="attentionDot">{detail}</span>}</div>
         <p>{location} · {dates}</p>
-        <div className="cardFooter"><span>{detail || 'No action needed'}</span><strong>{action} →</strong></div>
+        <div className="cardFooter">{variant !== 'compact' && <span>{detail || 'No action needed'}</span>}<strong>{action} →</strong></div>
       </Link>
   </article>
 }
@@ -429,7 +436,7 @@ function Home() {
               status={created.status || 'Planning'}
               tone="orange"
               tripCover={created}
-              detail={created.next_item_title || 'Open workspace'}
+              detail={created.next_item_title && created.next_item_title !== 'Open workspace' ? created.next_item_title : null}
               action="View trip"
               to={tripHref(created.id, 'plan')}
               onOpen={() => openDashboardTrip(created)}
@@ -461,7 +468,7 @@ function TripShell({ children }) {
 function MissingTripShell() {
   return <div className="tripPage">
     <header className="tripUnifiedHeader">
-      <div className="tripUnifiedBrand"><Link className="brandBack" to={workspaceHomeHref()}><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link></div>
+      <div className="tripUnifiedBrand"><Link className="brandBack brandBack--return" to={workspaceHomeHref()}><BrandAssets /><span className="backArrow">←</span><span>My Trips</span></Link></div>
       <div className="tripUnifiedCenter"><div className="tripUnifiedTitleRow"><h1>Trip not found</h1></div></div>
       <div className="tripUnifiedRight"><Account/></div>
     </header>
@@ -488,8 +495,8 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
       {/* The trip logo and My Trips used to link to the same place; merge them into one return entry. */}
       <div className="tripUnifiedBrand">
         {!navigation.contextHref
-          ? <span className="brandBack" aria-label="Cadensy"><span className="logoMark">C</span><span>Cadensy</span></span>
-          : <Link className="brandBack" to={navigation.contextHref}><span className="logoMark">T</span><span className="backArrow">←</span><span>My Trips</span></Link>}
+          ? <span className="brandBack" aria-label="Cadensy"><BrandAssets /></span>
+          : <Link className="brandBack brandBack--return" to={navigation.contextHref}><BrandAssets /><span className="backArrow">←</span><span>My Trips</span></Link>}
       </div>
       <div className="tripUnifiedCenter">
         <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
@@ -845,7 +852,7 @@ function UpdatesPage() {
   const pendingProposals = (app.activeProposals || []).filter(proposal => ['waiting_affected_members', 'escalated'].includes(proposal.status))
   const hasActions = openRounds.length > 0 || pendingProposals.length > 0
   return <TripShell>
-    <div className="pageHeading editorialPageHeading"><div><h1>Trip notes</h1></div></div>
+      <div className="pageHeading editorialPageHeading"><div><h1>Trip notes</h1></div></div>
     <div className="updateFilters editorialUpdateTabs">
       <button className={app.updateFilter === 'all' ? 'active' : ''} onClick={() => app.setUpdateFilter('all')}>All</button>
       <button className={app.updateFilter === 'forYou' ? 'active' : ''} onClick={() => app.setUpdateFilter('forYou')}>For you</button>
@@ -855,7 +862,7 @@ function UpdatesPage() {
     {app.error && <div className="planNotice"><span>!</span><div><strong>Backend request failed</strong><p>{app.error}</p></div><button type="button" onClick={app.refreshAll}>Retry</button></div>}
     <section className="updatesList">
       {app.updateFilter === 'actions' && <>
-        {!hasActions && <div className="emptyState quietEmptyState"><span></span><h2>No actions right now</h2></div>}
+        {!hasActions && <div className="emptyState quietEmptyState"><span></span><h2>You're all caught up.</h2><p>No decisions need your attention right now.</p><small>New votes, confirmations, or conflicts will appear here.</small></div>}
         {openRounds.map(round => <DecisionRoundCard key={round.id} round={round}/>)}
         {pendingProposals.map(proposal => <article className="decisionCard" key={proposal.id}>
           <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can split or clear this block.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
@@ -1113,7 +1120,7 @@ function PreferencesPage() {
         </div>
         <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Only Cadensy' }, { value: 'organizer', label: 'Organizer too' }, { value: 'everyone', label: 'Whole group' }]}/>
         <CustomSelect className="wide" label="Preferred pace" value={form.pace} onChange={value => set('pace', value)} options={['Relaxed', 'Balanced', 'Full schedule'].map(option => ({ value: option, label: option }))}/>
-        <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={() => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small></button>)}</div></div>
+        <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={() => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small><b className="styleTileCheck" aria-hidden="true">✓</b></button>)}</div></div>
 
         <div className="wide needsPanel">
           <label>Things that are not negotiable</label>
