@@ -1,9 +1,19 @@
+from contextlib import contextmanager
+
 from app.db.models import MemberConstraint, Plan, PlanItem, Preference, Trip, TripMembership, User
-from app.db.upsert_demo_seed import upsert_demo_seed
+from app.db import upsert_demo_seed as seed_module
 
 
-def test_upsert_demo_seed_creates_demo_dataset(db):
-    result = upsert_demo_seed()
+@contextmanager
+def _session_override(db):
+    yield db
+
+
+def test_upsert_demo_seed_creates_demo_dataset(db, monkeypatch):
+    monkeypatch.setattr(seed_module, "SessionLocal", lambda: _session_override(db))
+    monkeypatch.setattr(seed_module, "ensure_cloud_schema", lambda: None)
+
+    result = seed_module.upsert_demo_seed()
 
     assert result["updated"] is True
     assert result["members"] == 6
@@ -43,9 +53,12 @@ def test_upsert_demo_seed_creates_demo_dataset(db):
     assert len(constraints) == 3
 
 
-def test_upsert_demo_seed_is_idempotent(db):
-    first = upsert_demo_seed()
-    second = upsert_demo_seed()
+def test_upsert_demo_seed_is_idempotent(db, monkeypatch):
+    monkeypatch.setattr(seed_module, "SessionLocal", lambda: _session_override(db))
+    monkeypatch.setattr(seed_module, "ensure_cloud_schema", lambda: None)
+
+    first = seed_module.upsert_demo_seed()
+    second = seed_module.upsert_demo_seed()
 
     assert first["trip_id"] == second["trip_id"]
     assert first["plan_id"] == second["plan_id"]
