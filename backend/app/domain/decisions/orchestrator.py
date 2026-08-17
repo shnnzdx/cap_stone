@@ -365,13 +365,19 @@ def _guard_not_pending(db: Session, item: PlanItem) -> None:
         )
 
 
-def _changed_item_window(item: PlanItem, patch: dict) -> tuple[date, float, float | None]:
+# Generated itineraries do not always carry a duration. The planner already
+# treats a missing one as 90 minutes, so overlap detection uses the same
+# assumption instead of silently skipping the block it cannot measure.
+DEFAULT_BLOCK_MINUTES = 90
+
+
+def _changed_item_window(item: PlanItem, patch: dict) -> tuple[date, float, float]:
     day_date = patch.get("day_date", item.day_date)
     start_hour = float(patch.get("start_hour", item.start_hour))
     duration_value = patch.get("duration_min", item.duration_min)
-    duration_min = int(duration_value) if duration_value is not None else None
-    if duration_min is None:
-        return day_date, start_hour, None
+    duration_min = (
+        int(duration_value) if duration_value is not None else DEFAULT_BLOCK_MINUTES
+    )
     return day_date, start_hour, start_hour + duration_min / 60
 
 
@@ -381,8 +387,6 @@ def _overlaps(left_start: float, left_end: float, right_start: float, right_end:
 
 def _schedule_conflict_item(db: Session, item: PlanItem, patch: dict) -> PlanItem | None:
     day_date, start_hour, end_hour = _changed_item_window(item, patch)
-    if end_hour is None:
-        return None
     peers = db.scalars(
         select(PlanItem)
         .where(
@@ -393,9 +397,7 @@ def _schedule_conflict_item(db: Session, item: PlanItem, patch: dict) -> PlanIte
         .order_by(PlanItem.start_hour)
     ).all()
     for peer in peers:
-        if peer.duration_min is None:
-            continue
-        peer_end = peer.start_hour + peer.duration_min / 60
+        peer_end = peer.start_hour + (peer.duration_min or DEFAULT_BLOCK_MINUTES) / 60
         if _overlaps(start_hour, end_hour, peer.start_hour, peer_end):
             return peer
     return None

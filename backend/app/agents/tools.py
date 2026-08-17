@@ -147,7 +147,9 @@ def build_read_only_trip_tools(
                 "The day can be an ISO date, a day index such as 'day 2', a weekday "
                 "name, or 'all'. Returns each item's id, title, place, start time, "
                 "end time, and duration, plus date, settledness, meal flag, price, "
-                "and safe tags."
+                "and safe tags. An item without a recorded duration is scheduled as "
+                "90 minutes, so its end time is an estimate and duration_assumed is "
+                "true. Treat that end time as the slot the item occupies."
             ),
             parameters={
                 "type": "object",
@@ -518,7 +520,13 @@ def _get_trip_facts(db: Session, trip_id: str) -> dict[str, Any]:
 
 
 def _safe_item(item: PlanItem) -> dict[str, Any]:
-    end_hour = _end_hour(item.start_hour, item.duration_min)
+    # Scheduling already treats a missing duration as DEFAULT_BLOCK_MINUTES, so the
+    # end time reported here uses the same assumption. Reporting no end time at all
+    # let the model read an unknown duration as zero and propose a slot the overlap
+    # check then rejects. duration_min stays the real stored value and
+    # duration_assumed marks when the end time is an estimate rather than a fact.
+    effective_duration = item.duration_min or orchestrator.DEFAULT_BLOCK_MINUTES
+    end_hour = _end_hour(item.start_hour, effective_duration)
     return {
         "id": item.id,
         "title": item.title,
@@ -528,9 +536,10 @@ def _safe_item(item: PlanItem) -> dict[str, Any]:
         "start_hour": item.start_hour,
         "start_time_label": _hour_label(item.start_hour),
         "end_hour": end_hour,
-        "end_time_label": _hour_label(end_hour) if end_hour is not None else None,
+        "end_time_label": _hour_label(end_hour),
         "time_range_label": _time_range_label(item.start_hour, end_hour),
         "duration_min": item.duration_min,
+        "duration_assumed": item.duration_min is None,
         "price_per_person": item.price_per_person,
         "settledness": item.settledness,
         "is_meal": item.is_meal,
@@ -1002,8 +1011,10 @@ def _replacement_candidates(
     selected: PlanItem,
     places: tuple[place_service.PlannerPlace, ...],
 ) -> tuple[dict[str, Any], ...]:
-    if selected.duration_min is None:
-        return ()
+    # A generated itinerary may not carry a duration. It is only needed to check
+    # a candidate against opening hours, so fall back to the same 90 minutes the
+    # planner assumes rather than returning no candidates at all.
+    selected_duration = selected.duration_min or orchestrator.DEFAULT_BLOCK_MINUTES
     existing_titles = {_normalize_title(item.title) for item in items if item.id != selected.id}
     candidates: list[dict[str, Any]] = []
     for place in places:
@@ -1024,7 +1035,7 @@ def _replacement_candidates(
         if not _time_block_is_supported(
             intervals,
             selected.start_hour,
-            selected.duration_min,
+            selected_duration,
         ):
             continue
         opens = closes = None

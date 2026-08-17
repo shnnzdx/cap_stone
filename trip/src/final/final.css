@@ -4965,3 +4965,65 @@ body,
     display:none;
   }
 }
+
+/* Assistant compromise options inside the change drawer.
+   Reuses .roundOption so a drafted option looks the same here as on a ballot.
+   The narrow drawer stacks them instead of using the 3-column ballot grid. */
+.assistantOptions{
+  width:min(100%,620px);
+  margin:0 auto 26px;
+}
+.assistantOptionsLabel{
+  display:block;
+  margin-bottom:8px;
+  color:#8a8378;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.assistantOptionList{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:8px;
+}
+.assistantOption{
+  width:100%;
+  cursor:pointer;
+}
+.assistantOption:disabled{
+  cursor:default;
+}
+.assistantOption.chosen{
+  border-color:var(--text-primary)!important;
+  background:#faf9f6!important;
+}
+.assistantOptionTradeoff{
+  display:block;
+  margin-top:8px;
+  color:#7b746a;
+  font-size:11px;
+  font-style:italic;
+  line-height:1.4;
+}
+.assistantOptionNote{
+  margin:8px 0 0;
+  color:#7b746a;
+  font-size:12px;
+}
+
+/* Two things hid the item menu on the last stop of a day, because the menu opens
+   downward and the next day's card sits right below it.
+   1. The day body keeps overflow hidden so the expand/collapse height animation
+      does not leak, which clipped the menu.
+   2. The day body is transformed, so it owns a stacking context and the menu could
+      not paint above a later day no matter how high its own z-index was.
+   Both are released only while a menu is actually open, so every other frame keeps
+   the original animation and layering. */
+.accordionDay.open .accordionInner:has(.actionMenu){
+  overflow:visible;
+}
+.accordionDay:has(.actionMenu){
+  position:relative;
+  z-index:100;
+}

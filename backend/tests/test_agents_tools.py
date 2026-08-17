@@ -450,6 +450,42 @@ def test_get_current_plan_returns_deterministic_end_times(db, full_trip):
     assert art["time_range_label"] == "2:00 PM-4:30 PM"
 
 
+def test_item_without_duration_reports_the_scheduled_block_as_an_estimate(db, full_trip):
+    """A generated itinerary carries no duration, and scheduling treats that as 90
+    minutes. The model has to see the same block or it proposes a slot the overlap
+    check then rejects."""
+    db.add(
+        PlanItem(
+            plan_id=full_trip["plan"].id,
+            day_index=3,
+            day_date=date(2026, 8, 16),
+            start_hour=15.0,
+            duration_min=None,
+            title="Generated stop without duration",
+            place="Somewhere",
+        )
+    )
+    db.flush()
+    tools = _tools_by_name(db, full_trip)
+
+    plan = tools["get_current_plan"].handler(day="all")
+    items = {
+        item["title"]: item for day in plan["days"] for item in day["items"]
+    }
+
+    generated = items["Generated stop without duration"]
+    assert generated["duration_min"] is None
+    assert generated["duration_assumed"] is True
+    assert generated["end_hour"] == 16.5
+    assert generated["end_time_label"] == "4:30 PM"
+    assert generated["time_range_label"] == "3:00 PM-4:30 PM"
+
+    recorded = items["Art Institute of Chicago"]
+    assert recorded["duration_min"] == 150
+    assert recorded["duration_assumed"] is False
+    assert recorded["end_hour"] == 16.5
+
+
 def test_propose_options_returns_real_item_ids_and_structured_patches(db, full_trip):
     db.add(
         PlanItem(

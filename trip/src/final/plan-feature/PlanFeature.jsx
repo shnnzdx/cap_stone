@@ -524,6 +524,32 @@ function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognize
   </div>
 }
 
+// Compromise options the assistant drafted alongside the requested change.
+// Picking one re-checks it on its own before anything is submitted, so a member
+// can find a change that needs no group decision without opening a round first.
+function CandidateOptionList({ message, onSelect }) {
+  const options = message.candidateOptions || []
+  if (!options.length || message.applied) return null
+  const busy = message.applying || message.classifyingCandidate
+  return <div className="assistantOptions">
+    <span className="assistantOptionsLabel">Cadensy also drafted</span>
+    <div className="assistantOptionList">
+      {options.map(option => <button
+        key={option.id}
+        type="button"
+        className={cx('roundOption', 'assistantOption', message.selectedCandidateId === option.id && 'chosen')}
+        disabled={busy}
+        onClick={() => onSelect(message, option)}
+      >
+        <strong>{option.title || option.label || 'Alternative'}</strong>
+        {(option.tradeoff || option.body) && <span className="assistantOptionTradeoff">{option.tradeoff || option.body}</span>}
+      </button>)}
+    </div>
+    {message.classifyingCandidate && <p className="assistantOptionNote">Checking that option...</p>}
+    {message.selectionNote && <p className="assistantOptionNote">{message.selectionNote}</p>}
+  </div>
+}
+
 function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, inline = false }) {
   const app = useTripApp()
   const memberCount = app.trip?.people || 1
@@ -561,6 +587,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
             onApply={() => actions.applyProposal(message, message.proposedChange)}
             onDismiss={() => actions.dismissProposal(message.id)}
           />}
+          <CandidateOptionList message={message} onSelect={actions.selectCandidateOption} />
         </div>)}
         {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
