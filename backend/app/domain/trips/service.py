@@ -144,15 +144,23 @@ def list_user_trips(
         .where(TripMembership.user_id == user.id)
         .order_by(TripMembership.created_at)
     ).all()
+    display_memberships = list(memberships)
     if priority_trip_id:
-        memberships.sort(key=lambda row: row.trip_id != priority_trip_id)
+        display_memberships.sort(key=lambda row: row.trip_id != priority_trip_id)
 
-    trips: list[dict] = []
-    cover_fetches = 0
-    for my_membership in memberships:
-        trip = db.get(Trip, my_membership.trip_id)
+    membership_trip_rows: list[tuple[TripMembership, Trip]] = []
+    unique_trips: dict[str, Trip] = {}
+    for membership in display_memberships:
+        trip = db.get(Trip, membership.trip_id)
         if trip is None:
             continue
+        membership_trip_rows.append((membership, trip))
+        unique_trips[trip.id] = trip
+
+    cover_fetches = 0
+    # Lock trips in a stable order so concurrent dashboard requests cannot deadlock
+    # when they prioritize different trips at the UI layer.
+    for trip in sorted(unique_trips.values(), key=lambda row: row.id):
         if cover_fetches < MAX_COVER_FETCHES_PER_DASHBOARD_REQUEST:
             previous_fetch = trip.cover_image_fetched_at
             previous_url = trip.cover_image_url
@@ -163,6 +171,8 @@ def list_user_trips(
             ):
                 cover_fetches += 1
 
+    trips: list[dict] = []
+    for my_membership, trip in membership_trip_rows:
         member_count = db.scalar(
             select(func.count())
             .select_from(TripMembership)

@@ -26,6 +26,7 @@ from app.db.models import (
     User,
     Vote,
 )
+from app.domain.trips import service as trip_service
 
 
 @pytest.fixture
@@ -271,6 +272,32 @@ def test_list_trips_returns_only_current_users_trips(
     assert trips[first_trip.id]["cover_attribution_name"] == "A Photographer"
     assert trips[first_trip.id]["cover_image_source"] == "unsplash"
     assert trips[second_trip.id]["next_item_title"] is None
+
+
+def test_list_trips_fetches_covers_in_stable_trip_id_order_even_when_priority_changes(
+    client: TestClient, api_session: Session, monkeypatch
+):
+    user = _user(api_session, "Mia")
+    first_trip, auth_membership = _trip_with_member(
+        api_session, user, name="Alpha", role="organizer"
+    )
+    second_trip, _ = _trip_with_member(api_session, user, name="Beta")
+
+    seen_trip_ids: list[str] = []
+
+    def fake_ensure_trip_cover(_db: Session, trip: Trip) -> bool:
+        seen_trip_ids.append(trip.id)
+        return False
+
+    monkeypatch.setattr(trip_service.cover_service, "ensure_trip_cover", fake_ensure_trip_cover)
+
+    response = client.get(
+        f"/api/trips?priority_trip_id={second_trip.id}",
+        headers={"X-Membership-Id": auth_membership.id},
+    )
+
+    assert response.status_code == 200
+    assert seen_trip_ids == sorted([first_trip.id, second_trip.id])
 
 
 def test_guest_cannot_list_trips(client: TestClient, api_session: Session):
