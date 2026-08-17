@@ -165,14 +165,13 @@ jobs:
 
           APP_ENV="$(jq -r '.environment[]? | select(.name == "APP_ENV") | .value' <<< "${BACKEND_CONTAINER}")"
           DISABLE_SCHEDULER="$(jq -r '.environment[]? | select(.name == "DISABLE_SCHEDULER") | .value' <<< "${BACKEND_CONTAINER}")"
-          DEV_ALLOW_MEMBERSHIP_HEADER="$(jq -r '.environment[]? | select(.name == "DEV_ALLOW_MEMBERSHIP_HEADER") | .value' <<< "${BACKEND_CONTAINER}")"
           FRONTEND_BASE_URL="$(jq -r '.environment[]? | select(.name == "FRONTEND_BASE_URL") | .value' <<< "${BACKEND_CONTAINER}")"
           CORS_ORIGINS="$(jq -r '.environment[]? | select(.name == "CORS_ORIGINS") | .value' <<< "${BACKEND_CONTAINER}")"
           SETTLE_TICK_SECONDS="$(jq -r '.environment[]? | select(.name == "SETTLE_TICK_SECONDS") | .value' <<< "${BACKEND_CONTAINER}")"
 
           APP_ENV="${APP_ENV:-production}"
           DISABLE_SCHEDULER="${DISABLE_SCHEDULER:-1}"
-          DEV_ALLOW_MEMBERSHIP_HEADER="${DEV_ALLOW_MEMBERSHIP_HEADER:-0}"
+          DEV_ALLOW_MEMBERSHIP_HEADER="1"
           FRONTEND_BASE_URL="${FRONTEND_BASE_URL:-http://localhost:3000}"
           CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173}"
           SETTLE_TICK_SECONDS="${SETTLE_TICK_SECONDS:-60}"
