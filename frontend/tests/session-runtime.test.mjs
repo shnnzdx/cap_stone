@@ -284,6 +284,38 @@ test("adoptTechnicalTripContext supports guest adoption, account trip switching,
   });
 });
 
+test("adoptTechnicalTripContext can force guest invite adoption over an existing account token", () => {
+  const storage = createMemoryStorage();
+  const runtime = createSessionRuntime({ storage });
+  runtime.adoptAccountAuth({
+    token: "organizer-token",
+    activeTripId: "t-organizer",
+    membershipId: "m-organizer",
+  });
+
+  const adopted = runtime.adoptTechnicalTripContext({
+    activeTripId: "t-invite",
+    membershipId: "m-invite",
+    inviteToken: "invite-guest",
+    forceGuest: true,
+  });
+
+  assert.deepEqual(adopted, {
+    facts: {
+      kind: "guest",
+      activeTripId: "t-invite",
+      membershipId: "m-invite",
+    },
+    warnings: [],
+  });
+  assert.equal(storage.dump()["tripsync:authToken"], undefined);
+  assert.deepEqual(runtime.restoreTechnicalSession().facts, {
+    kind: "guest",
+    activeTripId: "t-invite",
+    membershipId: "m-invite",
+  });
+});
+
 test("readInviteAdoption returns null for missing or malformed cache records", () => {
   const storage = createMemoryStorage({
     "tripsync:invite:good": JSON.stringify({ tripId: "t-1", membershipId: "m-1" }),

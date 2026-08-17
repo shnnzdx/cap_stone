@@ -489,7 +489,7 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
   }), [app.activeTripId, currentTrip, currentUser, location.pathname])
   // The organizer is not a super-user; they only get extra controls for maintaining the shared frame.
   // Plan, Chat, Updates, and Preferences are identical across the three roles.
-  const isGuest = currentUser.role === 'guest'
+  const isGuest = currentUser.isGuest
   return <div className="tripPage">
     <header className="tripUnifiedHeader">
       {/* The trip logo and My Trips used to link to the same place; merge them into one return entry. */}
@@ -1340,7 +1340,7 @@ function InvitePage() {
       </TripCoverHero>
       <section className="linkPanel">
         <div><span className="roleChip">{app.inviteCopied ? 'Link copied' : 'Ready to share'}</span><h2>{currentTrip.name}</h2><p>{currentTrip.destination} · {currentTrip.dates}</p></div>
-        <label>Invite link<input readOnly value={loadingInvite ? 'Creating link...' : inviteError || inviteUrl}/></label>
+        <label>Invite link<textarea className="inviteLinkField" readOnly rows={2} value={loadingInvite ? 'Creating link...' : inviteError || inviteUrl}/></label>
         <div className="copyActions"><Button disabled={!inviteUrl} onClick={copyLink}>{app.inviteCopied ? 'Copied' : 'Copy link'}</Button><Button secondary onClick={() => navigate(tripHref(currentTrip.id, 'preferences'))}>Start planning</Button>{invite && <Button ghost onClick={revokeLink}>Revoke link</Button>}</div>
         {app.inviteCopied && <div className="copiedState"><strong>Link ready to share</strong></div>}
         {inviteError && <div className="copiedState"><strong>{inviteError}</strong></div>}
@@ -1441,7 +1441,7 @@ function JoinInvitePage() {
         profile: {
           name: name.trim(),
           email: withAccount ? email.trim() : null,
-          role: withAccount ? joined.role : 'guest',
+          role: joined.role || 'participant',
           isGuest: !withAccount,
         },
       })
@@ -1449,7 +1449,7 @@ function JoinInvitePage() {
         currentRoutePath: joinHref(token),
         currentUser: {
           tripId: joined.trip_id,
-          role: withAccount ? joined.role : 'guest',
+          role: joined.role || 'participant',
           isGuest: !withAccount,
         },
         activeTrip: {

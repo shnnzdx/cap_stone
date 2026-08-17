@@ -639,11 +639,18 @@ export function TripAppProvider({ children }) {
   }, [sessionRuntime])
 
   const adoptTechnicalTripContext = useCallback(({ membershipId: nextMembershipId, tripId: nextTripId, inviteToken, profile }) => {
+    const forceGuest = Boolean(profile?.isGuest)
     sessionRuntime.adoptTechnicalTripContext({
       membershipId: nextMembershipId,
       activeTripId: nextTripId,
       ...(inviteToken ? { inviteToken } : {}),
+      ...(forceGuest ? { forceGuest: true } : {}),
     })
+    if (forceGuest) {
+      setHasAccountSession(false)
+      setTripSummaries([])
+      setTripSummariesStatus('not-needed')
+    }
     setMembershipId(nextMembershipId)
     setActiveTripId(nextTripId)
     if (profile) {
@@ -653,9 +660,9 @@ export function TripAppProvider({ children }) {
         name: profile.name || 'Guest',
         initials: profile.initials || initialsFor(profile.name),
         email: profile.email || null,
-        role: profile.role || 'guest',
+        role: profile.role || 'participant',
         tripId: nextTripId,
-        isGuest: Boolean(profile.isGuest),
+        isGuest: forceGuest,
       })
     }
   }, [sessionRuntime])

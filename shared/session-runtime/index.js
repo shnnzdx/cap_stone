@@ -110,6 +110,7 @@ class SessionRuntimeContractError extends Error {
  *   activeTripId: string,
  *   membershipId: string,
  *   inviteToken?: string | null,
+ *   forceGuest?: boolean,
  * }} TechnicalTripContextAdoptionInput
  *
  * @typedef {"account" | "trip" | "membership-compat"} RequestScope
@@ -228,14 +229,19 @@ export function createSessionRuntime(options = {}) {
       INVALID_INVITE_TOKEN,
       "inviteToken must be a non-empty string when provided.",
     );
+    const forceGuest = input?.forceGuest === true;
 
     const warnings = [];
+    if (forceGuest) {
+      privateAccountToken = null;
+      clearAccountAuthMaterial(warnings);
+    }
     persistTripContext(activeTripId, membershipId, warnings);
     if (inviteToken) {
       writeInviteCache(inviteToken, { activeTripId, membershipId }, warnings);
     }
 
-    const facts = privateAccountToken
+    const facts = !forceGuest && privateAccountToken
       ? {
           kind: "account",
           accountAuth: true,
@@ -521,6 +527,15 @@ export function createSessionRuntime(options = {}) {
     if (!storage) return;
     removeItem(storage, AUTH_TOKEN_KEY, warnings);
     clearTripContextMaterial(warnings);
+  }
+
+  /**
+   * @param {string[]} warnings
+   */
+  function clearAccountAuthMaterial(warnings) {
+    const storage = resolveStorageCapability(options.storage, warnings);
+    if (!storage) return;
+    removeItem(storage, AUTH_TOKEN_KEY, warnings);
   }
 
   /**
