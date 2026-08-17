@@ -3,11 +3,65 @@ from __future__ import annotations
 from datetime import date, timedelta
 from uuid import uuid4
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.db.models import MemberConstraint, Plan, Trip, TripMembership, User
 from app.domain.plans import generator
+from app.domain.places.service import PlannerPlace
 from app.domain.preferences import service as pref
+
+
+def _default_solo_places() -> tuple[PlannerPlace, ...]:
+    rows = []
+    for index in range(18):
+        rows.append(
+            PlannerPlace(
+                candidate_id=f"solo-sight-{index}",
+                name=f"Solo Attraction {index}",
+                location="Chicago",
+                latitude=41.80 + index / 500,
+                longitude=-87.60 - index / 500,
+                category="tourism.attraction",
+                address="Chicago",
+                image_url=None,
+                opening_hours=None,
+                price=12.0,
+                duration_min=90,
+                opens=9.0,
+                closes=21.5,
+                tags=("tourism", "attraction"),
+            )
+        )
+    for index in range(10):
+        rows.append(
+            PlannerPlace(
+                candidate_id=f"solo-meal-{index}",
+                name=f"Solo Restaurant {index}",
+                location="Chicago",
+                latitude=41.805 + index / 700,
+                longitude=-87.605 - index / 700,
+                category="catering.restaurant",
+                address="Chicago",
+                image_url=None,
+                opening_hours=None,
+                price=14.0,
+                duration_min=60,
+                opens=11.0,
+                closes=22.0,
+                tags=("catering", "restaurant"),
+            )
+        )
+    return tuple(rows)
+
+
+@pytest.fixture(autouse=True)
+def default_places_for_solo_trip(monkeypatch):
+    monkeypatch.setattr(
+        generator.place_service,
+        "places_for_planner",
+        lambda *_args: _default_solo_places(),
+    )
 
 
 def _solo_trip(db: Session, *, days: int) -> dict:
