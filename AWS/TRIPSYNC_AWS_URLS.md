@@ -1,6 +1,6 @@
 # TripSync AWS URL Index
 
-Date: 2026-08-15
+Date: 2026-08-17
 
 Region: us-east-1
 
@@ -69,6 +69,9 @@ https://github.com/shnnzdx/cap_stone/actions/workflows/backend-ai-runtime-config
 
 Backend AI Runtime Config successful run:
 https://github.com/shnnzdx/cap_stone/actions/runs/31406205586
+
+Backend AI Runtime Config guest-invite repair run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31996161940
 ```
 
 ## Local AWS Operator Credential Source
@@ -242,13 +245,27 @@ Current backend AI runtime:
 
 ```text
 MOCK_AI=0
-CHAT_AI_PROVIDER=ollama_cloud
+CHAT_AI_PROVIDER=deepseek
 PLANNER_AI_PROVIDER=deepseek
 EXPLAINER_AI_PROVIDER=deepseek
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-flash
 OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/
-OLLAMA_CLOUD_MODEL=qwen3.5:397b
+OLLAMA_CLOUD_MODEL=qwen3.5:cloud
+DEV_ALLOW_MEMBERSHIP_HEADER=1
+```
+
+Guest invite cloud verification on Monday, August 17, 2026:
+
+```text
+before repair:
+guest join completed, then GET /api/trips/{trip_id} returned 401 {"detail":"Login required"}
+
+after repair:
+same guest join flow returned 200 for GET /api/trips/{trip_id}
+
+current live backend task definition:
+tripsync-backend:17
 ```
 
 Current backend non-AI provider secret expected in cloud runtime:

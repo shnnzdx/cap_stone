@@ -89,6 +89,7 @@ parameters.
 GitHub Actions
 -> read the current backend ECS task definition
 -> keep current image, logs, DATABASE_URL secret, frontend URL, CORS, scheduler flag
+-> force guest-compatible backend runtime by keeping DEV_ALLOW_MEMBERSHIP_HEADER=1
 -> register a new backend task definition revision
 -> inject DEEPSEEK_API_KEY and OLLAMA_CLOUD_API_KEY from SSM
 -> set DEEPSEEK_* and OLLAMA_CLOUD_* runtime env vars
@@ -154,6 +155,14 @@ explainer_ai_provider=deepseek
 ai_fallback_provider=
 ```
 
+Important on Monday, August 17, 2026:
+
+```text
+do not set DEV_ALLOW_MEMBERSHIP_HEADER back to 0 in cloud runtime
+guest invite links rely on X-Membership-Id after join because guests do not have account bearer tokens
+if the backend runtime disables that header path, guest join can look successful but the next trip read fails with 401 Login required
+```
+
 Rollback to mock mode:
 
 ```text
@@ -173,6 +182,22 @@ OLLAMA_CLOUD_API_KEY injected through SSM Parameter Store
 OLLAMA_CLOUD_BASE_URL=https://ollama.com/v1/
 OLLAMA_CLOUD_MODEL=qwen3.5:cloud
 CHAT_AI_PROVIDER=ollama_cloud
+PLANNER_AI_PROVIDER=deepseek
+EXPLAINER_AI_PROVIDER=deepseek
+DEV_ALLOW_MEMBERSHIP_HEADER=1
+```
+
+Current verified cloud runtime on Monday, August 17, 2026:
+
+```text
+Backend AI Runtime Config repair run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31996161940
+
+Live backend task definition after repair:
+tripsync-backend:17
+
+Live backend provider routing after repair:
+CHAT_AI_PROVIDER=deepseek
 PLANNER_AI_PROVIDER=deepseek
 EXPLAINER_AI_PROVIDER=deepseek
 ```
@@ -230,6 +255,15 @@ Inspect the active ECS task definition and restore DATABASE_URL secret injection
 ```text
 The ECS deployment did not stabilize or the backend is unhealthy after startup.
 Check ECS service events and the /ecs/tripsync-backend CloudWatch Logs group.
+```
+
+`guest invite join succeeds but the next cloud trip request returns 401 Login required`
+
+```text
+inspect the live backend ECS task definition first
+if DEV_ALLOW_MEMBERSHIP_HEADER=0, guest runtime access is broken
+re-run Backend AI Runtime Config from main with the fixed workflow that writes DEV_ALLOW_MEMBERSHIP_HEADER=1
+verify the result with a fresh guest join and then GET /api/trips/{trip_id}
 ```
 
 ## Current Product Reality

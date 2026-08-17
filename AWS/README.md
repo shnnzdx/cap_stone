@@ -34,6 +34,14 @@ Use `BACKEND_AI_RUNTIME_RUNBOOK.md` when the deployed backend should switch from
 `MOCK_AI=1` to a real provider and the AI runtime secret may need to be
 provisioned first.
 
+Important on Monday, August 17, 2026:
+
+```text
+guest invite links on cloud depend on DEV_ALLOW_MEMBERSHIP_HEADER=1 in the backend ECS runtime
+if this is changed back to 0, guest join can appear to succeed but the next trip read returns 401 Login required
+the fixed workflow and current cloud runtime now keep DEV_ALLOW_MEMBERSHIP_HEADER=1
+```
+
 Use `CLOUD_DEEPSEEK_CLI_RUNBOOK.md` when you want the exact local PowerShell +
 AWS CLI operator steps for switching the current deployed backend to a
 DeepSeek-only runtime by hand.
@@ -157,6 +165,19 @@ keeping the fixed accounts, use the manual `Cloud Demo Purge` GitHub Action.
 If the deployed backend should start using a real AI provider, use the manual
 `Backend AI Runtime Config` GitHub Action instead of editing ECS task
 definitions by hand.
+
+Current guest invite cloud access note:
+
+```text
+Backend AI Runtime Config successful repair run:
+https://github.com/shnnzdx/cap_stone/actions/runs/31996161940
+
+Current live backend task definition:
+tripsync-backend:17
+
+Current required guest-compatible backend runtime flag:
+DEV_ALLOW_MEMBERSHIP_HEADER=1
+```
 
 Before running Phase 10 for any future Route 53-managed domain, provide:
 
