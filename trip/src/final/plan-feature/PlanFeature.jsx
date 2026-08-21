@@ -98,6 +98,32 @@ const formatPlanEndHour = item => {
   return formatPlanHour(Number(item.startHour) + Number(item.durationMin) / 60)
 }
 
+const addStopDurationMin = 30
+const defaultBlockDurationMin = 90
+const quarterHour = 0.25
+
+const roundToQuarter = value => Math.round(value / quarterHour) * quarterHour
+const ceilToQuarter = value => Math.ceil((value - Number.EPSILON) / quarterHour) * quarterHour
+const floorToQuarter = value => Math.floor((value + Number.EPSILON) / quarterHour) * quarterHour
+
+const addStopWindow = context => {
+  if (!context) return { earliest: null, latest: null, options: [] }
+  const afterStart = Number(context.afterItem?.startHour)
+  const beforeStart = Number(context.beforeItem?.startHour)
+  if (!Number.isFinite(afterStart) || !Number.isFinite(beforeStart) || beforeStart <= afterStart) {
+    return { earliest: null, latest: null, options: [] }
+  }
+  const afterEnd = afterStart + (Number(context.afterItem?.durationMin) || defaultBlockDurationMin) / 60
+  const latest = beforeStart - addStopDurationMin / 60
+  const first = ceilToQuarter(afterEnd)
+  const last = floorToQuarter(latest)
+  const options = []
+  for (let hour = first; hour <= last + Number.EPSILON; hour += quarterHour) {
+    options.push(Number(hour.toFixed(2)))
+  }
+  return { earliest: afterEnd, latest, options }
+}
+
 const coordsFor = item => {
   if (!Array.isArray(item?.coords) || item.coords.length < 2) return null
   const [lat, lng] = item.coords.map(Number)
@@ -127,15 +153,29 @@ const formatStraightLineDistance = (from, to) => {
 
 function AddStopDialog({ context, app, onClose }) {
   const [title, setTitle] = useState('')
+  const [startHour, setStartHour] = useState('')
   const [saving, setSaving] = useState(false)
   const [warning, setWarning] = useState('')
+  const timeWindow = addStopWindow(context)
+  const canChooseTime = timeWindow.options.length > 0
+
+  useEffect(() => {
+    if (!context) return
+    const currentWindow = addStopWindow(context)
+    const preferred = roundToQuarter((currentWindow.earliest + currentWindow.latest) / 2)
+    const defaultHour = currentWindow.options.includes(preferred)
+      ? preferred
+      : currentWindow.options[Math.floor(currentWindow.options.length / 2)]
+    setStartHour(defaultHour === undefined ? '' : String(defaultHour))
+    setWarning('')
+  }, [context?.afterItem?.id, context?.beforeItem?.id])
 
   if (!context) return null
 
   const add = async event => {
     event.preventDefault()
     const value = title.trim()
-    if (!value || saving) return
+    if (!value || !canChooseTime || startHour === '' || saving) return
     setSaving(true)
     setWarning('')
     try {
@@ -143,6 +183,7 @@ function AddStopDialog({ context, app, onClose }) {
         title: value,
         afterItemId: context.afterItem.id,
         beforeItemId: context.beforeItem.id,
+        startHour: Number(startHour),
       })
       app.notify(`${value} added to the plan`)
       onClose()
@@ -159,9 +200,15 @@ function AddStopDialog({ context, app, onClose }) {
     <form className="addStopDialog" onSubmit={add} role="dialog" aria-modal="true" aria-labelledby="add-stop-title" aria-describedby="add-stop-helper">
       <div className="addStopDialogHead"><div><span className="eyebrow">Add to itinerary</span><h2 id="add-stop-title">Add a stop</h2><p id="add-stop-helper">Add a place or activity between these two stops.</p></div><button type="button" className="addStopClose" aria-label="Close" onClick={onClose}>×</button></div>
       <label className="addStopField">What would you like to add?<input autoFocus value={title} onChange={event => { setTitle(event.target.value); setWarning('') }} placeholder="Search for a place or enter an activity" /></label>
+      <label className="addStopField addStopTimeField">Start time
+        <select value={startHour} disabled={!canChooseTime} onChange={event => { setStartHour(event.target.value); setWarning('') }}>
+          {timeWindow.options.map(hour => <option key={hour} value={hour}>{formatPlanHour(hour)}</option>)}
+        </select>
+      </label>
       <div className="addStopPosition"><span>Between</span><strong>{context.afterItem.time}</strong><i>→</i><strong>{context.beforeItem.time}</strong><small>{context.day.label}</small></div>
+      <p className="addStopTimeHint">{canChooseTime ? `Available times keep a ${addStopDurationMin}-minute stop inside this gap.` : `There is not enough open time for a ${addStopDurationMin}-minute stop here.`}</p>
       {warning && <p className="addStopWarning" role="alert">{warning}</p>}
-      <div className="addStopActions"><button type="button" className="btn btnGhost" onClick={onClose}>Cancel</button><button type="submit" className="btn" disabled={!title.trim() || saving}>{saving ? 'Adding...' : 'Add to plan'}</button></div>
+      <div className="addStopActions"><button type="button" className="btn btnGhost" onClick={onClose}>Cancel</button><button type="submit" className="btn" disabled={!title.trim() || !canChooseTime || startHour === '' || saving}>{saving ? 'Adding...' : 'Add to plan'}</button></div>
     </form>
   </div>
 }
@@ -558,7 +605,10 @@ function ChangeConfirmCard({ message, proposedChange, currentItem, showRecognize
     day: formatChangeDay(patch.day_date || currentItem?.dayDate),
   }
   const presentation = decisionPresentationFor(verdict.path, memberCount)
-  const changedField = patch.start_hour !== undefined
+  const isRemoval = patch.remove === true
+  const changedField = isRemoval
+    ? { label: 'Remove', before: before.title, after: 'Removed from itinerary' }
+    : patch.start_hour !== undefined
     ? { label: 'Time', before: before.time, after: after.time }
     : patch.day_date
       ? { label: 'Day', before: before.day || 'Current day', after: after.day || 'Proposed day' }
@@ -614,6 +664,98 @@ function CandidateOptionList({ message, onSelect }) {
   </div>
 }
 
+function replacementPatch(candidate) {
+  return {
+    title: candidate.title,
+    local_title: candidate.local_title || null,
+    place: candidate.place,
+    ...(candidate.lat !== null && candidate.lat !== undefined ? { lat: candidate.lat } : {}),
+    ...(candidate.lng !== null && candidate.lng !== undefined ? { lng: candidate.lng } : {}),
+    ...(candidate.photo_url ? { photo_url: candidate.photo_url } : {}),
+    ...(candidate.price_per_person !== null && candidate.price_per_person !== undefined ? { price_per_person: candidate.price_per_person } : {}),
+    ...(Array.isArray(candidate.tags) && candidate.tags.length ? { tags: candidate.tags } : {}),
+  }
+}
+
+function ReplacePlacePanel({ item, onCommand, onResolvedOutcome }) {
+  const app = useTripApp()
+  const [query, setQuery] = useState('')
+  const [candidates, setCandidates] = useState([])
+  const [selectedId, setSelectedId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [error, setError] = useState('')
+  const selected = candidates.find(candidate => candidate.candidate_id === selectedId) || null
+
+  const search = async (nextQuery = query) => {
+    setLoading(true)
+    setError('')
+    try {
+      const result = await app.searchReplacementPlaces({ itemId: item.id, query: nextQuery })
+      const nextCandidates = result.candidates || []
+      setCandidates(nextCandidates)
+      setSelectedId(current => nextCandidates.some(candidate => candidate.candidate_id === current) ? current : nextCandidates[0]?.candidate_id || '')
+    } catch (err) {
+      setError(err.message || 'Could not load replacement places.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    search('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id])
+
+  const applyReplacement = async () => {
+    if (!selected || applying) return
+    const patch = replacementPatch(selected)
+    setApplying(true)
+    setError('')
+    try {
+      const request = `Replace ${item.title} with ${selected.title}`
+      const verdict = await app.classify({ item, actionType: 'replacePlace', request, patch })
+      const outcome = await app.submitChange({ item, actionType: 'replacePlace', request, verdict, patch })
+      if (!outcome) return
+      if (outcome.applied) {
+        app.notify('Place replaced')
+        onResolvedOutcome?.({ kind: 'focus-item', itemId: item.id, outcome, targetItem: item })
+      } else if (outcome.path === 'round' || outcome.path === 'reopen_round') {
+        app.notify('Vote opened')
+        onResolvedOutcome?.({ kind: 'focus-round', itemId: item.id, outcome, targetItem: item })
+      } else {
+        app.setUpdateFilter?.('actions')
+        const tripId = app.activeTripId || app.trip?.id || trip?.id
+        if (tripId) onCommand?.({ type: 'navigate', to: tripHref(tripId, 'updates'), delayMs: 850 })
+      }
+    } catch (err) {
+      setError(err.message || 'Could not replace this place.')
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  return <div className="replacePlacePanel">
+    <div className="replaceSearchRow">
+      <input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => event.key === 'Enter' && search()} placeholder="Search coffee, museum, park..."/>
+      <Button secondary disabled={loading} onClick={() => search()}>{loading ? 'Searching...' : 'Search'}</Button>
+    </div>
+    <p className="replacePlaceHint">Candidates come from the place provider/cache and are checked against this stop's current time when hours are known.</p>
+    {error && <p className="formError">{error}</p>}
+    <div className="replaceCandidateList">
+      {candidates.map(candidate => <button type="button" key={candidate.candidate_id} className={cx('replaceCandidate', selectedId === candidate.candidate_id && 'selected')} onClick={() => setSelectedId(candidate.candidate_id)}>
+        {candidate.photo_url ? <img src={candidate.photo_url} alt=""/> : <span className="replaceCandidateFallback">{candidate.title?.slice(0, 1) || 'P'}</span>}
+        <div><strong>{candidate.title}</strong><small>{candidate.place || 'Location unavailable'}</small>{candidate.tags?.length > 0 && <em>{candidate.tags.slice(0, 3).join(' · ')}</em>}</div>
+      </button>)}
+      {!loading && candidates.length === 0 && <div className="emptyState quietEmptyState replaceEmpty"><span></span><h2>No candidates found</h2><p>Try a broader keyword, or ask Cadensy for ideas from the chat button.</p></div>}
+    </div>
+    <div className="replacePlaceFooter">
+      <span>{selected ? `Selected: ${selected.title}` : 'Select a replacement place'}</span>
+      <Button disabled={!selected || applying || app.loading.action} onClick={applyReplacement}>{applying ? 'Replacing...' : 'Replace place'}</Button>
+    </div>
+  </div>
+}
+
 function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, inline = false }) {
   const app = useTripApp()
   const memberCount = app.trip?.people || 1
@@ -654,7 +796,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
   const drawer = <aside className={cx('assistantDrawer', inline && 'inlineAssistant')} onClick={event => event.stopPropagation()}>
       <header><div><span className="eyebrow">{actionLabels[mode]}</span><h2>{item.title}</h2><p>{item.place} · {item.time}</p></div><button type="button" onClick={onClose}>×</button></header>
       <div className="drawerThread" ref={view.threadRef}>
-        {mode !== 'details' && <><div className="assistantBubbleRail"><i/><i/><i/></div><PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble></>}
+        {mode !== 'details' && mode !== 'replacePlace' && <><div className="assistantBubbleRail"><i/><i/><i/></div><PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble></>}
         {view.messages.map(message => <div key={message.id}>
           <PlanChatBubble from={message.from}>{message.proposedChange ? decisionPresentationFor(message.proposedChange.verdict?.path, memberCount).summary : message.text}</PlanChatBubble>
           {message.proposedChange && <ChangeConfirmCard
@@ -668,9 +810,10 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
           <CandidateOptionList message={message} onSelect={actions.selectCandidateOption} />
         </div>)}
         {mode === 'details' && <div className="detailSheet">{detailSections.map(group => <section key={group.section}><h3>{group.section}</h3><dl>{group.rows.map(row => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>)}</div>}
+        {mode === 'replacePlace' && <ReplacePlacePanel item={item} onCommand={onCommand} onResolvedOutcome={onResolvedOutcome}/>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
       </div>
-      {mode !== 'details' && <div className="drawerComposer"><input ref={view.inputRef} value={view.draft} onChange={event => actions.updateDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && actions.sendMessage()} placeholder={view.placeholder}/><button aria-label="Send message" disabled={view.sending || !view.draft.trim()} onClick={actions.sendMessage}>{view.sending ? '...' : '↑'}</button></div>}
+      {mode !== 'details' && mode !== 'replacePlace' && <div className="drawerComposer"><input ref={view.inputRef} value={view.draft} onChange={event => actions.updateDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && actions.sendMessage()} placeholder={view.placeholder}/><button aria-label="Send message" disabled={view.sending || !view.draft.trim()} onClick={actions.sendMessage}>{view.sending ? '...' : '↑'}</button></div>}
     </aside>
   if (inline) return drawer
   return <div className="drawerOverlay" onClick={onClose}>{drawer}</div>

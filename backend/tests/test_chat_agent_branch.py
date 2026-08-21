@@ -126,6 +126,62 @@ def test_fuzzy_change_uses_agent_branch(monkeypatch, db: Session, full_trip: dic
     assert result.proposed_change is None
 
 
+def test_agent_reply_internal_reasoning_is_not_shown(monkeypatch, db: Session, full_trip: dict):
+    monkeypatch.setenv("MOCK_AI", "1")
+
+    def fake_call_agent(**kwargs):
+        return base.AgentRunResult(
+            content=(
+                "The user wants to replace the selected restaurant.\n\n"
+                "Let me check whether a candidate exists.\n\n"
+                "I should not invent a venue.\n\n"
+                "I could not find a matching replacement venue. Try a broader search term."
+            ),
+            trace_id="trace",
+            rounds=(),
+            tool_results=(),
+            total_tokens=0,
+            total_elapsed_ms=1.0,
+        )
+
+    monkeypatch.setattr(base, "call_agent", fake_call_agent)
+
+    result = chat_service.respond_to_trip_chat(
+        db,
+        trip_id=full_trip["trip"].id,
+        membership=full_trip["me"],
+        message="replace with East Asia Hotel",
+        item_id=full_trip["dinner"].id,
+    )
+
+    assert "Let me" not in result.reply
+    assert "I should" not in result.reply
+    assert "The user wants" not in result.reply
+    assert result.reply == "I could not find a matching replacement venue. Try a broader search term."
+
+
+def test_selected_item_replacement_search_phrases_stay_grounded_to_selection(
+    db: Session, full_trip: dict
+):
+    selected = full_trip["dinner"]
+
+    for message in (
+        "search East Asia Hotel",
+        "find East Asia Hotel",
+        "look for East Asia Hotel",
+    ):
+        reference = chat_service._resolve_item_reference(
+            message,
+            [full_trip["art"], full_trip["dinner"]],
+            selected,
+            (),
+        )
+
+        assert reference.status == "matched"
+        assert reference.source == "selected"
+        assert reference.item == selected
+
+
 def test_cross_day_question_without_selected_item_uses_agent_branch(
     monkeypatch, db: Session, full_trip: dict
 ):

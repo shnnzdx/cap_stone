@@ -9,6 +9,7 @@ X-Membership-Id when DEV_ALLOW_MEMBERSHIP_HEADER=1."""
 from __future__ import annotations
 
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 
@@ -19,6 +20,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..agents import chat as chat_agent
+from ..agents import tools as agent_tools
 from ..agents.tools import DAY_END_HOUR, DAY_START_HOUR
 from ..db.models import (
     ChangeProposal,
@@ -176,23 +178,29 @@ class ChangeOptionIn(BaseModel):
 
 class ChangeRequest(BaseModel):
     title: str | None = None
+    local_title: str | None = Field(default=None, max_length=300)
     place: str | None = None
     start_hour: float | None = Field(default=None, ge=0, le=24)
     day_date: date | None = None
     duration_min: int | None = Field(default=None, gt=0)
     price_per_person: float | None = Field(default=None, ge=0)
+    remove: bool | None = None
+    settledness: str | None = Field(default=None, pattern="^(loose|touched|settled|booked|removed)$")
     # Include new coordinates when replacing a place so the map moves with it.
     lat: float | None = Field(default=None, ge=-90, le=90)
     lng: float | None = Field(default=None, ge=-180, le=180)
+    photo_url: str | None = Field(default=None, max_length=1000)
+    tags: list[str] | None = None
     request: str = ""
     reason: str | None = None
     options: list[ChangeOptionIn] = Field(default_factory=list)
 
     def patch(self) -> dict:
+        nullable_clearable = {"local_title"}
         return {
             k: v
             for k, v in self.model_dump(exclude={"request", "reason", "options"}).items()
-            if v is not None
+            if v is not None or k in nullable_clearable and k in self.model_fields_set
         }
 
 
@@ -208,6 +216,7 @@ class AddPlanItemRequest(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     after_item_id: str = Field(min_length=1, max_length=32)
     before_item_id: str = Field(min_length=1, max_length=32)
+    start_hour: float | None = Field(default=None, ge=0, le=24)
 
 
 class DecisionRequest(BaseModel):
@@ -368,7 +377,7 @@ def _plan_out(db: Session, trip_id: str) -> dict:
     trip = db.get(Trip, trip_id)
     items = db.scalars(
         select(PlanItem)
-        .where(PlanItem.plan_id == plan.id)
+        .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
         .order_by(PlanItem.day_index, PlanItem.start_hour)
     ).all()
     days: dict[int, list] = {}
@@ -478,12 +487,18 @@ def _round_has_all_votes(db: Session, round_: DecisionRound) -> bool:
     return total > 0 and len(votes) >= total
 
 
-def _proposal_out(db: Session, proposal: ChangeProposal) -> dict:
+def _proposal_out(db: Session, proposal: ChangeProposal, me: TripMembership | None = None) -> dict:
     from ..db.models import ProposalDecision
 
     decisions = db.scalars(
-        select(ProposalDecision).where(ProposalDecision.proposal_id == proposal.id)
+        select(ProposalDecision)
+        .where(ProposalDecision.proposal_id == proposal.id)
+        .order_by(ProposalDecision.created_at, ProposalDecision.id)
     ).all()
+    my_decision = next(
+        (decision for decision in decisions if me is not None and decision.trip_membership_id == me.id),
+        None,
+    )
     labels = [f"Member {chr(65 + i)}" for i in range(len(decisions))]
     return {
         "id": proposal.id,
@@ -491,8 +506,10 @@ def _proposal_out(db: Session, proposal: ChangeProposal) -> dict:
         "plan_item_id": proposal.plan_item_id,
         "before": proposal.before_json,
         "after": proposal.after_json,
+        "my_status": my_decision.status if my_decision is not None else None,
+        "can_decide": my_decision is not None and proposal.status == "waiting_affected_members",
         "members": [
-            {"label": label, "status": d.status}
+            {"label": label, "status": d.status, "is_me": me is not None and d.trip_membership_id == me.id}
             for label, d in zip(labels, decisions)
         ],
         "privacy_note": (
@@ -665,7 +682,7 @@ def add_plan_item(
 
     items = db.scalars(
         select(PlanItem)
-        .where(PlanItem.plan_id == plan.id)
+        .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
         .order_by(PlanItem.day_index, PlanItem.start_hour, PlanItem.id)
     ).all()
     after_index = next((index for index, item in enumerate(items) if item.id == body.after_item_id), None)
@@ -678,18 +695,23 @@ def add_plan_item(
     if after.day_index != before.day_index or before.start_hour <= after.start_hour:
         raise HTTPException(409, "There is no open time between these stops")
 
-    # Manual stops use a short, deterministic prototype duration. Require enough
-    # room for that duration so the insert cannot overlap the next scheduled item.
+    # Manual stops use a short, deterministic prototype duration. If the client
+    # supplies a time, it must fit inside the real gap between adjacent stops.
     manual_duration_min = 30
-    available_minutes = (before.start_hour - after.start_hour) * 60
-    if available_minutes < manual_duration_min * 2:
+    default_block_minutes = 90
+    after_end_hour = after.start_hour + (after.duration_min or default_block_minutes) / 60
+    latest_start_hour = before.start_hour - manual_duration_min / 60
+    if latest_start_hour < after_end_hour:
         raise HTTPException(409, "This stop may affect the next activity's time.")
+    start_hour = body.start_hour if body.start_hour is not None else (after_end_hour + latest_start_hour) / 2
+    if start_hour < after_end_hour or start_hour > latest_start_hour:
+        raise HTTPException(422, "Choose a time that fits between these stops.")
 
     inserted = PlanItem(
         plan_id=plan.id,
         day_index=after.day_index,
         day_date=after.day_date,
-        start_hour=(after.start_hour + before.start_hour) / 2,
+        start_hour=start_hour,
         duration_min=manual_duration_min,
         title=body.title.strip(),
         local_title=None,
@@ -795,7 +817,7 @@ def get_trip_actions(
     ).all()
     return {
         "rounds": [_round_out(db, round_, me) for round_ in rounds],
-        "proposals": [_proposal_out(db, proposal) for proposal in proposals],
+        "proposals": [_proposal_out(db, proposal, me) for proposal in proposals],
     }
 
 
@@ -1240,6 +1262,31 @@ def submit_change(
     return _outcome_out(outcome)
 
 
+@app.get("/api/plans/items/{item_id}/replacement-places")
+def search_replacement_places(
+    item_id: str,
+    q: str = "",
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    item = _require_scoped_plan_item(db, me, item_id)
+    keywords = [part for part in re.split(r"[\s,]+", q.strip()) if part][:8]
+    result = agent_tools._find_replacement_place(
+        db,
+        item.plan.trip_id,
+        item.id,
+        keywords,
+    )
+    if result.get("error") == "item_not_found":
+        raise HTTPException(404, result.get("message") or "Item not found")
+    candidates = (result.get("candidates") or [])[:12]
+    return {
+        "item_id": item.id,
+        "query": q,
+        "candidates": candidates,
+    }
+
+
 @app.post("/api/plans/items/{item_id}/comments")
 def add_item_comment(
     item_id: str,
@@ -1337,7 +1384,9 @@ def decide(
     proposal = _require_scoped_proposal(db, me, proposal_id)
     applied = orch.decide_proposal(db, proposal, me.id, body.status)
     db.commit()
-    return {"proposal_status": proposal.status, "applied": applied}
+    result = _proposal_out(db, proposal, me)
+    result["applied"] = applied
+    return result
 
 
 @app.get("/api/proposals/{proposal_id}")
@@ -1348,7 +1397,7 @@ def get_proposal(
 ) -> dict:
     """Proposal detail. **Other members are always anonymous**: current user is You, others are Member A/B/C."""
     proposal = _require_scoped_proposal(db, me, proposal_id)
-    return _proposal_out(db, proposal)
+    return _proposal_out(db, proposal, me)
 
 
 # -------------------- Preferences and six constraint kinds --------------------
@@ -1454,8 +1503,8 @@ def list_members(
 
 
 class DeadlockRequest(BaseModel):
-    # Two exits, and both decline to decide. There is deliberately no third.
-    action: str = Field(pattern="^(split|clear)$")
+    # Organizer exits never accept the blocked proposal for another traveler.
+    action: str = Field(pattern="^(keep|split|remove|clear)$")
 
 
 def _organizer_error(exc: Exception) -> HTTPException:

@@ -36,6 +36,29 @@ def test_a_clean_change_applies_immediately(db, full_trip):
     assert item.settledness == Settledness.TOUCHED.value
 
 
+def test_replacing_place_clears_stale_local_title(db, full_trip):
+    item = full_trip["art"]
+    item.local_title = "德发长饺子馆"
+    db.flush()
+
+    outcome = orch.propose_change(
+        db,
+        item,
+        {
+            "title": "East Asia Hotel",
+            "place": "Bell Tower Square",
+            "lat": 34.262,
+            "lng": 108.944,
+        },
+        full_trip["me"].id,
+        request="replace with East Asia Hotel",
+    )
+
+    assert outcome.applied is True
+    assert item.title == "East Asia Hotel"
+    assert item.local_title is None
+
+
 def test_a_direct_change_notifies_everyone_but_asks_nothing(db, full_trip):
     orch.propose_change(db, full_trip["art"], {"start_hour": 15.5}, full_trip["me"].id)
 

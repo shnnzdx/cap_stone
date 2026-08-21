@@ -471,7 +471,7 @@ def _get_current_plan(db: Session, trip_id: str, day: str) -> dict[str, Any]:
     trip = db.get(Trip, trip_id)
     items = db.scalars(
         select(PlanItem)
-        .where(PlanItem.plan_id == plan.id)
+        .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
         .order_by(PlanItem.day_index, PlanItem.start_hour, PlanItem.title)
     ).all()
     target = _resolve_day_filter(trip, day)
@@ -622,7 +622,7 @@ def _find_plan_item(
     plan = _active_plan(db, trip_id)
     query = (
         select(PlanItem)
-        .where(PlanItem.plan_id == plan.id)
+        .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
         .order_by(PlanItem.day_index, PlanItem.start_hour, PlanItem.title)
     )
     items = list(db.scalars(query).all())
@@ -682,7 +682,7 @@ def _propose_options(
     items = list(
         db.scalars(
             select(PlanItem)
-            .where(PlanItem.plan_id == plan.id)
+            .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
             .order_by(PlanItem.day_index, PlanItem.start_hour, PlanItem.title)
         ).all()
     )
@@ -982,7 +982,7 @@ def _find_replacement_place(
     items = list(
         db.scalars(
             select(PlanItem)
-            .where(PlanItem.plan_id == plan.id)
+            .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
             .order_by(PlanItem.day_index, PlanItem.start_hour, PlanItem.title)
         ).all()
     )
@@ -1046,9 +1046,11 @@ def _replacement_candidates(
             {
                 "candidate_id": place.candidate_id,
                 "title": title,
+                "local_title": place.local_name,
                 "place": place.location,
                 "price_per_person": None,
                 "opening_hours": place.opening_hours,
+                "photo_url": place.image_url,
                 "opens": opens,
                 "closes": closes,
                 "lat": float(place.latitude),

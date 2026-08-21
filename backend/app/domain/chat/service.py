@@ -163,6 +163,7 @@ def _respond_with_agent_branch(
     reply = (result.content or "").strip()
     if not reply:
         return _degraded_reply(message, items, target)
+    reply = _strip_internal_reasoning(reply)
     if chat_agent._claims_change_completed(reply):
         reply = _safe_pending_agent_reply(message)
 
@@ -189,6 +190,26 @@ def _is_item_explanation_request(message: str) -> bool:
         r"\b(?:explain|details?|describe|tell me about|what is)\b|解释|介绍|详情",
         normalized,
     ))
+
+
+def _strip_internal_reasoning(reply: str) -> str:
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", reply.strip()) if part.strip()]
+    if len(paragraphs) <= 1:
+        return reply
+    internal_patterns = (
+        r"^the user wants\b",
+        r"^the traveler wants\b",
+        r"^let me\b",
+        r"^i should\b",
+        r"^i need to\b",
+        r"^i'll\b",
+    )
+    visible = [
+        paragraph
+        for paragraph in paragraphs
+        if not any(re.search(pattern, paragraph, re.IGNORECASE) for pattern in internal_patterns)
+    ]
+    return "\n\n".join(visible or paragraphs[-1:])
 
 
 def _format_item_hour(hour: float | None) -> str | None:
@@ -312,7 +333,10 @@ def _resolve_item_reference(
             return _ResolvedItemReference(status="ambiguous", candidates=history_candidates, source="history")
         return _ResolvedItemReference(status="ambiguous")
 
-    if selected is not None and _looks_like_selected_item_relative_request(message):
+    if selected is not None and (
+        _looks_like_selected_item_relative_request(message)
+        or _looks_like_selected_replacement_search_request(message)
+    ):
         return _ResolvedItemReference(status="matched", item=selected, source="selected")
 
     if _looks_like_named_reference(message):
@@ -476,6 +500,17 @@ def _looks_like_selected_item_relative_request(message: str) -> bool:
         r"^(start)\s+(at|later|earlier)\b",
         r"^(make)\s+[a-z0-9]+(?:\s+[a-z0-9]+){0,4}\s+(shorter|longer)\b",
         r"^(shorten|lengthen|extend|replace|remove|delete)\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _looks_like_selected_replacement_search_request(message: str) -> bool:
+    normalized = _normalize_selection_text(message)
+    if not normalized:
+        return False
+    patterns = (
+        r"^(search|find|look for|look up)\s+[a-z0-9]+(?:\s+[a-z0-9]+){0,6}\b",
+        r"^(suggest|recommend)\s+(a|an|some|another|other)?\s*[a-z0-9]+(?:\s+[a-z0-9]+){0,6}\b",
     )
     return any(re.search(pattern, normalized) for pattern in patterns)
 
@@ -837,7 +872,10 @@ def _agent_user_message(
     if selected_on_screen:
         return (
             f'[The traveler has "{selected.title}" selected on screen. Resolve "this" '
-            f'or "it" to that item unless they name a different one.]\n\n{message}'
+            f'or "it" to that item unless they name a different one. If they say '
+            f'"search X", "find X", "look for X", "replace with X", or "swap this '
+            f'with X", treat X as a replacement venue query for the selected item, '
+            f'not as the Current Plan item to identify.]\n\n{message}'
         )
     return (
         f'[The traveler is referring to "{selected.title}" in the Current Plan. '
@@ -1091,7 +1129,7 @@ def _trip_items(db: Session, trip_id: str) -> list[PlanItem]:
     return list(
         db.scalars(
             select(PlanItem)
-            .where(PlanItem.plan_id == plan.id)
+            .where(PlanItem.plan_id == plan.id, PlanItem.settledness != "removed")
             .order_by(PlanItem.day_index, PlanItem.start_hour)
         )
     )

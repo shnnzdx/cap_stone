@@ -5,9 +5,9 @@ them decides anything on another member's behalf:
 
   - a reminder nudges, it cannot fill the form in
   - an extension buys time, it cannot cast a vote
-  - the deadlock exit has exactly two options and **both of them are
-    "decline to decide"** -- split the block, or clear it. The organizer can
-    never pick either side's proposal.
+  - the deadlock exit never lets the organizer pick either side's proposal.
+    They can keep the current block, split the block, or remove the disputed
+    activity from the shared itinerary.
 
 That last rule is the whole reason this module exists. Without an exit, a
 confirmation that cannot reach agreement is a dead end; but handing the
@@ -164,62 +164,65 @@ def escalate(db: Session, membership: TripMembership, proposal_id: str) -> Chang
 def resolve_deadlock(
     db: Session, organizer: TripMembership, proposal_id: str, action: str
 ) -> PlanItem:
-    """The organizer breaks a deadlock. Two exits, and both decline to decide.
+    """The organizer closes a deadlock without accepting the blocked proposal.
 
+    `keep` -- the Current Plan stays as-is
     `split` -- the block splits; each group goes its own way and regroups after
-    `clear` -- nothing is scheduled here; it becomes free time
+    `remove` -- the disputed activity leaves the shared itinerary
 
-    **There is deliberately no third option.** The organizer cannot adopt the
-    proposal, and cannot substitute some other plan of their own. Either would
-    decide on behalf of the member who did not agree.
+    `clear` is accepted as a legacy alias for `remove`.
     """
     _require_organizer(organizer)
-    if action not in ("split", "clear"):
-        raise NothingToDo("An organizer can only split the block or clear it")
+    if action not in ("keep", "split", "remove", "clear"):
+        raise NothingToDo("An organizer can only keep, split, or remove the block")
+    normalized_action = "remove" if action == "clear" else action
 
     proposal = db.get(ChangeProposal, proposal_id)
     if proposal is None or proposal.status != "escalated":
         raise NothingToDo("This proposal is not waiting on the organizer")
 
     item = db.get(PlanItem, proposal.plan_item_id)
-    if action == "split":
+    if normalized_action == "split":
         patch = {"title": "Split for this block", "place": "Two groups, regroup after"}
+        for field, value in patch.items():
+            setattr(item, field, value)
+        item.settledness = "settled"
+        item.settled_at = _now()
+    elif normalized_action == "remove":
+        patch = {"remove": True}
+        item.settledness = "removed"
+        item.settled_at = _now()
     else:
-        patch = {"title": "Free time", "place": "Nothing scheduled"}
-
-    for field, value in patch.items():
-        setattr(item, field, value)
-    item.settledness = "settled"
-    item.settled_at = _now()
+        patch = {}
 
     proposal.status = "resolved_by_organizer"
     db.add(
         PlanChange(
             plan_id=item.plan_id,
             plan_item_id=item.id,
-            origin=f"deadlock_{action}",
+            origin=f"deadlock_{normalized_action}",
             patch=patch,
             source_proposal_id=proposal.id,
             reason="The affected members could not agree, so the block was not decided either way.",
         )
     )
+    titles = {
+        "keep": "The current block was kept",
+        "split": "This block was split",
+        "remove": "This activity was removed",
+    }
+    bodies = {
+        "keep": "The affected members could not agree. The organizer closed the conflict and kept the Current Plan unchanged.",
+        "split": "The affected members could not agree. Rather than picking a side, two groups go their own way and regroup after.",
+        "remove": "The affected members could not agree. Rather than turning the block into free time, the activity was removed from the itinerary.",
+    }
     db.add(
         UpdateNotice(
             trip_id=item.plan.trip_id,
             plan_item_id=item.id,
             kind="proposal",
-            title=(
-                "This block was split" if action == "split" else "This block was cleared"
-            ),
-            body=(
-                "The affected members could not agree. Rather than picking a side, the "
-                "block is now open: "
-                + (
-                    "two groups go their own way and regroup after."
-                    if action == "split"
-                    else "nothing is scheduled here."
-                )
-            ),
+            title=titles[normalized_action],
+            body=bodies[normalized_action],
         )
     )
     db.flush()

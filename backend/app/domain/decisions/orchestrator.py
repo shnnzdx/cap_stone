@@ -57,6 +57,8 @@ TRAVELING_WINDOW = timedelta(hours=2)
 # It is shorter than voting because Confirm involves only affected members, not the whole group.
 PROPOSAL_PLANNING_WINDOW = timedelta(days=7)
 PROPOSAL_TRAVELING_WINDOW = timedelta(days=2)
+DAY_START_HOUR = 9.0
+DAY_END_HOUR = 21.0
 
 
 class ReasonRequired(Exception):
@@ -152,6 +154,8 @@ def _option_time_label(hour: float) -> str:
 
 
 def _option_after_state(item: PlanItem, patch: dict | None) -> tuple[str, str]:
+    if _is_remove_patch(patch):
+        return "Remove from itinerary", f"{item.title} will be removed from the Current Plan."
     after = _patch_with_poi_metadata(item, patch or {}) if patch else {}
     title = str(after.get("title") or item.title)
     place = str(after.get("place") or item.place)
@@ -246,7 +250,15 @@ def _log(db: Session, item: PlanItem, origin: str, patch: dict, **extra) -> None
     )
 
 
+def _is_remove_patch(patch: dict | None) -> bool:
+    return bool((patch or {}).get("remove"))
+
+
 def _apply(db: Session, item: PlanItem, patch: dict) -> dict:
+    if _is_remove_patch(patch):
+        item.settledness = "removed"
+        db.flush()
+        return {"remove": True}
     applied = _patch_with_poi_metadata(item, patch)
     if "day_date" in applied:
         applied["day_index"] = _day_index_for_date(db, item, applied["day_date"])
@@ -278,6 +290,8 @@ def _patch_with_poi_metadata(item: PlanItem, patch: dict) -> dict:
     applied = dict(patch)
     if not ({"title", "place"} & applied.keys()):
         return applied
+    if "local_title" not in applied:
+        applied["local_title"] = None
     poi = _match_poi(applied.get("title", item.title), applied.get("place", item.place))
     if poi is None:
         return applied
@@ -386,12 +400,15 @@ def _overlaps(left_start: float, left_end: float, right_start: float, right_end:
 
 
 def _schedule_conflict_item(db: Session, item: PlanItem, patch: dict) -> PlanItem | None:
+    if _is_remove_patch(patch):
+        return None
     day_date, start_hour, end_hour = _changed_item_window(item, patch)
     peers = db.scalars(
         select(PlanItem)
         .where(
             PlanItem.plan_id == item.plan_id,
             PlanItem.id != item.id,
+            PlanItem.settledness != "removed",
             PlanItem.day_date == day_date,
         )
         .order_by(PlanItem.start_hour)
@@ -446,10 +463,9 @@ def propose_change(
     )
     constraints = _load_constraints(db, trip.id)
     verdict = classify(change, constraints)
-    if verdict.path is Path.NOTICE:
-        conflict = _schedule_conflict_item(db, item, patch)
-        if conflict is not None:
-            verdict = _schedule_conflict_classification(conflict)
+    conflict = _schedule_conflict_item(db, item, patch)
+    if conflict is not None:
+        verdict = _schedule_conflict_classification(conflict)
 
     if verdict.path is Path.NOTICE:
         return _do_notice(db, item, patch, actor_membership_id, verdict)
@@ -514,10 +530,9 @@ def classify_change(
         requested_by_membership_id=actor_membership_id,
     )
     verdict = classify(change, _load_constraints(db, trip.id))
-    if verdict.path is Path.NOTICE:
-        conflict = _schedule_conflict_item(db, item, patch)
-        if conflict is not None:
-            return _schedule_conflict_classification(conflict)
+    conflict = _schedule_conflict_item(db, item, patch)
+    if conflict is not None:
+        return _schedule_conflict_classification(conflict)
     return verdict
 
 
@@ -571,20 +586,25 @@ _VIEW_FIELDS = {
 
 
 def _do_notice(db, item, patch, actor_membership_id, verdict) -> Outcome:
+    item_title = item.title
     applied_patch = _apply(db, item, patch)
-    item.settledness = Settledness.TOUCHED.value
+    if not _is_remove_patch(applied_patch):
+        item.settledness = Settledness.TOUCHED.value
     _log(db, item, "notice", applied_patch, actor_membership_id=actor_membership_id)
     db.add(
         UpdateNotice(
             trip_id=item.plan.trip_id,
             plan_item_id=item.id,
             kind="plan",
-            title=f"{item.title} was updated",
+            title=f"{item_title} was removed" if _is_remove_patch(applied_patch) else f"{item.title} was updated",
             body=(
-                "Applied directly — nothing hard was affected and nobody else had "
+                "Removed directly — nothing hard was affected and nobody else had "
+                "asked about this slot."
+                if _is_remove_patch(applied_patch)
+                else "Applied directly — nothing hard was affected and nobody else had "
                 "asked about this slot. Say something if it does not work for you."
             ),
-            can_object=True,
+            can_object=not _is_remove_patch(applied_patch),
         )
     )
     db.flush()
@@ -689,12 +709,15 @@ def settle_round(db: Session, round_: DecisionRound) -> str:
 
     option = next((o for o in round_.options if o["id"] == winner), None)
     patch = {} if winner == KEEP_CURRENT else _patch_from_json(option.get("patch") or {"title": option["title"]})
+    removing = _is_remove_patch(patch)
+    item_title = item.title
     if patch:
         patch = _apply(db, item, patch)
 
-    item.settledness = Settledness.SETTLED.value
-    item.settled_at = _now()
-    item.settled_by_round_id = round_.id
+    if not removing:
+        item.settledness = Settledness.SETTLED.value
+        item.settled_at = _now()
+        item.settled_by_round_id = round_.id
     round_.status = "closed"
     round_.winning_option_id = winner
     round_.settled_at = _now()
@@ -706,7 +729,7 @@ def settle_round(db: Session, round_: DecisionRound) -> str:
             trip_id=trip_id,
             plan_item_id=item.id,
             kind="round",
-            title=f"{item.title} was settled by a group round",
+            title=f"{item_title} was removed by a group round" if removing else f"{item.title} was settled by a group round",
             body=(
                 f"{len(votes)} of {_member_count(db, trip_id)} took part. Members who "
                 "did not respond are recorded as no preference, not as agreement."
@@ -847,9 +870,29 @@ def decide_proposal(
 
     item = db.get(PlanItem, proposal.plan_item_id)
     patch = _patch_from_json(proposal.after_json)
+    removing = _is_remove_patch(patch)
+    item_title = item.title
+    conflict = _schedule_conflict_item(db, item, patch)
+    if conflict is not None:
+        proposal.status = "escalated"
+        db.add(
+            UpdateNotice(
+                trip_id=item.plan.trip_id,
+                plan_item_id=item.id,
+                kind="proposal",
+                title=f"{item.title} still has a time conflict",
+                body=(
+                    f"{conflict.title} is already scheduled at this time. "
+                    "The proposal was sent to the organizer instead of stacking two activities."
+                ),
+            )
+        )
+        db.flush()
+        return False
     patch = _apply(db, item, patch)
-    item.settledness = Settledness.SETTLED.value
-    item.settled_at = _now()
+    if not removing:
+        item.settledness = Settledness.SETTLED.value
+        item.settled_at = _now()
     proposal.status = "applied"
     _log(db, item, "confirm", patch, source_proposal_id=proposal.id)
     db.add(
@@ -857,7 +900,7 @@ def decide_proposal(
             trip_id=item.plan.trip_id,
             plan_item_id=item.id,
             kind="proposal",
-            title=f"{item.title} was updated after everyone confirmed",
+            title=f"{item_title} was removed after everyone confirmed" if removing else f"{item.title} was updated after everyone confirmed",
             body="Every affected member accepted. Names and private reasons stay hidden.",
         )
     )

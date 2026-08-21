@@ -48,7 +48,7 @@ class TripScope:
         return self._require_owned(
             select(PlanItem, Plan.trip_id)
             .join(Plan, Plan.id == PlanItem.plan_id)
-            .where(PlanItem.id == item_id),
+            .where(PlanItem.id == item_id, PlanItem.settledness != "removed"),
             resource_name="Plan item",
             resource_id=item_id,
         )

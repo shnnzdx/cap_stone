@@ -43,6 +43,10 @@ const assistantErrorText = err => (
 
 const hasExecutablePatch = option => Boolean(option?.patch && Object.keys(option.patch).length)
 
+const removeRequestPatch = () => ({ remove: true })
+
+const isRemoveRequest = text => /\b(remove|delete|clear)\b/i.test(text || '')
+
 const historyTurnFromMessage = message => {
   const turn = {
     role: message.from === 'you' ? 'user' : 'assistant',
@@ -135,6 +139,36 @@ export function useAssistantChangeRequestFlow({ item, mode, onCommand, onResolve
     setDraft('')
     setSending(true)
     try {
+      if (mode === 'removePlan' || (itemId && isRemoveRequest(text))) {
+        const patch = removeRequestPatch(item)
+        const verdict = await app.classify({
+          item,
+          actionType: 'removePlan',
+          request: text,
+          patch,
+        })
+        setMessages(current => current.map(message => message.id === loadingId ? {
+          ...message,
+          loading: false,
+          from: 'tripSync',
+          text: verdict.path === 'reopen_round'
+            ? `Removing ${item.title} would reopen a settled block. Click Apply to start the group round.`
+            : `I can remove ${item.title} from this block. Click Apply to submit it; the Current Plan has not changed yet.`,
+          proposedChange: {
+            item_id: item.id,
+            item_title: item.title,
+            patch,
+            verdict,
+          },
+          candidateOptions: [],
+          selectedCandidateId: '',
+          request: text,
+          applyError: '',
+          selectionNote: '',
+          classifyingCandidate: false,
+        } : message))
+        return
+      }
       const history = messages
         .filter(message => !message.loading && message.text)
         .map(historyTurnFromMessage)

@@ -499,7 +499,7 @@ function LoadedTripShell({ children, app, currentUser, currentTrip, location }) 
           : <Link className="brandBack brandBack--return" to={navigation.contextHref}><BrandAssets /><span className="backArrow">←</span><span>My Trips</span></Link>}
       </div>
       <div className="tripUnifiedCenter">
-        <div className="tripUnifiedTitleRow"><h1>{currentTrip.name}</h1><nav className="tripUnifiedTabs">
+        <div className="tripUnifiedTitleRow tripUnifiedTitleRow--tabsOnly"><nav className="tripUnifiedTabs" aria-label={`${currentTrip.name || 'Trip'} sections`}>
           {navigation.entries.map(entry => <Link key={entry.id} className={entry.active ? 'active' : ''} to={entry.href}>
             {tripNavigationLabels[entry.id] || entry.id}
             {entry.id === 'updates' && pending > 0 && <i>{pending}</i>}
@@ -720,7 +720,7 @@ function ChatWorkspace({ thread }) {
       <aside className="conversationList">
         <div className="conversationHead"><span className="eyebrow">Conversations</span><h2>Chat</h2></div>
         <Link className={cx('conversation', thread === 'personal' && 'active')} to={tripHref(currentTrip.id, 'chat')}><span className="aiAvatar">C</span><div><strong>Cadensy</strong><small>Personal planning assistant</small></div></Link>
-        {showTradeoff && <Link className={cx('conversation', thread === 'tradeoff' && 'active')} to={tripHref(currentTrip.id, 'conflict')}><span className="pairAvatar anon">◍</span><div><strong>Constraint tradeoff</strong><small>Anonymous · affected members only</small></div></Link>}
+        {showTradeoff && <Link className={cx('conversation', thread === 'tradeoff' && 'active')} to={tripHref(currentTrip.id, 'conflict')}><span className="pairAvatar anon">◍</span><div><strong>Decision needed</strong><small>Private constraints · affected members only</small></div></Link>}
       </aside>
       {thread === 'tradeoff' && showTradeoff ? <TradeoffThread/> : thread === 'tradeoff' ? <EmptyTradeoffPanel tripId={currentTrip.id}/> : <PersonalThread/>}
     </div>
@@ -729,9 +729,9 @@ function ChatWorkspace({ thread }) {
 
 function EmptyTradeoffPanel({ tripId }) {
   return <section className="chatPanel">
-    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>No active conversation</p></div></div></header>
+    <header><div><span className="pairAvatar anon">◍</span><div><h2>Decision needed</h2><p>No active decision</p></div></div></header>
     <div className="messages">
-      <div className="emptyState quietEmptyState"><span></span><h2>Nothing to resolve</h2><p>Most changes never reach a conversation. One opens here only when a change touches a hard constraint that cannot be settled by choosing an option.</p><Link className="btn btnSecondary" to={tripHref(tripId, 'plan')}>Back to plan</Link></div>
+      <div className="emptyState quietEmptyState"><span></span><h2>Nothing to resolve</h2><p>Most changes never need this panel. It opens only when a change touches a hard constraint that needs confirmation or organizer resolution.</p><Link className="btn btnSecondary" to={tripHref(tripId, 'plan')}>Back to plan</Link></div>
     </div>
   </section>
 }
@@ -793,8 +793,6 @@ function TradeoffThread() {
   const currentTrip = useCurrentTrip()
   const navigate = useNavigate()
   const isOrganizer = app.currentUser.role === 'organizer'
-  const [reply, setReply] = useState('')
-  const [threadMessages, setThreadMessages] = useState([])
   const proposal = app.activeProposal
   if (!proposal) return null
   const { before, after, affectedMembers } = proposal
@@ -803,46 +801,37 @@ function TradeoffThread() {
   const unchanged = ['declined', 'withdrawn', 'expired'].includes(proposal.status)
   const escalated = proposal.status === 'escalated'
   const pending = !applied && !unchanged && proposal.status === 'waiting_affected_members'
-  const escalate = async () => {
-    try {
-      await app.escalateProposal(proposal.id)
-      app.notify('Sent to the organizer')
-      navigate(tripHref(currentTrip.id, 'updates'))
-    } catch {
-      app.notify('Could not escalate this proposal.')
-    }
-  }
+  const canRespond = pending && proposal.canDecide && proposal.myStatus !== 'accepted'
+  const alreadyAccepted = pending && proposal.myStatus === 'accepted'
   const resolveDeadlock = async action => {
     try {
       await app.resolveDeadlock(proposal.id, action)
-      app.notify(action === 'split' ? 'Block split' : 'Block cleared')
+      const labels = {
+        keep: 'Current plan kept',
+        split: 'Block split',
+        remove: 'Activity removed',
+      }
+      app.notify(labels[action] || 'Block resolved')
+      navigate(tripHref(currentTrip.id, 'updates'))
     } catch {
       app.notify('Could not resolve this block.')
     }
   }
-  const sendReply = () => {
-    if (!reply.trim()) return
-    setThreadMessages(current => [...current,
-      { from: 'you', text: reply.trim() },
-      { from: 'tripSync', text: 'Noted. The Current Plan stays unchanged until every affected member confirms.' },
-    ])
-    setReply('')
-  }
   return <section className="chatPanel">
-    <header><div><span className="pairAvatar anon">◍</span><div><h2>Constraint tradeoff</h2><p>{affectedMembers.length} affected members · anonymous</p></div></div><Badge tone={applied ? 'green' : unchanged ? 'blue' : 'orange'}>{applied ? 'Resolved' : unchanged ? 'Closed' : escalated ? 'With organizer' : 'Awaiting confirmation'}</Badge></header>
+    <header><div><span className="pairAvatar anon">◍</span><div><h2>Decision needed</h2><p>{affectedMembers.length} affected members · private constraints hidden</p></div></div><Badge tone={applied ? 'green' : unchanged ? 'blue' : 'orange'}>{applied ? 'Resolved' : unchanged ? 'Closed' : escalated ? 'With organizer' : 'Awaiting confirmation'}</Badge></header>
     <div className="messages conflictMessages">
       <div className="anonBanner"><span>◍</span><p>{proposal.privacyNote}</p></div>
-      <div className="message ai"><span>✦</span><div><p>{proposal.headline}. {proposal.detail}</p><p>This could not be settled by picking an option, so it comes to the affected members directly. The person who proposed it counts as accepted.</p></div></div>
+      <div className="message ai"><span>✦</span><div><p>{proposal.headline}. {proposal.detail}</p><p>This is a confirmation step, not a group chat. The Current Plan stays unchanged until the affected members accept or the organizer chooses a resolution.</p></div></div>
       <div className="changeCompare conflictCompare"><div><small>Current{before.dayLabel ? ` · ${before.dayLabel}` : ''}</small><strong>{before.time} · {before.title}</strong><span>{before.place}</span></div><b>→</b><div className="new"><small>Proposed{after.dayLabel ? ` · ${after.dayLabel}` : ''}</small><strong>{after.time} · {after.title}</strong><span>{after.place}</span></div></div>
-      <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{applied || member.status === 'accepted' ? `${member.label}: accepted` : unchanged ? `${member.label}: closed` : `${member.label}: needs decision`}{member.proposer ? ' (proposer)' : ''}</span>)}<span>Names hidden</span><span>Personal reasons hidden</span></div>
-      {pending && <div className="message ai"><span>✦</span><div><p>The Current Plan does not move until every affected member confirms.</p><div className="messageActions"><Button secondary onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost onClick={async () => { await app.resolveProposal(proposal.id, 'declined'); app.notify('Current plan kept') }}>Decline</Button><Button ghost disabled={app.loading.action} onClick={escalate}>{app.loading.action ? 'Sending...' : 'Escalate to organizer'}</Button></div></div></div>}
-      {escalated && isOrganizer && <div className="message ai"><span>✦</span><div><p>The affected members could not agree. Choose how to leave this block undecided.</p><div className="messageActions"><Button secondary disabled={app.loading.action} onClick={() => resolveDeadlock('split')}>Split the block</Button><Button ghost disabled={app.loading.action} onClick={() => resolveDeadlock('clear')}>Clear the block</Button></div></div></div>}
-      {escalated && !isOrganizer && <div className="message ai"><span>✦</span><div><p>Waiting for the organizer to handle this block.</p></div></div>}
-      {threadMessages.map((message, index) => <ChatBubble from={message.from} key={`${message.from}-${index}`}>{message.text}</ChatBubble>)}
+      <div className="impactRow conflictImpactRow">{affectedMembers.map(member => <span key={member.id}>{applied || member.status === 'accepted' ? `${member.label}: accepted` : unchanged ? `${member.label}: closed` : `${member.label}: needs decision`}{member.isMe ? ' (you)' : ''}</span>)}<span>Names hidden</span><span>Personal reasons hidden</span></div>
+      {canRespond && <div className="message ai"><span>✦</span><div><p>Choose one response. Your private reason is not shown to the group.</p><div className="messageActions conflictDecisionActions"><Button secondary disabled={app.loading.action} onClick={() => app.resolveProposal(proposal.id, 'accepted')}>Accept</Button><Button ghost disabled={app.loading.action} onClick={async () => { await app.resolveProposal(proposal.id, 'declined'); app.notify('Current plan kept') }}>Decline change</Button></div></div></div>}
+      {alreadyAccepted && <div className="message ai"><span>✦</span><div><p>Your response is accepted. The Current Plan will update after the remaining affected members accept.</p></div></div>}
+      {pending && !proposal.canDecide && <div className="message ai"><span>✦</span><div><p>This confirmation is waiting on another affected member. You can review it, but you cannot accept on their behalf.</p></div></div>}
+      {escalated && isOrganizer && <div className="message ai"><span>✦</span><div><p>The affected members could not agree. Resolve this without accepting the blocked proposal for anyone else.</p><div className="messageActions conflictDecisionActions"><Button secondary disabled={app.loading.action} onClick={() => resolveDeadlock('keep')}>Keep current</Button><Button ghost disabled={app.loading.action} onClick={() => resolveDeadlock('split')}>Split group</Button><Button ghost disabled={app.loading.action} onClick={() => resolveDeadlock('remove')}>Remove activity</Button></div></div></div>}
+      {escalated && !isOrganizer && <div className="message ai"><span>✦</span><div><p>Waiting for the organizer to choose keep current, split group, or remove this activity.</p></div></div>}
       {applied && <div className="message ai resolvedMessage"><span>✓</span><div><p>Every affected member confirmed. The Current Plan is updated and the booking is unchanged.</p><Link className="inlineAction" to={planTarget}>Back to updated plan →</Link></div></div>}
       {unchanged && <div className="message ai resolvedMessage"><span>↩</span><div><p>The proposal is closed. The Current Plan did not change.</p><Link className="inlineAction" to={planTarget}>Back to Current Plan →</Link></div></div>}
     </div>
-    <div className="chatComposer"><button>＋</button><input value={reply} onChange={event => setReply(event.target.value)} onKeyDown={event => event.key === 'Enter' && sendReply()} placeholder="Reply anonymously in this conversation..."/><button className="sendBtn" onClick={sendReply}>↑</button></div>
   </section>
 }
 
@@ -867,10 +856,10 @@ function UpdatesPage() {
         {!hasActions && <div className="emptyState quietEmptyState"><span></span><h2>You're all caught up.</h2><p>No decisions need your attention right now.</p><small>New votes, confirmations, or conflicts will appear here.</small></div>}
         {openRounds.map(round => <DecisionRoundCard key={round.id} round={round}/>)}
         {pendingProposals.map(proposal => <article className="decisionCard" key={proposal.id}>
-          <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can split or clear this block.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
+          <div className="decisionTop"><div><Badge tone="orange">{proposal.status === 'escalated' ? 'With organizer' : 'Needs confirmation'}</Badge><h2>{proposal.headline}</h2><p>{proposal.status === 'escalated' ? 'The affected members could not agree. The organizer can keep current, split group, or remove this activity.' : `${proposal.detail} You proposed this, so you already count as accepted.`}</p></div><span>{proposal.createdAt}</span></div>
           <div className="changeCompare"><div><small>Current{proposal.before.dayLabel ? ` · ${proposal.before.dayLabel}` : ''}</small><strong>{proposal.before.time} · {proposal.before.title}</strong><span>{proposal.before.place}</span></div><b>→</b><div className="new"><small>Proposed{proposal.after.dayLabel ? ` · ${proposal.after.dayLabel}` : ''}</small><strong>{proposal.after.time} · {proposal.after.title}</strong><span>{proposal.after.place}</span></div></div>
           <div className="impactRow">{proposal.affectedMembers.map(member => <span key={member.id}>{member.label}: {member.status === 'accepted' ? 'accepted' : 'needs decision'}</span>)}<span>Names hidden</span></div>
-          <div className="decisionActions"><Button onClick={() => navigate(tripHref(currentTrip.id, 'conflict'))}>Open the conversation</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
+          <div className="decisionActions"><Button onClick={() => navigate(tripHref(currentTrip.id, 'conflict'))}>Review decision</Button>{proposal.status !== 'escalated' && <Button ghost onClick={() => { app.withdrawProposal(proposal.id); app.notify('Hidden — current plan kept') }}>Hide</Button>}</div>
         </article>)}
       </>}
       {app.updateFilter === 'all' && <>

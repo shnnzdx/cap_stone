@@ -192,7 +192,9 @@ const normalizeProposal = (proposal, fallback = {}) => {
   return {
     id: proposal.id,
     status: proposal.status,
-    sourceItemId: fallback.sourceItemId,
+    sourceItemId: proposal.plan_item_id || fallback.sourceItemId,
+    myStatus: proposal.my_status || fallback.myStatus || null,
+    canDecide: Boolean(proposal.can_decide),
     headline: fallback.headline || 'Needs confirmation',
     detail: fallback.detail || 'The Current Plan stays unchanged until every affected member confirms.',
     createdAt: 'Just now',
@@ -212,6 +214,7 @@ const normalizeProposal = (proposal, fallback = {}) => {
       id: `${proposal.id}-${index}`,
       label: member.label,
       status: member.status,
+      isMe: Boolean(member.is_me),
     })),
     privacyNote: proposal.privacy_note,
   }
@@ -227,7 +230,10 @@ const requestPatch = (actionType, item, request) => {
     case 'replacePlace':
       return { title: request?.slice(0, 60) || item.title, request }
     case 'removePlan':
-      return { title: 'Free time', place: 'No booking held', request }
+      return {
+        remove: true,
+        request,
+      }
     default:
       return {}
   }
@@ -255,7 +261,10 @@ const mergeRounds = (incoming, current) => {
 const mergeProposals = (incoming, current) => {
   const incomingIds = new Set(incoming.map(proposal => proposal.id))
   return [
-    ...incoming.map(proposal => ({ ...current.find(item => item.id === proposal.id), ...proposal })),
+    ...incoming.map(proposal => {
+      const existing = current.find(item => item.id === proposal.id)
+      return { ...existing, ...proposal }
+    }),
     ...current.filter(proposal => !incomingIds.has(proposal.id) && ['waiting_affected_members', 'escalated'].includes(proposal.status)),
   ]
 }
@@ -924,7 +933,7 @@ export function TripAppProvider({ children }) {
     }
   }, [notify, refreshPlan, refreshUpdates, requestJson])
 
-  const addPlanItem = useCallback(async ({ title, afterItemId, beforeItemId }) => {
+  const addPlanItem = useCallback(async ({ title, afterItemId, beforeItemId, startHour }) => {
     if (!planId) throw new Error('No current plan')
     setLoading(current => ({ ...current, action: true }))
     setError('')
@@ -935,6 +944,7 @@ export function TripAppProvider({ children }) {
           title: title.trim(),
           after_item_id: afterItemId,
           before_item_id: beforeItemId,
+          start_hour: startHour,
         }),
       })
       await refreshPlan()
@@ -1059,7 +1069,9 @@ export function TripAppProvider({ children }) {
   const submitChange = useCallback(async ({ item, actionType, request, verdict, patch, options }) => {
     let reason = null
     if (verdict?.needs_reason) {
-      reason = window.prompt('Please write a reason for reopening this settled block:')
+      reason = actionType === 'removePlan'
+        ? (request?.trim() || `Remove ${item.title} from the plan`)
+        : window.prompt('Please write a reason for reopening this settled block:')
       if (!reason?.trim()) {
         notify('Reopening this block needs a written reason.')
         return null
@@ -1085,6 +1097,11 @@ export function TripAppProvider({ children }) {
       setLoading(current => ({ ...current, action: false }))
     }
   }, [handleOutcome, notify, requestJson])
+
+  const searchReplacementPlaces = useCallback(async ({ itemId, query = '' }) => {
+    const params = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''
+    return requestJson(`/api/plans/items/${itemId}/replacement-places${params}`)
+  }, [requestJson])
 
   const objectToNotice = useCallback(async notice => {
     setLoading(current => ({ ...current, action: true }))
@@ -1135,10 +1152,11 @@ export function TripAppProvider({ children }) {
         method: 'POST',
         body: JSON.stringify({ status }),
       })
+      const normalized = normalizeProposal(result)
+      setActiveProposals(current => [normalized, ...current.filter(proposal => proposal.id !== normalized.id)])
       await refreshPlan()
       await refreshUpdates()
       if (result.applied) setDecisionResolved(true)
-      else await fetchProposal(proposalId)
       return result
     } catch (err) {
       setError(err.message || 'Could not update confirmation')
@@ -1184,6 +1202,7 @@ export function TripAppProvider({ children }) {
     chatWithTrip,
     logout,
     submitChange,
+    searchReplacementPlaces,
     castVote,
     resolveProposal,
     generatePlan,
@@ -1228,7 +1247,7 @@ export function TripAppProvider({ children }) {
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, addPlanItem, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planNeedsRefresh, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, addPlanItem, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planNeedsRefresh, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, searchReplacementPlaces, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')
