@@ -33,6 +33,7 @@ export function usePlanInteractionRuntime({ currentTrip }) {
   const [selectedTripItemId, setSelectedTripItemId] = useState(null)
   const [highlightedItemId, setHighlightedItemId] = useState(null)
   const [railDay, setRailDay] = useState('all')
+  const [addStopContext, setAddStopContext] = useState(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -177,6 +178,10 @@ export function usePlanInteractionRuntime({ currentTrip }) {
     setOpenDays([dayId])
   }, [])
   const showAllOnMap = useCallback(() => setRailDay('all'), [])
+  const openAddStop = useCallback((day, afterItem, beforeItem) => {
+    setAddStopContext({ day, afterItem, beforeItem })
+  }, [])
+  const closeAddStop = useCallback(() => setAddStopContext(null), [])
   const selectPlanItem = useCallback(itemId => {
     setSelectedTripItemId(itemId)
     const dayId = itemDayById[itemId]
@@ -205,6 +210,7 @@ export function usePlanInteractionRuntime({ currentTrip }) {
       selectedTripItemId,
       highlightedItemId,
       railDay,
+      addStopContext,
     },
     actions: {
       focusPlanItem,
@@ -213,6 +219,8 @@ export function usePlanInteractionRuntime({ currentTrip }) {
       selectPlanItem,
       showDayOnMap,
       showAllOnMap,
+      openAddStop,
+      closeAddStop,
       toggleCommentComposer,
       toggleHistory,
       cancelCommentComposer,

@@ -32,6 +32,7 @@ from ..constraints.types import (
     Settledness,
 )
 from ..places import service as place_service
+from ..places.service import normalize_destination
 
 MIN_DAY_ACTIVITIES = planner.MIN_DAY_ACTIVITIES
 MAX_DAY_ACTIVITIES = planner.MAX_DAY_ACTIVITIES
@@ -66,6 +67,9 @@ NO_PLACES_BLOCKED_REASON = (
     "No usable places were available for this destination. Check the destination name "
     "or try again when place data is available."
 )
+DESTINATION_NOT_FOUND_CODE = "DESTINATION_NOT_FOUND"
+NO_PLACE_CANDIDATES_CODE = "NO_PLACE_CANDIDATES"
+CONSTRAINTS_BLOCKED_CODE = "CONSTRAINTS_BLOCKED"
 AVAILABILITY_BLOCKED_REASON = (
     "The submitted availability windows do not leave any shared trip dates to plan."
 )
@@ -147,6 +151,7 @@ class GenerationResult:
     days: list[dict]
     blocked_reason: str | None
     generated_by: str
+    blocked_code: str | None = None
     used_ai: bool = False
     planner_note: tuple[DayPlannerNote, ...] | None = None
     items: tuple[PlanItem, ...] = ()
@@ -171,6 +176,9 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
     if _trip_has_items(db, trip_id):
         raise PlanAlreadyHasItems("This trip already has plan items")
 
+    # Normalize legacy trips as well as newly created trips before cache/provider lookup.
+    trip.destination = normalize_destination(trip.destination)
+
     plan = _plan_for_trip(db, trip)
     constraints = _load_required_constraints(
         db,
@@ -186,13 +194,23 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
         _preferred_activity_count(day_index, availability_by_date.get(day_date))
         for day_index, day_date in day_slots
     )
-    poi_pool = tuple(
-        _as_poi(place)
-        for place in place_service.places_for_planner(db, trip.destination)
-    )
     blocked_reason = _blocked_reason(dates, constraints, day_slots)
-    if not poi_pool:
+    blocked_code = _blocked_code(blocked_reason)
+    destination_not_found = False
+    try:
+        poi_pool = tuple(
+            _as_poi(place)
+            for place in place_service.places_for_planner(db, trip.destination)
+        )
+    except place_service.DestinationNotFound:
+        poi_pool = ()
+        destination_not_found = True
+    if destination_not_found:
+        blocked_reason = "We couldn't find this destination."
+        blocked_code = DESTINATION_NOT_FOUND_CODE
+    elif not poi_pool:
         blocked_reason = NO_PLACES_BLOCKED_REASON
+        blocked_code = NO_PLACE_CANDIDATES_CODE
     allow_reuse_across_days = not any(
         constraint.kind is ConstraintKind.BUDGET_CEILING for constraint in constraints
     )
@@ -229,6 +247,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
                 status="blocked",
                 days=_days_out(dates, ()),
                 blocked_reason=blocked_reason,
+                blocked_code=blocked_code,
                 generated_by="rules",
                 used_ai=False,
                 planner_note=None,
@@ -249,6 +268,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
             status="blocked",
             days=_days_out(dates, ()),
             blocked_reason=blocked_reason,
+            blocked_code=blocked_code,
             generated_by="rules",
             used_ai=False,
             planner_note=None,
@@ -265,6 +285,7 @@ def generate_plan(db: Session, trip_id: str, organizer: TripMembership) -> Gener
         status="active",
         days=_days_out(dates, items),
         blocked_reason=None,
+        blocked_code=None,
         generated_by=_aggregate_generated_by(tuple(accepted_days)),
         used_ai=any(day.used_ai for day in accepted_days),
         planner_note=_aggregate_planner_note(tuple(accepted_days)),
@@ -324,6 +345,14 @@ def _blocked_reason(
     if any(constraint.kind is ConstraintKind.BUDGET_CEILING for constraint in constraints):
         return BUDGET_BLOCKED_REASON
     return CONSTRAINTS_BLOCKED_REASON
+
+
+def _blocked_code(reason: str) -> str:
+    if reason == DATES_BLOCKED_REASON:
+        return "DATES_INVALID"
+    if reason == AVAILABILITY_BLOCKED_REASON:
+        return "AVAILABILITY_BLOCKED"
+    return CONSTRAINTS_BLOCKED_CODE
 
 
 def _trip_membership_count(db: Session, trip_id: str) -> int:

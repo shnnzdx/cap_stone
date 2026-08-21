@@ -136,16 +136,16 @@ function DateRangePicker({ value, onChange, allowedRange = null, minDate = today
   </div>
 }
 
-function AvailabilityPicker({ tripRange, value, onChange }) {
+function AvailabilityPicker({ tripRange, value, onChange, readOnly = false }) {
   const days = eachDay(tripRange)
   const chooseDay = day => {
     if (!value.start || value.end) return onChange({ start: day, end: null })
     if (isBefore(day, value.start)) return onChange({ start: day, end: null })
     onChange({ start: value.start, end: day })
   }
-  return <div className="availabilityPicker">
+  return <div className={cx('availabilityPicker', readOnly && 'readOnly')} aria-readonly={readOnly || undefined}>
     <div><strong>My Availability</strong><small>Select one continuous window within the Trip Dates.</small></div>
-    <div className="availabilityDays">{days.map(day => <button type="button" key={dayKey(day)} className={cx(sameDay(day, value.start) && 'rangeStart', sameDay(day, value.end) && 'rangeEnd', isWithin(day, value) && 'inRange')} onClick={() => chooseDay(day)}><span>{day.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>{day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</strong></button>)}</div>
+    <div className="availabilityDays">{days.map(day => <button type="button" key={dayKey(day)} disabled={readOnly} className={cx(sameDay(day, value.start) && 'rangeStart', sameDay(day, value.end) && 'rangeEnd', isWithin(day, value) && 'inRange')} onClick={readOnly ? undefined : () => chooseDay(day)}><span>{day.toLocaleDateString('en-US', { weekday: 'short' })}</span><strong>{day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</strong></button>)}</div>
     <small className="availabilitySummary">{value.start && value.end ? `Available ${formatDateRange(value)}` : 'Choose the first and last date you are available.'}</small>
   </div>
 }
@@ -184,17 +184,17 @@ function Button({ children, secondary, ghost, className, ...props }) {
   return <button className={cx('btn', secondary && 'btnSecondary', ghost && 'btnGhost', className)} {...props}>{children}</button>
 }
 
-function CustomSelect({ label, value, options, onChange, className }) {
+function CustomSelect({ label, value, options, onChange, className, readOnly = false }) {
   const [open, setOpen] = useState(false)
   const ref = useClickOutside(open, () => setOpen(false))
   const selected = options.find(option => option.value === value) || options[0]
-  return <div className={cx('customSelectField', className)} ref={ref}>
+  return <div className={cx('customSelectField', className, readOnly && 'readOnly')} ref={ref} aria-readonly={readOnly || undefined}>
     <label>{label}</label>
-    <button type="button" className={cx('customSelectButton', open && 'open')} onClick={() => setOpen(current => !current)}>
+    <button type="button" className={cx('customSelectButton', open && 'open')} aria-readonly={readOnly || undefined} onClick={readOnly ? undefined : () => setOpen(current => !current)}>
       <span>{selected.label}</span>
-      <i aria-hidden="true">⌄</i>
+      {!readOnly && <i aria-hidden="true">⌄</i>}
     </button>
-    {open && <div className="customSelectMenu">
+    {!readOnly && open && <div className="customSelectMenu">
       {options.map(option => <button type="button" key={option.value} className={cx(option.value === value && 'selected')} onClick={() => { onChange(option.value); setOpen(false) }}>
         <span>{option.label}</span>
         {option.value === value && <b>✓</b>}
@@ -1000,6 +1000,9 @@ function PreferencesPage() {
   const [picking, setPicking] = useState(false)
   const [draft, setDraft] = useState(null)
   const [loaded, setLoaded] = useState(false)
+  // A plan record can exist before the first generation attempt. Preferences
+  // become read-only only once the current plan has actual itinerary items.
+  const planGenerated = Boolean(app.planId && (app.days || []).some(day => (day.items || []).length > 0))
   const tripRange = useMemo(() => ({
     start: fromISODate(currentTrip?.preferredStartDate),
     end: fromISODate(currentTrip?.preferredEndDate),
@@ -1107,22 +1110,22 @@ function PreferencesPage() {
   if (!currentTrip) return <TripShell />
 
   return <TripShell>
-    <div className="preferenceWrap editorialForm">
+    <div className={cx('preferenceWrap', 'editorialForm', planGenerated && 'preferenceReadOnly')} aria-readonly={planGenerated || undefined}>
       <div className="pageHeading"><div><span className="eyebrow">My preferences</span><h1>Share only what matters.</h1></div></div>
       <section className="preferenceCard preferenceFlow">
         <div className="wide tripDatesCard"><span>Trip Dates</span><strong>{formatDateRange(tripRange)}</strong><small>Set by trip organizer</small></div>
-        <fieldset className="wide availabilityChoice"><legend>Are you available for the full trip?</legend>
+        <fieldset className="wide availabilityChoice" disabled={planGenerated}><legend>Are you available for the full trip?</legend>
           <label><input type="radio" name="availability" checked={availabilityMode === 'full'} onChange={() => { setAvailabilityMode('full'); set('availableRange', tripRange) }}/><span><strong>Yes, all dates</strong><small>I am available for the full Trip Dates.</small></span></label>
           <label><input type="radio" name="availability" checked={availabilityMode === 'limited'} onChange={() => { setAvailabilityMode('limited'); set('availableRange', { start: null, end: null }) }}/><span><strong>No, I have limited availability</strong><small>I will choose a window inside the Trip Dates.</small></span></label>
         </fieldset>
-        {availabilityMode === 'limited' && <div className="wide"><AvailabilityPicker tripRange={tripRange} value={form.availableRange} onChange={range => set('availableRange', range)}/></div>}
+        {availabilityMode === 'limited' && <div className="wide"><AvailabilityPicker tripRange={tripRange} value={form.availableRange} readOnly={planGenerated} onChange={range => set('availableRange', range)}/></div>}
         <div className="wide fieldPair">
-          <label>Ideal total budget<input value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
-          <label>Maximum acceptable budget<input value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
+          <label>Ideal total budget<input readOnly={planGenerated} value={form.idealBudget} onChange={e => set('idealBudget', e.target.value)}/></label>
+          <label>Maximum acceptable budget<input readOnly={planGenerated} value={form.maxBudget} onChange={e => set('maxBudget', e.target.value)}/></label>
         </div>
-        <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Only Cadensy' }, { value: 'organizer', label: 'Organizer too' }, { value: 'everyone', label: 'Whole group' }]}/>
-        <CustomSelect className="wide" label="Preferred pace" value={form.pace} onChange={value => set('pace', value)} options={['Relaxed', 'Balanced', 'Full schedule'].map(option => ({ value: option, label: option }))}/>
-        <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={() => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small><b className="styleTileCheck" aria-hidden="true">✓</b></button>)}</div></div>
+        <CustomSelect className="wide" label="Who can see my budget" value={form.budgetVisibility} readOnly={planGenerated} onChange={value => set('budgetVisibility', value)} options={[{ value: 'planning', label: 'Only Cadensy' }, { value: 'organizer', label: 'Organizer too' }, { value: 'everyone', label: 'Whole group' }]}/>
+        <CustomSelect className="wide" label="Preferred pace" value={form.pace} readOnly={planGenerated} onChange={value => set('pace', value)} options={['Relaxed', 'Balanced', 'Full schedule'].map(option => ({ value: option, label: option }))}/>
+        <div className="wide"><label>Top interests — up to 3</label><div className="styleGrid">{tripStyles.map(style => <button type="button" disabled={planGenerated} key={style} className={cx('styleTile', form.interests?.includes(style) && 'selected')} onClick={planGenerated ? undefined : () => toggleStyle(style)}><span>{style}</span><small>{style === 'Food' ? 'better meals' : style === 'Nature' ? 'parks and views' : style === 'Relaxed' ? 'slower days' : style === 'Culture' ? 'museums and neighborhoods' : 'more active plans'}</small><b className="styleTileCheck" aria-hidden="true">✓</b></button>)}</div></div>
 
         <div className="wide needsPanel">
           <label>Things that are not negotiable</label>
@@ -1132,10 +1135,10 @@ function PreferencesPage() {
           {constraints.map(entry => <div className="needRow savedNeed" key={entry.id}>
             <div><strong>{labelFor(entry.kind)}</strong><small>{constraintSummary(entry)}</small><small className="needVisibility">Visible to: {visibilityLabel(entry.visibility)}</small></div>
             <Badge tone={entry.importance === 'required' ? 'orange' : 'blue'}>{entry.importance}</Badge>
-            <button type="button" className="needRemove" aria-label="Remove" onClick={() => drop(entry.id)}>×</button>
+            {!planGenerated && <button type="button" className="needRemove" aria-label="Remove" onClick={() => drop(entry.id)}>×</button>}
           </div>)}
 
-          {draft && <div className="needDraft">
+          {!planGenerated && draft && <div className="needDraft">
             <strong>{labelFor(draft.kind)}</strong>
             <ConstraintParams kind={draft.kind} params={draft.params} allowedRange={tripRange} onChange={params => setDraft(current => ({ ...current, params }))}/>
             <label>In your own words
@@ -1146,13 +1149,13 @@ function PreferencesPage() {
             <div className="needDraftActions"><Button disabled={Boolean(constraintDraftProblem(draft))} onClick={commitDraft}>Add</Button><Button ghost onClick={() => setDraft(null)}>Cancel</Button></div>
           </div>}
 
-          {picking && !draft && <div className="needPicker">
+          {!planGenerated && picking && !draft && <div className="needPicker">
             {CONSTRAINT_KINDS.map(entry => <button type="button" key={entry.kind} onClick={() => startDraft(entry.kind)}>
               <strong>{entry.label}</strong><small>{entry.hint}</small>
             </button>)}
           </div>}
 
-          {!draft && <button type="button" className="needAdd" onClick={() => setPicking(current => !current)}>{picking ? 'Close' : '＋ Add something that is not negotiable'}</button>}
+          {!planGenerated && !draft && <button type="button" className="needAdd" onClick={() => setPicking(current => !current)}>{picking ? 'Close' : '＋ Add something that is not negotiable'}</button>}
         </div>
 
         {conflicts.length > 0 && <div className="wide conflictPanel">
@@ -1164,7 +1167,7 @@ function PreferencesPage() {
           </li>)}</ul>
         </div>}
 
-        <div className="formFooter"><span>{loaded ? '' : 'Loading your preferences...'}</span><Button disabled={app.loading.action} onClick={save}>{app.loading.action ? 'Saving...' : 'Save preferences'}</Button></div>
+        <div className="formFooter"><span>{loaded ? (planGenerated ? 'Read-only: these preferences were used to generate the current plan.' : '') : 'Loading your preferences...'}</span>{!planGenerated && <Button disabled={app.loading.action} onClick={save}>{app.loading.action ? 'Saving...' : 'Save preferences'}</Button>}</div>
       </section>
     </div>
   </TripShell>

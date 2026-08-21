@@ -188,8 +188,6 @@ body{background:var(--bg-app)!important}.homePage{background:var(--bg-app)}.trip
 .roleChip{border-color:rgba(23,49,77,.2)!important;background:rgba(240,238,234,.9)!important;color:var(--text-primary)!important}.createTripStrip{background:linear-gradient(135deg,#fdfcfa 0,#faf8f4 100%)!important}.createTripStrip:before{content:none!important}.createTripStrip strong{box-shadow:none!important}.createTripStrip:hover{border-color:#c9c2b5!important}.createPage{background:var(--bg-app)}.homePage{background:var(--bg-app)}.calendarGrid button.rangeStart,.calendarGrid button.rangeEnd{box-shadow:none!important}.calendarGrid button.inRange{background:#eceae4!important;color:var(--text-primary)!important}.drawerComposer input:focus{border-color:#b8b1a4!important;box-shadow:0 0 0 3px rgba(23,49,77,.07)!important}.logoMark{background:var(--text-primary)!important}.actionBell.hasActions:after{background:var(--text-primary)!important}.badge{border:1px solid #e3ded4}.badge-purple,.badge-green,.badge-orange,.badge-blue{background:#f0eeea!important;color:var(--text-primary)!important;border-color:#e3ded4!important}.attentionDot{background:var(--text-primary)!important;color:#fff!important}.dashboardAlert,.planNotice{border-color:#d8d2c6!important;background:#faf8f4!important}.dashboardAlert>span,.planNotice>span{color:var(--text-primary)!important}.successNotice{border-color:#d8d2c6!important;background:#faf8f4!important}.decisionCard{border-color:#d8d2c6!important}.roundCard{border-color:#ddd7cb!important;background:#fbfaf7!important}.roundClosed{border-color:#c9c2b5!important;background:var(--bg-app)!important}.roundOption.chosen{border-color:var(--text-primary)!important;background:#faf9f6!important}.roundOption.won{border-color:var(--text-primary)!important;background:#f2f0ec!important}.voteBar i{background:#c9c2b5!important}.roundOption.chosen .voteBar i,.roundOption.won .voteBar i{background:var(--text-primary)!important}.deadlineRing .ringFill{stroke:var(--text-primary)!important}.deadlineRing .ringTrack{stroke:#e3ded4!important}.voterDots i{border-color:#c9c2b5!important}.voterDots i.filled{background:var(--text-primary)!important;border-color:var(--text-primary)!important}.pathResult.pathA,.pathResult.pathB,.pathResult.pathC{border-color:#d8d2c6!important;background:#fbfaf7!important}.verdictChecks li.hit{border-color:var(--text-primary)!important;background:#f5f3ef!important}.verdictChecks li>span{background:#eceae4!important;color:#6b655c!important}.verdictChecks li.hit>span{background:var(--text-primary)!important;color:#fff!important}.verdictChecks li.hit em{color:var(--text-primary)!important}.memberState.done{background:var(--text-primary)!important;color:#fff!important}.collectBar i{background:var(--text-primary)!important}.collectBar b{background:#8a8378!important}
 .tripLeafletMap.realMap .leaflet-tile-pane{filter:grayscale(1) contrast(.9) brightness(1.08)}.tripLeafletMap.realMap{background:#ece9e2!important;border:1px solid #e3ded4}.tripLeafletMap.handDrawn{background:#f4f2ec!important;border-color:#e9e4da!important}.tripLeafletMap.handDrawn:before{content:none!important}.leafletTripMarker span{border-color:var(--text-primary)!important;background:#fff!important;color:var(--text-primary)!important;box-shadow:0 3px 10px rgba(23,49,77,.18)!important}.leafletTripMarker.byDay span{width:32px!important;height:32px!important;font-size:11px!important}.leafletTripMarker.day1 span{background:#6b655c!important;color:#fff!important;border-color:#6b655c!important}.leafletTripMarker.day2 span{background:var(--text-primary)!important;color:#fff!important;border-color:var(--text-primary)!important}.leafletTripMarker.day3 span{background:#b8b1a4!important;color:var(--text-primary)!important;border-color:#8a8378!important}.leafletTripMarker.selected span{background:var(--text-primary)!important;color:#fff!important;border-color:var(--text-primary)!important;box-shadow:0 6px 16px rgba(23,49,77,.3)!important}.handDrawnRouteLine{stroke:var(--text-primary)!important}.mapDayTabs button.active{background:var(--text-primary)!important;color:#fff!important}
 .brandBack{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:var(--text-primary)}.brandBack .logoMark{width:32px;height:32px;border-radius:8px;font-size:14px;display:grid;place-items:center;color:#fff;font-weight:800}.brandBack span:last-child{font-size:14px;font-weight:560;color:#6b655c}.brandBack:hover span:last-child{color:var(--text-primary)}.brandBack .backArrow{color:#a39c90;font-size:13px}
-.dayRouteLine{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 21px 16px;padding:0 0 14px;border-bottom:1px solid #ece7dd}.dayRouteLine>span{color:#8a8378;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;flex:none}.dayRouteLine>strong{flex:1;min-width:0;color:#3d3831;font-size:13px;font-weight:520;line-height:1.5}.dayRouteLine>button{flex:none;padding:0;border:0;background:transparent;color:var(--text-primary);font-size:12px;font-weight:640;text-decoration:underline;text-underline-offset:3px}.dayRouteLine>button:hover{opacity:.6}
-@media(max-width:600px){.dayRouteLine{margin:0 14px 14px}}
 
 
 .tripPill{display:inline-flex;align-items:center;gap:9px;margin:0 0 22px;padding:7px 15px 7px 12px;border-radius:999px;background:var(--text-primary);color:#fff;font-size:12px;font-weight:520;letter-spacing:.01em;box-shadow:0 6px 18px rgba(23,49,77,.18);animation:pillIn .5s cubic-bezier(.16,1,.3,1)}
@@ -261,7 +259,7 @@ h1,h2,h3,strong,.tripUnifiedTitleRow h1,.tripUnifiedTabs a.active,.dashboardTrip
   color:var(--text-primary)!important;
 }
 a,.btnGhost,.backLink,.cardFooter strong,.actionInboxFooter,.roundDiscuss,.objectLink,
-.dayRouteLine>button,.btnSecondary,.memberRemind{
+.btnSecondary,.memberRemind{
   color:var(--text-primary)!important;
 }
 .btn,.logoMark,.sendBtn,.drawerComposer button,.createTripStrip strong,.mapDayTabs button.active,
@@ -316,7 +314,7 @@ input,textarea,select,.preferenceCard input,.preferenceCard textarea,.preference
   color:var(--text-primary)!important;
 }
 .tripUnifiedTabs a,.tripUnifiedCenter .identityLine span,.editorialNav nav a,
-.roundOptionLabel,.roundOption small,.verdictChecks em,.dayRouteLine>span,.dayRouteLine>strong,
+.roundOptionLabel,.roundOption small,.verdictChecks em,
 .brandBack span:last-child,.pillRole,.tripPill span{
   color:var(--text-secondary)!important;
 }
@@ -943,7 +941,7 @@ h2,h3,.activityTitle h3,.updateRow h3,.memberRow h3,.tripMapSummary strong,
   font-weight:650!important;
 }
 .eyebrow,.customSelectField>label,.preferenceCard label,.needsPanel>label,
-.roundOptionLabel,.dayRouteLine>span{
+.roundOptionLabel{
   font-weight:700!important;
 }
 .badge,.roleChip,.roleTag,.attentionDot,.collectCount,.memberState,.avatar,
@@ -1123,6 +1121,65 @@ p,small,.fieldHint,.tripMapSummary p,.tripMapSummary span,.actionInboxHead small
   .copyActions{
     grid-template-columns:1fr!important;
   }
+}
+
+/* Generated plans are historical inputs: keep preference controls readable without presenting fake edit affordances. */
+.preferenceReadOnly .preferenceCard,
+.preferenceReadOnly .customSelectField.readOnly .customSelectButton,
+.preferenceReadOnly .availabilityPicker.readOnly{
+  background:#f6f6f1!important;
+}
+.preferenceReadOnly .preferenceCard input[readonly],
+.preferenceReadOnly .availabilityChoice[disabled],
+.preferenceReadOnly .availabilityPicker.readOnly,
+.preferenceReadOnly .customSelectField.readOnly .customSelectButton{
+  opacity:1!important;
+  color:var(--ws-ink)!important;
+}
+.preferenceReadOnly .preferenceCard input[readonly],
+.preferenceReadOnly .customSelectField.readOnly .customSelectButton{
+  border-color:var(--ws-border-soft)!important;
+  cursor:default!important;
+}
+.preferenceReadOnly .styleTile:disabled,
+.preferenceReadOnly .availabilityDays button:disabled{
+  opacity:1!important;
+  cursor:default!important;
+}
+.preferenceReadOnly .styleTile:not(.selected),
+.preferenceReadOnly .availabilityDays button:not(.rangeStart):not(.rangeEnd):not(.inRange){
+  opacity:.48!important;
+}
+.preferenceReadOnly .needRemove,
+.preferenceReadOnly .needAdd,
+.preferenceReadOnly .formFooter .btn{
+  display:none!important;
+}
+.preferenceReadOnly .formFooter{
+  justify-content:flex-start!important;
+  color:var(--ws-muted)!important;
+}
+
+/* Booked items remain restrained, but carry a clear confirmed state across the whole row. */
+.workspaceContent:has(.planSplit) .activityBlock.booked{
+  background:#eef4f1!important;
+  border-color:#cbded5!important;
+  box-shadow:inset 3px 0 0 #5d8878!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock.booked:hover,
+.workspaceContent:has(.planSplit) .activityBlock.booked.selected{
+  background:#eaf1ed!important;
+  border-color:#bcd3c8!important;
+  box-shadow:inset 3px 0 0 #4f7969!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock.booked .lockedNote{
+  color:#4f7969!important;
+  font-weight:750!important;
+}
+.workspaceContent:has(.planSplit) .activityBlock.booked .badge-purple{
+  background:#e1eee8!important;
+  border-color:#c5ddd1!important;
+  color:#3e6859!important;
 }
 
 
@@ -2805,7 +2862,6 @@ body,
 
 .activityAddress,
 .activityMain>p:last-of-type,
-.dayRouteLine>strong,
 .routeSegment,
 .tripMapSummary p,
 .updateRow p,
@@ -3215,34 +3271,6 @@ body,
   opacity:.42!important;
 }
 
-.workspaceContent:has(.planSplit) .dayRouteLine{
-  display:flex!important;
-  align-items:baseline!important;
-  gap:12px!important;
-  margin:0!important;
-  padding:13px 0 12px!important;
-  border-bottom:1px solid rgba(67,78,67,.1)!important;
-}
-
-.workspaceContent:has(.planSplit) .dayRouteLine>span{
-  flex:none!important;
-  color:#7b8178!important;
-  font-size:10px!important;
-  font-weight:720!important;
-  letter-spacing:.1em!important;
-  text-transform:uppercase!important;
-}
-
-.workspaceContent:has(.planSplit) .dayRouteLine>strong{
-  flex:1!important;
-  min-width:0!important;
-  color:#56645c!important;
-  font-size:12px!important;
-  font-weight:430!important;
-  line-height:1.45!important;
-}
-
-.workspaceContent:has(.planSplit) .dayRouteLine>button,
 .workspaceContent:has(.planSplit) .routeSegment button{
   flex:none!important;
   padding:0!important;
@@ -3434,6 +3462,131 @@ body,
   color:#5f6b63!important;
   font-size:12px!important;
   font-weight:560!important;
+}
+
+.workspaceContent:has(.planSplit) .routeSegment button{
+  color:var(--carto-navy)!important;
+  font-weight:680!important;
+}
+
+.addStopOverlay{
+  position:fixed;
+  inset:0;
+  z-index:120;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  background:rgba(33,55,70,.18);
+  backdrop-filter:blur(3px);
+}
+.addStopDialog{
+  width:min(100%,520px);
+  padding:24px;
+  border:1px solid var(--carto-line-strong);
+  border-radius:14px;
+  background:var(--carto-paper-2);
+  box-shadow:0 20px 54px rgba(33,55,70,.16);
+}
+.addStopDialogHead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  margin-bottom:22px;
+}
+.addStopDialogHead h2{
+  margin:5px 0 5px;
+  color:var(--carto-ink);
+  font-family:var(--carto-serif);
+  font-size:27px;
+  font-weight:600;
+}
+.addStopDialogHead p{
+  margin:0;
+  color:var(--carto-ink-soft);
+  font-size:13px;
+}
+.addStopClose{
+  width:32px;
+  height:32px;
+  border:1px solid var(--carto-line);
+  border-radius:50%;
+  background:transparent;
+  color:var(--carto-ink-soft);
+  font-size:20px;
+  line-height:1;
+}
+.addStopField{
+  display:grid;
+  gap:8px;
+  color:var(--carto-ink);
+  font-size:12px;
+  font-weight:680;
+}
+.addStopField input{
+  width:100%;
+  min-height:44px;
+  padding:10px 12px;
+  border:1px solid var(--carto-line-strong);
+  border-radius:9px;
+  outline:none;
+  background:#fffdf8;
+  color:var(--carto-ink);
+}
+.addStopField input:focus{
+  border-color:var(--carto-navy);
+  box-shadow:0 0 0 3px rgba(33,55,70,.08);
+}
+.addStopPosition{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin-top:16px;
+  padding:10px 12px;
+  border-top:1px solid var(--carto-line);
+  border-bottom:1px solid var(--carto-line);
+  color:var(--carto-ink-soft);
+  font-size:12px;
+}
+.addStopPosition>span{
+  color:var(--carto-muted);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.03em;
+}
+.addStopPosition i{font-style:normal;color:var(--carto-muted)}
+.addStopPosition strong{color:var(--carto-ink)}
+.addStopPosition small{margin-left:auto;color:var(--carto-muted)}
+.addStopWarning{
+  margin:12px 0 0;
+  padding:9px 11px;
+  border:1px solid #e6d7bd;
+  border-radius:8px;
+  background:#fff8ec;
+  color:#7b5d32;
+  font-size:12px;
+}
+
+.detailSheet{display:grid;gap:16px}
+.detailSheet section{padding-top:14px;border-top:1px solid var(--line)}
+.detailSheet section:first-child{padding-top:0;border-top:0}
+.detailSheet h3{margin:0 0 8px;color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
+.detailSheet dl{display:grid;gap:7px;margin:0}
+.detailSheet dl>div{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px}
+.detailSheet dt{color:var(--muted);font-size:12px}
+.detailSheet dd{margin:0;color:var(--ink);font-size:12px;font-weight:700}
+.addStopActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:22px;
+}
+.addStopActions .btn{min-height:38px}
+.addStopActions .btn:disabled{cursor:default;opacity:.48;transform:none}
+
+@media(max-width:600px){
+  .addStopOverlay{align-items:end;padding:12px}
+  .addStopDialog{padding:20px;border-radius:12px}
 }
 
 .workspaceContent:has(.planSplit) .publicThread,
@@ -4323,22 +4476,6 @@ body,
   background:#fffdfa!important;
   background-image:none!important;
 }
-.workspaceContent:has(.planSplit) .dayRouteLine{
-  align-items:center!important;
-  justify-content:space-between!important;
-  gap:16px!important;
-}
-.workspaceContent:has(.planSplit) .dayRouteLine>span{display:none!important}
-.workspaceContent:has(.planSplit) .dayRouteLine>strong{
-  flex:1 1 auto!important;
-  color:#6d756f!important;
-  font-size:12px!important;
-  font-weight:650!important;
-  letter-spacing:0!important;
-  text-transform:none!important;
-}
-.workspaceContent:has(.planSplit) .dayRouteLine>button{white-space:nowrap!important}
-
 /* Preserve Leaflet's existing click handler while keeping the marker hit area above overlays. */
 .tripLeafletMap .leaflet-marker-icon.leafletTripMarker,
 .tripLeafletMap .leafletTripMarker,
@@ -5241,4 +5378,34 @@ body,
 .accordionDay:has(.actionMenu){
   position:relative;
   z-index:100;
+}
+
+/* Keep the day label and its itinerary visually separate without changing the
+   existing accordion structure or open/close behavior. */
+.workspaceContent:has(.planSplit) .accordionDay{
+  background:transparent!important;
+  border-color:transparent!important;
+  box-shadow:none!important;
+  overflow:visible!important;
+}
+.workspaceContent:has(.planSplit) .accordionHead{
+  border:1px solid #dedbd3!important;
+  border-radius:14px!important;
+}
+.workspaceContent:has(.planSplit) .accordionDay.open .accordionBody{
+  margin-top:14px!important;
+  border:1px solid #e4e1da!important;
+  border-radius:14px!important;
+  background:#fffdfa!important;
+  overflow:hidden!important;
+}
+.workspaceContent:has(.planSplit) .accordionDay:not(.open) .accordionBody{
+  border:0!important;
+  background:transparent!important;
+}
+
+@media(max-width:650px){
+  .workspaceContent:has(.planSplit) .accordionDay.open .accordionBody{
+    margin-top:10px!important;
+  }
 }

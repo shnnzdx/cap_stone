@@ -47,6 +47,19 @@ class GeoapifyUnavailable(Exception):
     """The provider cannot currently supply places."""
 
 
+class GeoapifyDestinationNotFound(GeoapifyUnavailable):
+    """Geoapify could not resolve the requested destination to a city."""
+
+
+class GeoapifyPlaces(tuple):
+    """Tuple-compatible place results with geocoding status metadata."""
+
+    def __new__(cls, values=(), *, destination_found=True):
+        result = super().__new__(cls, values)
+        result.destination_found = destination_found
+        return result
+
+
 @dataclass(frozen=True)
 class GeoapifyPlace:
     provider_place_id: str
@@ -87,7 +100,7 @@ def fetch_places(destination: str, *, limit: int = 72) -> tuple[GeoapifyPlace, .
             geocode.raise_for_status()
             results = geocode.json().get("results") or []
             if not results or not results[0].get("place_id"):
-                return ()
+                return GeoapifyPlaces(destination_found=False)
             city = results[0]
             features: list[tuple[dict[str, Any], tuple[str, ...]]] = []
             successful_requests = 0
@@ -147,7 +160,7 @@ def fetch_places(destination: str, *, limit: int = 72) -> tuple[GeoapifyPlace, .
         )
         if place is not None:
             normalized.setdefault(place.provider_place_id, place)
-    return tuple(normalized.values())
+    return GeoapifyPlaces(normalized.values(), destination_found=True)
 
 
 def normalize_feature(

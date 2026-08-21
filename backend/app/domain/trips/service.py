@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...db.models import InviteLink, Plan, PlanItem, Trip, TripMembership, User
+from ..places.service import normalize_destination
 from . import cover_service
 
 
@@ -102,7 +103,7 @@ def create_trip(
 
     trip = Trip(
         name=data.name,
-        destination=data.destination,
+        destination=normalize_destination(data.destination),
         preferred_start_date=data.preferred_start_date,
         preferred_end_date=data.preferred_end_date,
         expected_group_size=data.expected_group_size,

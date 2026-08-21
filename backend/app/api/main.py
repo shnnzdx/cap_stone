@@ -204,6 +204,12 @@ class BookingRequest(BaseModel):
     booked: bool
 
 
+class AddPlanItemRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    after_item_id: str = Field(min_length=1, max_length=32)
+    before_item_id: str = Field(min_length=1, max_length=32)
+
+
 class DecisionRequest(BaseModel):
     status: str = Field(pattern="^(accepted|declined)$")
 
@@ -640,6 +646,68 @@ def get_current_plan(
 ) -> dict:
     _require_scoped_trip(db, me, trip_id)
     return _plan_out(db, trip_id)
+
+
+@app.post("/api/plans/{plan_id}/items")
+def add_plan_item(
+    plan_id: str,
+    body: AddPlanItemRequest,
+    db: Session = Depends(get_session),
+    me: TripMembership = Depends(current_membership),
+) -> dict:
+    """Insert a manually named stop between two adjacent current-plan items."""
+    if not body.title.strip():
+        raise HTTPException(422, "A stop name is required")
+    try:
+        plan = for_membership(db, me).require_plan(plan_id)
+    except ScopedResourceNotFound as exc:
+        raise HTTPException(404, "Plan not found") from exc
+
+    items = db.scalars(
+        select(PlanItem)
+        .where(PlanItem.plan_id == plan.id)
+        .order_by(PlanItem.day_index, PlanItem.start_hour, PlanItem.id)
+    ).all()
+    after_index = next((index for index, item in enumerate(items) if item.id == body.after_item_id), None)
+    before_index = next((index for index, item in enumerate(items) if item.id == body.before_item_id), None)
+    if after_index is None or before_index is None or before_index != after_index + 1:
+        raise HTTPException(409, "These stops are no longer adjacent")
+
+    after = items[after_index]
+    before = items[before_index]
+    if after.day_index != before.day_index or before.start_hour <= after.start_hour:
+        raise HTTPException(409, "There is no open time between these stops")
+
+    # Manual stops use a short, deterministic prototype duration. Require enough
+    # room for that duration so the insert cannot overlap the next scheduled item.
+    manual_duration_min = 30
+    available_minutes = (before.start_hour - after.start_hour) * 60
+    if available_minutes < manual_duration_min * 2:
+        raise HTTPException(409, "This stop may affect the next activity's time.")
+
+    inserted = PlanItem(
+        plan_id=plan.id,
+        day_index=after.day_index,
+        day_date=after.day_date,
+        start_hour=(after.start_hour + before.start_hour) / 2,
+        duration_min=manual_duration_min,
+        title=body.title.strip(),
+        local_title=None,
+        place=body.title.strip(),
+        price_per_person=None,
+        tags=[],
+        dietary_tags=[],
+        is_meal=False,
+        lat=None,
+        lng=None,
+        photo_url=None,
+        source="manual",
+        settledness="loose",
+    )
+    db.add(inserted)
+    db.commit()
+    db.refresh(inserted)
+    return _item_out(inserted)
 
 
 @app.get("/api/trips/{trip_id}/comments")
@@ -1110,6 +1178,7 @@ def generate_trip_plan(
         "status": result.status,
         "days": result.days,
         "blocked_reason": result.blocked_reason,
+        "blocked_code": result.blocked_code,
         "generated_by": result.generated_by,
         "used_ai": result.used_ai,
         "planner_note": (

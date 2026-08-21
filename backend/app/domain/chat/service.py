@@ -134,6 +134,11 @@ def _respond_with_agent_branch(
     target = reference.item or selected
     expected_item_id = reference.item.id if reference.item is not None else None
     selected_on_screen = reference.item is None or reference.source == "selected"
+    if target is not None and _is_item_explanation_request(message):
+        return ChatResult(
+            reply=_structured_item_explanation(target),
+            proposed_change=None,
+        )
     clarification = _plain_text_clarification_reply(message, target)
     if clarification is not None:
         return ChatResult(reply=clarification, proposed_change=None)
@@ -176,6 +181,62 @@ def _respond_with_agent_branch(
             candidate_options=candidates,
         )
     return ChatResult(reply=reply, proposed_change=None, candidate_options=candidates)
+
+
+def _is_item_explanation_request(message: str) -> bool:
+    normalized = message.casefold().strip()
+    return bool(re.search(
+        r"\b(?:explain|details?|describe|tell me about|what is)\b|解释|介绍|详情",
+        normalized,
+    ))
+
+
+def _format_item_hour(hour: float | None) -> str | None:
+    if hour is None:
+        return None
+    numeric = float(hour)
+    whole = int(numeric)
+    minutes = round((numeric - whole) * 60)
+    suffix = "PM" if whole >= 12 else "AM"
+    return f"{whole % 12 or 12}:{minutes:02d} {suffix}"
+
+
+def _structured_item_explanation(item: PlanItem) -> str:
+    lines: list[str] = []
+    if item.day_date or item.start_hour is not None or item.duration_min:
+        schedule: list[str] = []
+        if item.day_date:
+            schedule.append(item.day_date.strftime("%A, %B %-d, %Y"))
+        start = _format_item_hour(item.start_hour)
+        if start:
+            end = (
+                _format_item_hour(item.start_hour + item.duration_min / 60)
+                if item.duration_min
+                else None
+            )
+            schedule.append(f"{start}–{end}" if end else start)
+        if schedule:
+            lines.append("Schedule\n" + " · ".join(schedule))
+
+    details: list[str] = []
+    if item.tags:
+        details.append("Type: " + ", ".join(tag.replace("_", " ").title() for tag in item.tags))
+    if item.place:
+        details.append("Address: " + item.place)
+    if item.duration_min:
+        details.append(f"Duration: {item.duration_min} min")
+    if details:
+        lines.append("Details\n" + "\n".join(details))
+
+    status = {
+        "booked": "Booked",
+        "settled": "Settled",
+        "touched": "Updated",
+        "loose": "Not booked",
+    }.get(item.settledness)
+    if status:
+        lines.append("Status\n" + status)
+    return "\n\n".join(lines)
 
 
 @dataclass(frozen=True)

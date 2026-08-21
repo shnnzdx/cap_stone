@@ -92,6 +92,7 @@ const normalizeItem = item => ({
   title: item.title,
   localTitle: item.local_title || null,
   place: item.place,
+  description: item.description || item.note || null,
   status: item.settledness === 'booked' ? 'Booked' : '',
   locked: item.settledness === 'booked',
   // Do not display item prices on the itinerary. Backend still returns price_per_person and uses it for budget classification.
@@ -923,6 +924,31 @@ export function TripAppProvider({ children }) {
     }
   }, [notify, refreshPlan, refreshUpdates, requestJson])
 
+  const addPlanItem = useCallback(async ({ title, afterItemId, beforeItemId }) => {
+    if (!planId) throw new Error('No current plan')
+    setLoading(current => ({ ...current, action: true }))
+    setError('')
+    try {
+      const item = await requestJson(`/api/plans/${planId}/items`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: title.trim(),
+          after_item_id: afterItemId,
+          before_item_id: beforeItemId,
+        }),
+      })
+      await refreshPlan()
+      return item
+    } catch (err) {
+      const message = friendlyError(err)
+      if (err.status === 409 || err.status === 422) notify(message)
+      else setError(message)
+      throw err
+    } finally {
+      setLoading(current => ({ ...current, action: false }))
+    }
+  }, [notify, planId, refreshPlan, requestJson])
+
   const generatePlan = useCallback(async () => {
     const tripId = resolveActiveTripId()
     setLoading(current => ({ ...current, action: true }))
@@ -1197,11 +1223,12 @@ export function TripAppProvider({ children }) {
     loadComments,
     loadChangeLog,
     addComment,
+    addPlanItem,
     setItemBooked,
     preferencesSubmittedFor,
     submitPreferencesFor: tripId => setPreferencesSubmittedFor(current => current.includes(tripId) ? current : [...current, tripId]),
     notify,
-  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planNeedsRefresh, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
+  }), [createTrip, activeProposal, activeProposals, activeRound, activeRounds, activeTripId, addPlanItem, adoptTechnicalTripContext, baseUpdates, castVote, chatWithTrip, classify, createInvite, currentUser, days, decisionResolved, error, getInvite, hasAccountSession, inviteCopied, joinInvite, loading, logout, membershipId, notices, objectToNotice, personalUpdates, planBlockedReason, planNeedsRefresh, planId, loadMembers, loadComments, loadChangeLog, addComment, readInviteAdoption, setItemBooked, generatePlan, remindMember, extendRound, escalateProposal, resolveDeadlock, loadMyPreferences, preferences, preferencesSubmittedFor, refreshAll, restoredTripId, saveMyPreferences, addConstraint, updateConstraint, deleteConstraint, resetDemo, resolveProposal, revokeInvite, submitChange, trip, trips, tripSummaries, tripSummariesStatus, updateFilter, withdrawProposal])
 
   if (!currentUser) {
     const isJoinRoute = window.location.hash.startsWith('#/join/')

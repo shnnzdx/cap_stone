@@ -16,10 +16,23 @@ DEFAULT_MINIMUM_PLACES = 36
 MAX_PLACES_PER_CATEGORY = 12
 MAX_FOOD_PLACES = 24
 
+
+class DestinationNotFound(Exception):
+    """The provider could not resolve a destination to a city."""
+
 DISPLAY_NAME_ALIASES = {
     "charlemagne et ses leudes": "Charlemagne Monument",
 }
 DESTINATION_ALIASES = {
+    "nyc": "New York City",
+    "newyork": "New York City",
+    "newyorkcity": "New York City",
+    "la": "Los Angeles",
+    "losangeles": "Los Angeles",
+    "sf": "San Francisco",
+    "sanfrancisco": "San Francisco",
+    "dc": "Washington, DC",
+    "washington": "Washington, DC",
     "washingtondc": "Washington, DC",
 }
 
@@ -97,6 +110,10 @@ def _provider_places_for_destination(
 
     try:
         fetched = geoapify.fetch_places(destination)
+        if getattr(fetched, "destination_found", True) is False:
+            raise DestinationNotFound("Destination was not found")
+    except geoapify.GeoapifyDestinationNotFound as exc:
+        raise DestinationNotFound(str(exc)) from exc
     except geoapify.GeoapifyUnavailable:
         return cached
 
@@ -115,9 +132,18 @@ def _provider_places_for_destination(
     return cached
 
 
-def _canonical_destination(destination: str) -> str:
-    compact = re.sub(r"[^a-z0-9]", "", destination.casefold())
-    return DESTINATION_ALIASES.get(compact, destination.strip())
+def normalize_destination(destination: str) -> str:
+    raw = destination.strip()
+    city, separator, remainder = raw.partition(",")
+    compact = re.sub(r"[^a-z0-9]", "", city.casefold())
+    canonical = DESTINATION_ALIASES.get(compact)
+    if not canonical:
+        return raw
+    suffix = f", {remainder.strip()}" if separator and remainder.strip() else ""
+    return f"{canonical}{suffix}"
+
+
+_canonical_destination = normalize_destination
 
 
 def _destination_city(destination: str) -> str:

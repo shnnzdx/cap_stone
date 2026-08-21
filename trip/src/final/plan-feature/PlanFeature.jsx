@@ -93,6 +93,11 @@ const formatPlanHour = value => {
   return `${whole % 12 || 12}:${String(minutes).padStart(2, '0')} ${suffix}`
 }
 
+const formatPlanEndHour = item => {
+  if (item?.startHour === null || item?.startHour === undefined || !item?.durationMin) return null
+  return formatPlanHour(Number(item.startHour) + Number(item.durationMin) / 60)
+}
+
 const coordsFor = item => {
   if (!Array.isArray(item?.coords) || item.coords.length < 2) return null
   const [lat, lng] = item.coords.map(Number)
@@ -118,6 +123,47 @@ const formatStraightLineDistance = (from, to) => {
   if (miles === null) return 'Distance unavailable'
   if (miles < 0.1) return 'About 0.1 mi to next stop'
   return `About ${miles.toFixed(miles < 10 ? 1 : 0)} mi to next stop`
+}
+
+function AddStopDialog({ context, app, onClose }) {
+  const [title, setTitle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [warning, setWarning] = useState('')
+
+  if (!context) return null
+
+  const add = async event => {
+    event.preventDefault()
+    const value = title.trim()
+    if (!value || saving) return
+    setSaving(true)
+    setWarning('')
+    try {
+      await app.addPlanItem({
+        title: value,
+        afterItemId: context.afterItem.id,
+        beforeItemId: context.beforeItem.id,
+      })
+      app.notify(`${value} added to the plan`)
+      onClose()
+    } catch (error) {
+      if (error?.status === 409) {
+        setWarning(error.message || "This stop may affect the next activity's time.")
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <div className="addStopOverlay" role="presentation" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+    <form className="addStopDialog" onSubmit={add} role="dialog" aria-modal="true" aria-labelledby="add-stop-title" aria-describedby="add-stop-helper">
+      <div className="addStopDialogHead"><div><span className="eyebrow">Add to itinerary</span><h2 id="add-stop-title">Add a stop</h2><p id="add-stop-helper">Add a place or activity between these two stops.</p></div><button type="button" className="addStopClose" aria-label="Close" onClick={onClose}>×</button></div>
+      <label className="addStopField">What would you like to add?<input autoFocus value={title} onChange={event => { setTitle(event.target.value); setWarning('') }} placeholder="Search for a place or enter an activity" /></label>
+      <div className="addStopPosition"><span>Between</span><strong>{context.afterItem.time}</strong><i>→</i><strong>{context.beforeItem.time}</strong><small>{context.day.label}</small></div>
+      {warning && <p className="addStopWarning" role="alert">{warning}</p>}
+      <div className="addStopActions"><button type="button" className="btn btnGhost" onClick={onClose}>Cancel</button><button type="submit" className="btn" disabled={!title.trim() || saving}>{saving ? 'Adding...' : 'Add to plan'}</button></div>
+    </form>
+  </div>
 }
 
 const totalRouteMiles = items => items.reduce((total, item, index) => {
@@ -260,6 +306,7 @@ function NewTripPlan({ currentTrip }) {
   const [progress, setProgress] = useState(null)
   const [generateError, setGenerateError] = useState('')
   const [blockedReason, setBlockedReason] = useState('')
+  const [blockedCode, setBlockedCode] = useState('')
   const isOrganizer = app.currentUser.role === 'organizer'
   const onboarding = currentTrip.onboarding || {}
   const organizerPreferenceStatus = currentTrip.organizerPreference?.status || onboarding.organizer_preference?.status
@@ -289,18 +336,33 @@ function NewTripPlan({ currentTrip }) {
   const canGenerate = isOrganizer && meSubmitted && !app.loading.action
   const progressText = `${submitted} of ${total} people have shared what they need.`
   const visibleBlockedReason = blockedReason || app.planBlockedReason || ''
+  const visibleBlockedCode = blockedCode || (
+    visibleBlockedReason.toLowerCase().includes('no usable places')
+      ? 'NO_PLACE_CANDIDATES'
+      : visibleBlockedReason.toLowerCase().includes('destination')
+        ? 'DESTINATION_NOT_FOUND'
+        : visibleBlockedReason ? 'CONSTRAINTS_BLOCKED' : ''
+  )
   const generationBlocked = Boolean(visibleBlockedReason)
+  const destinationBlocked = visibleBlockedCode === 'DESTINATION_NOT_FOUND'
+  const placesBlocked = visibleBlockedCode === 'NO_PLACE_CANDIDATES'
   const budgetBlocked = visibleBlockedReason.toLowerCase().includes('budget')
   const dateBlocked = visibleBlockedReason.toLowerCase().startsWith('trip dates are missing or invalid')
-  const blockedHelp = budgetBlocked
-    ? 'Raise the maximum budget, remove the budget ceiling, or choose cheaper places.'
-    : dateBlocked
-      ? 'Set a valid trip date range, then try generating again.'
-      : visibleBlockedReason.toLowerCase().includes('no usable places')
-        ? 'Check the destination name or try generating again when place data is available.'
-        : 'Review the required constraints and available places, then try generating again.'
+  const blockedHelp = destinationBlocked
+    ? 'Check the destination name and try again.'
+    : placesBlocked
+      ? 'Try again when place data is available for this destination.'
+      : budgetBlocked
+        ? 'Raise the maximum budget, remove the budget ceiling, or choose cheaper places.'
+        : dateBlocked
+          ? 'Set a valid trip date range, then try generating again.'
+          : 'Review the required constraints and available places, then try generating again.'
   const headline = generationBlocked
-    ? 'The requirements blocked this itinerary'
+    ? destinationBlocked
+      ? "We couldn't find this destination"
+      : placesBlocked
+        ? "We couldn't find usable places for this destination"
+        : 'The requirements blocked this itinerary'
     : isOrganizer
       ? meSubmitted ? 'Ready to generate' : 'Share your preferences first'
       : meSubmitted ? 'You are ready' : 'Share your preferences first'
@@ -325,10 +387,12 @@ function NewTripPlan({ currentTrip }) {
   const generate = async () => {
     setGenerateError('')
     setBlockedReason('')
+    setBlockedCode('')
     try {
       const result = await app.generatePlan()
       if (result.status === 'blocked') {
         setBlockedReason(result.blocked_reason || 'The required budget limit is too low for the available places.')
+        setBlockedCode(result.blocked_code || '')
         return
       }
       app.notify('Itinerary generated')
@@ -560,7 +624,7 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
     moveDay: 'Move to another day',
     replacePlace: 'Replace place',
     removePlan: 'Remove from plan',
-    details: 'View details',
+    details: 'Explain',
   }
   const {
     view,
@@ -572,11 +636,25 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
     onResolvedOutcome,
   })
 
+  const detailRows = mode === 'details' ? [
+    { section: 'Schedule', label: 'Date', value: item.dayDate ? formatChangeDay(item.dayDate) : null },
+    { section: 'Schedule', label: 'Starts', value: item.time },
+    { section: 'Schedule', label: 'Ends', value: formatPlanEndHour(item) },
+    { section: 'Details', label: 'Type', value: categoryPresentation(item).label },
+    { section: 'Details', label: 'Address', value: item.place },
+    { section: 'Details', label: 'Duration', value: item.durationMin ? `${item.durationMin} min` : null },
+    { section: 'Details', label: 'Description', value: item.description || item.note },
+    { section: 'Status', label: 'Status', value: item.status || (item.locked ? 'Existing reservation' : 'Not booked') },
+  ].filter(row => row.value) : []
+  const detailSections = ['Schedule', 'Details', 'Status'].map(section => ({
+    section,
+    rows: detailRows.filter(row => row.section === section),
+  })).filter(group => group.rows.length)
+
   const drawer = <aside className={cx('assistantDrawer', inline && 'inlineAssistant')} onClick={event => event.stopPropagation()}>
       <header><div><span className="eyebrow">{actionLabels[mode]}</span><h2>{item.title}</h2><p>{item.place} · {item.time}</p></div><button type="button" onClick={onClose}>×</button></header>
       <div className="drawerThread" ref={view.threadRef}>
-        <div className="assistantBubbleRail"><i/><i/><i/></div>
-        <PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble>
+        {mode !== 'details' && <><div className="assistantBubbleRail"><i/><i/><i/></div><PlanChatBubble from="tripSync">{mode === 'global' ? 'Ask me about the itinerary, or tell me what you want to adjust. If I can identify the item, I will show the change before anything is submitted.' : 'Ask me about this item, or tell me a change in your own words. I will check it first and show exactly what would be submitted.'}</PlanChatBubble></>}
         {view.messages.map(message => <div key={message.id}>
           <PlanChatBubble from={message.from}>{message.proposedChange ? decisionPresentationFor(message.proposedChange.verdict?.path, memberCount).summary : message.text}</PlanChatBubble>
           {message.proposedChange && <ChangeConfirmCard
@@ -589,10 +667,10 @@ function AssistantDrawer({ item, mode, onClose, onCommand, onResolvedOutcome, in
           />}
           <CandidateOptionList message={message} onSelect={actions.selectCandidateOption} />
         </div>)}
-        {mode === 'details' && <div className="detailSheet"><dl><div><dt>Time</dt><dd>{item.time}</dd></div><div><dt>Place</dt><dd>{item.place}</dd></div><div><dt>Status</dt><dd>{item.status || '—'}</dd></div><div><dt>Note</dt><dd>{item.note}</dd></div></dl></div>}
+        {mode === 'details' && <div className="detailSheet">{detailSections.map(group => <section key={group.section}><h3>{group.section}</h3><dl>{group.rows.map(row => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>)}</div>}
         {view.pendingRedirect && <p className="redirectHint">{view.pendingRedirect}</p>}
       </div>
-      <div className="drawerComposer"><input ref={view.inputRef} value={view.draft} onChange={event => actions.updateDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && actions.sendMessage()} placeholder={view.placeholder}/><button aria-label="Send message" disabled={view.sending || !view.draft.trim()} onClick={actions.sendMessage}>{view.sending ? '...' : '↑'}</button></div>
+      {mode !== 'details' && <div className="drawerComposer"><input ref={view.inputRef} value={view.draft} onChange={event => actions.updateDraft(event.target.value)} onKeyDown={event => event.key === 'Enter' && actions.sendMessage()} placeholder={view.placeholder}/><button aria-label="Send message" disabled={view.sending || !view.draft.trim()} onClick={actions.sendMessage}>{view.sending ? '...' : '↑'}</button></div>}
     </aside>
   if (inline) return drawer
   return <div className="drawerOverlay" onClick={onClose}>{drawer}</div>
@@ -640,13 +718,12 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
               <span className="dayHeaderIndex"><small>Day</small><b>{day.label.replace(/[^0-9]/g, '') || '—'}</b><em>{day.date}</em></span><span className="dayHeaderMain"><h2>{dayDisplayTitle(day, currentTrip.destination)}</h2></span><span className="dayHeaderStats"><b>{sightseeingItems.length} activities</b><b>{mealItems.length} meals</b><b>{day.items.length} stops</b></span><i>{open ? '−' : '+'}</i>
             </button>
             <div className="accordionBody"><div className="accordionInner">
-              <div className="dayRouteLine"><strong>Today's route · {day.items.length} planned places</strong><button type="button" onClick={() => actions.showDayOnMap(day.id)}>Show on map →</button></div>
               <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
-                <article id={`trip-item-${item.id}`} className={cx('activityBlock', item.isMeal && 'mealStopBlock', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
+                <article id={`trip-item-${item.id}`} className={cx('activityBlock', item.isMeal && 'mealStopBlock', item.settledness === 'booked' && 'booked', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
                   <button type="button" className={cx('activityIndex', item.isMeal && 'mealStopIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{item.isMeal ? 'M' : day.items.slice(0, index).filter(previous => !previous.isMeal).length + 1}</b></button>
-                  <div className="activityMain"><div className="activityPlaceLine"><StopCategoryIcon item={item}/><div className="activityTitle"><div><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}<small>{categoryPresentation(item).label} · {compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)}</small></div>{!item.isMeal && visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div></div>{item.note && <p>{item.note}</p>}{item.locked && <small className="lockedNote">Existing reservation</small>}</div>
+                  <div className="activityMain"><div className="activityPlaceLine"><StopCategoryIcon item={item}/><div className="activityTitle"><div><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}<small>{categoryPresentation(item).label} · {compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)}</small></div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div></div>{item.note && <p>{item.note}</p>}{item.locked && <small className="lockedNote">Existing reservation</small>}</div>
                   <time className="activityStartTime" dateTime={String(item.startHour ?? '')}>{item.time}</time>
-                  <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'moveDay', day)}>Move to another day</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button><button onClick={() => actions.openDrawer(item, 'details', day)}>View details</button></div>}</div></div>
+                  <div className="activityActions"><button className="itemIconAction" title="Discuss" onClick={() => actions.toggleCommentComposer(item.id)}>💬{(view.comments[item.id] || []).length > 0 && <i>{view.comments[item.id].length}</i>}</button><button className="itemIconAction" title="Ask Cadensy" onClick={() => actions.openDrawer(item, 'ask', day)}>✦</button><div className="moreWrap"><button className="moreBtn" onClick={() => actions.toggleMenu(item.id)}>•••</button>{view.menuOpen === item.id && <div className="actionMenu"><button onClick={() => actions.openDrawer(item, 'editTime', day)}>Edit time</button><button onClick={() => actions.openDrawer(item, 'replacePlace', day)}>Replace place</button><button disabled={app.loading.action} onClick={() => actions.toggleBooked(item)}>{item.settledness === 'booked' ? 'Remove booked status' : 'Mark as booked'}</button><button onClick={() => actions.openDrawer(item, 'removePlan', day)}>Remove from plan</button></div>}</div></div>
                   {(view.comments[item.id] || []).length > 0 && <div className="publicThread">{view.comments[item.id].map((comment, i) => <div key={comment.id || `${item.id}-${i}`}><span>{comment.initials || comment.name.slice(0,2).toUpperCase()}</span><p><strong>{comment.name}</strong>{comment.text}</p></div>)}</div>}
                   {view.historyOpen === item.id && (view.changeHistory[item.id] || []).length > 0 && <div className="itemHistoryPanel">
                     <div className="itemHistoryHead"><strong>Change history</strong><span>{(view.changeHistory[item.id] || []).length} records</span></div>
@@ -659,10 +736,10 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
                   {view.commenting === item.id && <div className="publicComposer"><label>Group note</label><textarea rows="2" value={view.commentDraft} onChange={e => actions.updateCommentDraft(e.target.value)} placeholder="Whole group can see this note." />{view.commentError && <p className="formError">{view.commentError}</p>}<div><button onClick={actions.cancelCommentComposer}>Cancel</button><Button disabled={app.loading.action || !view.commentDraft.trim()} onClick={() => actions.submitComment(item.id)}>{app.loading.action ? 'Posting...' : 'Post note'}</Button></div></div>}
                 </article>
                 {app.activeRounds?.filter(round => round.itemId === item.id || round.itemTitle === item.title).map(round => <PlanDecisionRoundCard key={round.id} round={round} compact onCommand={onCommand}/>)}
-                {index < day.items.length - 1 && item.coords && day.items[index + 1].coords && <div className="routeSegment">
+                {index < day.items.length - 1 && <div className="routeSegment">
                   <span>Next stop</span>
                   <strong>{formatStraightLineDistance(item, day.items[index + 1])}</strong>
-                  <button type="button" onClick={() => actions.showDayOnMap(day.id)}>Map</button>
+                  <button type="button" onClick={() => actions.openAddStop(day, item, day.items[index + 1])}>+ Add stop</button>
                 </div>}
               </div>)}</div>
             </div></div>
@@ -699,5 +776,6 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
       }
     }} inline/>}
   </div>
+  <AddStopDialog context={view.addStopContext} app={app} onClose={actions.closeAddStop}/>
   </>
 }
