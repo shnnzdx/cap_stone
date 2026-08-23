@@ -107,6 +107,23 @@ The workspace build is copied into `frontend/public/trip-app/` so the main site 
 - Python `3.13`
 - PostgreSQL
 
+## Use The Cloud Version
+
+Cadensy can be used directly from the deployed AWS environment:
+
+```text
+https://app.cadensy.top
+```
+
+Useful cloud routes:
+
+- `https://app.cadensy.top` - public site
+- `https://app.cadensy.top/login` - login page
+- `https://app.cadensy.top/trip` - logged-in trip workspace
+- `https://app.cadensy.top/api/health` - backend health check
+
+Use the local setup below only when developing, testing, or debugging the app on your own machine.
+
 ## Install
 
 Install frontend dependencies:
