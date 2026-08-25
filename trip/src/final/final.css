@@ -5562,12 +5562,15 @@ body,
   background:#fffdfa!important;
   backdrop-filter:none!important;
 }
+.workspaceContent:has(.planSplit) .accordionDay.menuOpen,
 .workspaceContent:has(.planSplit) .accordionDay:has(.actionMenu){
   z-index:30!important;
 }
+.workspaceContent:has(.planSplit) .accordionDay.open.menuOpen .accordionBody,
 .workspaceContent:has(.planSplit) .accordionDay.open:has(.actionMenu) .accordionBody{
   overflow:visible!important;
 }
+.workspaceContent:has(.planSplit) .activityBlockGroup.lastStop .actionMenu,
 .workspaceContent:has(.planSplit) .activityBlockGroup:last-child .actionMenu{
   top:auto!important;
   bottom:42px!important;

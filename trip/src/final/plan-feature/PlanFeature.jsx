@@ -854,14 +854,15 @@ function LoadedPlanFeature({ currentTrip, onCommand }) {
       <div className="accordionPlan">
         {view.days.map(day => {
           const open = view.openDays.includes(day.id)
+          const dayMenuOpen = day.items.some(item => item.id === view.menuOpen)
           const sightseeingItems = day.items.filter(item => !item.isMeal)
           const mealItems = day.items.filter(item => item.isMeal)
-          return <section className={cx('accordionDay', open && 'open')} key={day.id}>
+          return <section className={cx('accordionDay', open && 'open', dayMenuOpen && 'menuOpen')} key={day.id}>
             <button className="accordionHead" onClick={() => actions.toggleDay(day.id)} aria-expanded={open}>
               <span className="dayHeaderIndex"><small>Day</small><b>{day.label.replace(/[^0-9]/g, '') || '—'}</b><em>{day.date}</em></span><span className="dayHeaderMain"><h2>{dayDisplayTitle(day, currentTrip.destination)}</h2></span><span className="dayHeaderStats"><b>{sightseeingItems.length} activities</b><b>{mealItems.length} meals</b><b>{day.items.length} stops</b></span><i>{open ? '−' : '+'}</i>
             </button>
             <div className="accordionBody"><div className="accordionInner">
-              <div className="activityBlocks">{day.items.map((item, index) => <div className="activityBlockGroup" key={item.id}>
+              <div className="activityBlocks">{day.items.map((item, index) => <div className={cx('activityBlockGroup', view.menuOpen === item.id && 'menuOpen', index === day.items.length - 1 && 'lastStop')} key={item.id}>
                 <article id={`trip-item-${item.id}`} className={cx('activityBlock', item.isMeal && 'mealStopBlock', item.settledness === 'booked' && 'booked', view.selectedTripItemId === item.id && 'selected', view.highlightedItemId === item.id && 'updatedFlash')} onClick={() => actions.selectPlanItem(item.id)}>
                   <button type="button" className={cx('activityIndex', item.isMeal && 'mealStopIndex', view.historyOpen === item.id && 'open')} aria-label="Show change history" onClick={event => { event.stopPropagation(); actions.toggleHistory(item.id) }}><b>{item.isMeal ? 'M' : day.items.slice(0, index).filter(previous => !previous.isMeal).length + 1}</b></button>
                   <div className="activityMain"><div className="activityPlaceLine"><StopCategoryIcon item={item}/><div className="activityTitle"><div><h3>{placeDisplayName(item.title)}</h3>{usefulLocalName(item) && <span className="activityLocalName">{usefulLocalName(item)}</span>}<small>{categoryPresentation(item).label} · {compactAddress(item.place, item.title, currentTrip.destination, item.localTitle)}</small></div>{visibleStatus(item.status) && <Badge tone={statusTone(item.status)}>{visibleStatus(item.status)}</Badge>}</div></div>{item.note && <p>{item.note}</p>}{item.locked && <small className="lockedNote">Existing reservation</small>}</div>

@@ -174,7 +174,10 @@ test("plan stop cards use compact category icons instead of activity photos", as
 });
 
 test("plan accordion styles preserve open and closed states inside the workspace shell", async () => {
-  const finalCss = await readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8");
+  const [planFeature, finalCss] = await Promise.all([
+    readFile(new URL("../../trip/src/final/plan-feature/PlanFeature.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../../trip/src/final/final.css", import.meta.url), "utf8"),
+  ]);
 
   assert.match(
     finalCss,
@@ -198,16 +201,19 @@ test("plan accordion styles preserve open and closed states inside the workspace
   );
   assert.match(
     finalCss,
-    /\.workspaceContent:has\(\.planSplit\) \.accordionDay:has\(\.actionMenu\)\{[\s\S]*z-index:30!important;/,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.menuOpen,[\s\S]*\.workspaceContent:has\(\.planSplit\) \.accordionDay:has\(\.actionMenu\)\{[\s\S]*z-index:30!important;/,
   );
   assert.match(
     finalCss,
-    /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open:has\(\.actionMenu\) \.accordionBody\{[\s\S]*overflow:visible!important;/,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open\.menuOpen \.accordionBody,[\s\S]*\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open:has\(\.actionMenu\) \.accordionBody\{[\s\S]*overflow:visible!important;/,
   );
   assert.match(
     finalCss,
-    /\.workspaceContent:has\(\.planSplit\) \.activityBlockGroup:last-child \.actionMenu\{[\s\S]*top:auto!important;[\s\S]*bottom:42px!important;/,
+    /\.workspaceContent:has\(\.planSplit\) \.activityBlockGroup\.lastStop \.actionMenu,[\s\S]*\.workspaceContent:has\(\.planSplit\) \.activityBlockGroup:last-child \.actionMenu\{[\s\S]*top:auto!important;[\s\S]*bottom:42px!important;/,
   );
+  assert.match(planFeature, /dayMenuOpen = day\.items\.some\(item => item\.id === view\.menuOpen\)/);
+  assert.match(planFeature, /dayMenuOpen && 'menuOpen'/);
+  assert.match(planFeature, /index === day\.items\.length - 1 && 'lastStop'/);
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {
