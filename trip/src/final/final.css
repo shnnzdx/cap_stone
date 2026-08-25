@@ -5563,3 +5563,7 @@ body,
 .workspaceContent:has(.planSplit) .accordionDay.open:has(.actionMenu) .accordionBody{
   overflow:visible!important;
 }
+.workspaceContent:has(.planSplit) .activityBlockGroup:last-child .actionMenu{
+  top:auto!important;
+  bottom:42px!important;
+}

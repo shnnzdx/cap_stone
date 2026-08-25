@@ -204,6 +204,10 @@ test("plan accordion styles preserve open and closed states inside the workspace
     finalCss,
     /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open:has\(\.actionMenu\) \.accordionBody\{[\s\S]*overflow:visible!important;/,
   );
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.activityBlockGroup:last-child \.actionMenu\{[\s\S]*top:auto!important;[\s\S]*bottom:42px!important;/,
+  );
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {
