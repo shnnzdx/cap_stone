@@ -2,7 +2,7 @@
 
 This repository already uses project-local agent skills under:
 
-`C:\Users\zdxzh\Desktop\capstone\New\.agents\skills`
+`.agents\skills`
 
 ## Current State
 
