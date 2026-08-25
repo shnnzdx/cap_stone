@@ -36,8 +36,20 @@ test("login source preserves token-only accounts and host redirect behavior", as
   assert.match(loginPage, /if \(!result\.token\) \{/);
   assert.doesNotMatch(loginPage, /This account is not connected to a trip yet/);
   assert.match(loginPage, /const \[nextPath, setNextPath\] = useState\("\/trip"\);/);
-  assert.match(loginPage, /if \(next\?\.startsWith\("\/"\)\) setNextPath\(next\);/);
+  assert.match(loginPage, /const resolvedNext = params\.get\("next"\)\?\.startsWith\("\/"\) \? String\(params\.get\("next"\)\) : "\/trip";/);
   assert.match(loginPage, /window\.location\.href = nextPath;/);
+});
+
+test("login source verifies restored account session before redirecting from login", async () => {
+  const loginPage = await readFile(new URL("../app/login/page.tsx", import.meta.url), "utf8");
+
+  assert.match(loginPage, /async function validateRestoredAccountSession/);
+  assert.match(loginPage, /sessionRuntime\.requestIdentityFor\("account", facts\)/);
+  assert.match(loginPage, /fetch\(`\$\{API_BASE_URL\}\/api\/account`, \{/);
+  assert.match(loginPage, /if \(response\.status === 401\) \{/);
+  assert.match(loginPage, /sessionRuntime\.invalidateTechnicalSession\(\s*facts,\s*SESSION_RUNTIME_CODES\.invalidation\.ACCOUNT_CREDENTIALS_INVALID,\s*\);/s);
+  assert.match(loginPage, /if \(!cancelled && valid\) window\.location\.replace\(resolvedNext\);/);
+  assert.doesNotMatch(loginPage, /if \(restored\.facts\.kind === "account"\) \{\s*window\.location\.replace\(resolvedNext\);\s*\}/s);
 });
 
 test("phase 3 shared session-runtime still persists the same compatibility values login previously wrote directly", () => {

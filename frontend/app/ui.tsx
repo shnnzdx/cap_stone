@@ -193,11 +193,10 @@ export function DemoPanel() {
       <p>{active ? "No hard limit or settled choice is affected, so the Current Plan can update now." : "CADENSY checks what a change affects before deciding how the group needs to respond."}</p>
       <button className="button dark" onClick={() => setActive(!active)}>{active ? "Check another change" : "Check the impact"}</button>
     </div>
-    <div className="demo-placeholder" role="img" aria-label="Example of CADENSY routing a change request">
-      <span>{active ? "PATH · NOTICE" : "CHANGE REQUEST"}</span>
-      <strong>{active ? "Can update directly" : "Move dinner to 8:00 PM"}</strong>
-      <small>{active ? "Applied now · Everyone receives a clear update" : "Checking hard limits and decision history"}</small>
-      <div className="mini-nodes"><i/><i/><i/><i/></div>
+    <div className="demo-placeholder demo-video-card" aria-label="Example of CADENSY routing a change request">
+      <video autoPlay muted loop playsInline preload="metadata" aria-label="Move dinner to 8:00 PM demo">
+        <source src="/video/demo-decide-flow.mp4" type="video/mp4" />
+      </video>
     </div>
   </div>;
 }

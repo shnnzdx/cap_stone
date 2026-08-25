@@ -78,9 +78,15 @@ test("shares product content and demo trip data across app boundaries", async ()
     readFile(new URL("../../trip/src/final/tripContent.js", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(planningFlowSteps.length, 5);
+  assert.equal(planningFlowSteps.length, 4);
   assert.equal(planningFlowSteps[0].title, "Create");
-  assert.equal(planningFlowSteps[4].title, "Adapt");
+  assert.deepEqual(planningFlowSteps.map((step) => step.videoSrc), [
+    "/video/demo-create-trip.mp4",
+    "/video/demo-share-invite.mp4",
+    "/video/demo-build-plan.mp4",
+    "/video/demo-decide-flow.mp4",
+  ]);
+  assert.equal(planningFlowSteps[3].title, "Decide");
   assert.equal(productPrinciples.length, 4);
   assert.equal(demoTrip.id, "chicago-birthday");
   assert.equal(demoTripMembers.length, demoTrip.people);

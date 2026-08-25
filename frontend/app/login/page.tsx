@@ -17,6 +17,23 @@ function hasPersistenceWarning(warnings: string[]): boolean {
     warnings.includes(SESSION_RUNTIME_CODES.warnings.PERSISTENCE_WRITE_FAILED);
 }
 
+async function validateRestoredAccountSession(facts: ReturnType<typeof sessionRuntime.restoreTechnicalSession>["facts"]): Promise<boolean> {
+  const identity = sessionRuntime.requestIdentityFor("account", facts);
+  if (!identity.ok) return false;
+
+  const response = await fetch(`${API_BASE_URL}/api/account`, {
+    headers: { Accept: "application/json", ...identity.headers },
+  });
+  if (response.ok) return true;
+  if (response.status === 401) {
+    sessionRuntime.invalidateTechnicalSession(
+      facts,
+      SESSION_RUNTIME_CODES.invalidation.ACCOUNT_CREDENTIALS_INVALID,
+    );
+  }
+  return false;
+}
+
 export default function LoginPage() {
   const pupilsRef = useRef<HTMLElement[]>([]);
   const [showPassword, setShowPassword] = useState(false);
@@ -33,10 +50,25 @@ export default function LoginPage() {
     setAccountCreated(params.get("created") === "1");
     setNextPath(resolvedNext);
 
+    let cancelled = false;
     const restored = sessionRuntime.restoreTechnicalSession();
     if (restored.facts.kind === "account") {
-      window.location.replace(resolvedNext);
+      validateRestoredAccountSession(restored.facts)
+        .then((valid) => {
+          if (!cancelled && valid) window.location.replace(resolvedNext);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            sessionRuntime.invalidateTechnicalSession(
+              restored.facts,
+              SESSION_RUNTIME_CODES.invalidation.ACCOUNT_CREDENTIALS_INVALID,
+            );
+          }
+        });
     }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
