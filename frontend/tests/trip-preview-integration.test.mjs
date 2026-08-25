@@ -192,6 +192,18 @@ test("plan accordion styles preserve open and closed states inside the workspace
     finalCss,
     /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open \.accordionInner\{[\s\S]*opacity:1!important;[\s\S]*overflow:visible!important;/,
   );
+  assert.match(
+    finalCss,
+    /\.tripPage \.tripUnifiedHeader,\s*\.tripPage \.editorialNav\{[\s\S]*z-index:80!important;/,
+  );
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionDay:has\(\.actionMenu\)\{[\s\S]*z-index:30!important;/,
+  );
+  assert.match(
+    finalCss,
+    /\.workspaceContent:has\(\.planSplit\) \.accordionDay\.open:has\(\.actionMenu\) \.accordionBody\{[\s\S]*overflow:visible!important;/,
+  );
 });
 
 test("syncTripPreview copies dist output and writes an embed manifest", async () => {

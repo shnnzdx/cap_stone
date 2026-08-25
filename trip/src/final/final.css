@@ -5549,3 +5549,17 @@ body,
     margin-top:10px!important;
   }
 }
+
+/* Plan item menus must float over neighboring itinerary rows, but not over the
+   sticky workspace navigation. Keep the raised day below the header/drawers and
+   release the day body clipping only while an item menu is open. */
+.tripPage .tripUnifiedHeader,
+.tripPage .editorialNav{
+  z-index:80!important;
+}
+.workspaceContent:has(.planSplit) .accordionDay:has(.actionMenu){
+  z-index:30!important;
+}
+.workspaceContent:has(.planSplit) .accordionDay.open:has(.actionMenu) .accordionBody{
+  overflow:visible!important;
+}
