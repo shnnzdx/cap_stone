@@ -5555,7 +5555,12 @@ body,
    release the day body clipping only while an item menu is open. */
 .tripPage .tripUnifiedHeader,
 .tripPage .editorialNav{
+  position:sticky!important;
+  top:0!important;
   z-index:80!important;
+  isolation:isolate!important;
+  background:#fffdfa!important;
+  backdrop-filter:none!important;
 }
 .workspaceContent:has(.planSplit) .accordionDay:has(.actionMenu){
   z-index:30!important;

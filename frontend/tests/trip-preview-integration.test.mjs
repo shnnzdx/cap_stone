@@ -194,7 +194,7 @@ test("plan accordion styles preserve open and closed states inside the workspace
   );
   assert.match(
     finalCss,
-    /\.tripPage \.tripUnifiedHeader,\s*\.tripPage \.editorialNav\{[\s\S]*z-index:80!important;/,
+    /\.tripPage \.tripUnifiedHeader,\s*\.tripPage \.editorialNav\{[\s\S]*z-index:80!important;[\s\S]*background:#fffdfa!important;[\s\S]*backdrop-filter:none!important;/,
   );
   assert.match(
     finalCss,
