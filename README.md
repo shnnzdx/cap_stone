@@ -6,6 +6,15 @@ The main problem it solves is coordination. Group trips usually involve differen
 
 AI is part of the product, but it is not the whole product. It helps explain the itinerary, generate or repair plan options, and turn natural-language requests into structured changes. The final decision path is handled by product rules, so the system can stay predictable and auditable.
 
+## Capstone Documentation
+
+The final capstone documentation is maintained on the `docs` branch:
+
+- [Cadensy full-stack system documentation](https://github.com/shnnzdx/cap_stone/blob/docs/docs/Cadensy_Full_Stack_System_Documentation.md)
+- [Docs folder entry point](https://github.com/shnnzdx/cap_stone/tree/docs/docs)
+
+That submission document contains production support, setup instructions, issue diagnosis records, user guidance, architecture diagrams, deployment notes, testing evidence, and security considerations.
+
 ## What The App Does
 
 Cadensy currently supports:
@@ -44,11 +53,12 @@ For detailed behavior, read [docs/PRODUCT.md](./docs/PRODUCT.md).
 
 ## Tech Stack
 
-- Frontend site: React, Next/Vinext, TypeScript, Tailwind CSS
+- Frontend site: React, Vinext/Next, TypeScript/JavaScript, Tailwind CSS
 - Trip workspace: React, Vite, React Router, Leaflet
 - Backend: Python, FastAPI, SQLAlchemy, PostgreSQL
 - Tests: pytest, Node test runner, frontend integration checks
-- External data and AI integrations: place candidates, city covers, chat/planner/explainer runtime
+- External data and AI integrations: DeepSeek, Geoapify, Unsplash
+- Production runtime: AWS ECS Fargate, ECR, ALB, ACM, CloudWatch, private RDS PostgreSQL, Aliyun DNS for `app.cadensy.top`
 
 ## Repository Layout
 
@@ -73,6 +83,18 @@ The codebase currently has two frontend surfaces:
 The workspace build is copied into `frontend/public/trip-app/` so the main site can embed it.
 
 ## Architecture
+
+Production currently runs behind `https://app.cadensy.top`:
+
+```text
+Browser
+  -> Aliyun DNS / app.cadensy.top
+  -> AWS Application Load Balancer
+     -> frontend ECS service for public routes and static Trip assets
+     -> backend ECS service for /api/* routes
+        -> private RDS PostgreSQL
+        -> DeepSeek / Geoapify / Unsplash when configured
+```
 
 ### Frontend
 
@@ -120,6 +142,7 @@ Useful cloud routes:
 - `https://app.cadensy.top` - public site
 - `https://app.cadensy.top/login` - login page
 - `https://app.cadensy.top/trip` - logged-in trip workspace
+- `https://app.cadensy.top/trip-app/index.html` - embedded Trip static entry
 - `https://app.cadensy.top/api/health` - backend health check
 
 Use the local setup below only when developing, testing, or debugging the app on your own machine.
@@ -281,31 +304,26 @@ Workspace hash routes:
 
 ## Test And Verify
 
-Backend tests:
+Submission-critical validation commands:
 
 ```bash
 cd backend
-DISABLE_SCHEDULER=1 python -m pytest -q
+DISABLE_SCHEDULER=1 MOCK_AI=1 python -m pytest -q
 ```
-
-Frontend tests:
 
 ```bash
 cd frontend
 npm test
 ```
 
-Trip workspace build:
-
 ```bash
 cd trip
 npm run build
 ```
 
-Main site build:
-
 ```bash
 cd frontend
+npm run build:trip-preview
 npm run build
 ```
 
@@ -316,7 +334,16 @@ cd frontend
 node --test tests/trip-preview-integration.test.mjs
 ```
 
+Public production smoke check:
+
+```bash
+cd frontend
+npm run e2e:aws
+```
+
 Known note: Vite may print a chunk-size warning. That warning is not currently treated as a build failure.
+
+The capstone documentation records the current testing evidence in detail. The configured frontend submission script, selected backend unit/integration suites, production smoke tests, and manual critical-path workflows are treated as submission-critical validation. Broader legacy backend regression and frontend characterization sweeps are documented as non-blocking maintainer backlog in the `docs` branch submission document.
 
 ## Development Notes
 
@@ -331,6 +358,7 @@ Known note: Vite may print a chunk-size warning. That warning is not currently t
 - [AGENTS.md](./AGENTS.md)
 - [AI.md](./AI.md)
 - [INTEGRATION-ROADMAP.md](./INTEGRATION-ROADMAP.md)
+- [Capstone submission documentation](https://github.com/shnnzdx/cap_stone/blob/docs/docs/Cadensy_Full_Stack_System_Documentation.md)
 - [backend/README.md](./backend/README.md)
 - [backend/LOCAL_DEV.md](./backend/LOCAL_DEV.md)
 - [frontend/README.md](./frontend/README.md)
